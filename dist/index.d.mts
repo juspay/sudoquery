@@ -26,6 +26,31 @@ declare class HyperAnalytics {
     private static currentGroup;
     static init(): void;
     /**
+     * Set the batch size for event batching
+     */
+    static set batchSize(value: number);
+    /**
+     * Get the current batch size
+     */
+    static get batchSize(): number;
+    /**
+     * Add a property to super properties (included in all events)
+     */
+    static setSuperProperty(key: string, value: JSONSerializable): void;
+    /**
+     * Get all current super properties
+     */
+    static getSuperProperties(): Record<string, JSONSerializable>;
+    /**
+     * Clear all super properties
+     */
+    static clearSuperProperties(): void;
+    /**
+     * Flush all pending events to the server
+     * @param useBeacon - Use navigator.sendBeacon for more reliable delivery during page unload
+     */
+    static flush(useBeacon?: boolean): Promise<void>;
+    /**
      * Set the user ID for all subsequent events
      * @param userId - The user identifier
      */

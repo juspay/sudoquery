@@ -300,10 +300,47 @@ var HyperAnalytics = class {
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") {
-          flush(true).catch((err) => console.error("Flush on pagehide error:", err));
+          this.flush(true).catch((err) => console.error("Flush on pagehide error:", err));
         }
       });
     }
+  }
+  /**
+   * Set the batch size for event batching
+   */
+  static set batchSize(value) {
+    Configuration.batchSize = value;
+  }
+  /**
+   * Get the current batch size
+   */
+  static get batchSize() {
+    return Configuration.batchSize;
+  }
+  /**
+   * Add a property to super properties (included in all events)
+   */
+  static setSuperProperty(key, value) {
+    SuperProperties.addToSuperProperties(key, value);
+  }
+  /**
+   * Get all current super properties
+   */
+  static getSuperProperties() {
+    return SuperProperties.getSuperProperties();
+  }
+  /**
+   * Clear all super properties
+   */
+  static clearSuperProperties() {
+    SuperProperties.clearSuperProperties();
+  }
+  /**
+   * Flush all pending events to the server
+   * @param useBeacon - Use navigator.sendBeacon for more reliable delivery during page unload
+   */
+  static async flush(useBeacon = false) {
+    await flush(useBeacon);
   }
   /**
    * Set the user ID for all subsequent events
