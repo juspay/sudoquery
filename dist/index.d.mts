@@ -24,15 +24,22 @@ declare class HyperAnalytics {
     private static didInit;
     private static currentUser;
     private static currentGroup;
-    static init(): void;
-    /**
-     * Set the batch size for event batching
-     */
-    static set batchSize(value: number);
+    private static flushTimer;
+    static init(config?: {
+        flushInterval?: number;
+        batchSize?: number;
+        endpoint?: string;
+    }): void;
+    private static startPeriodicFlush;
+    private static stopPeriodicFlush;
     /**
      * Get the current batch size
      */
     static get batchSize(): number;
+    /**
+     * Get the current endpoint URL
+     */
+    static get endpoint(): string;
     /**
      * Add a property to super properties (included in all events)
      */

@@ -22,11 +22,25 @@ var _Configuration = class _Configuration {
   static get batchSize() {
     return _Configuration._batchSize;
   }
-  static set batchSize(value) {
+  static get flushInterval() {
+    return _Configuration._flushInterval;
+  }
+  static get endpoint() {
+    return _Configuration._endpoint;
+  }
+  static setBatchSize(value) {
     _Configuration._batchSize = value;
+  }
+  static setFlushInterval(value) {
+    _Configuration._flushInterval = value;
+  }
+  static setEndpoint(value) {
+    _Configuration._endpoint = value;
   }
 };
 _Configuration._batchSize = 10;
+_Configuration._flushInterval = null;
+_Configuration._endpoint = "http://localhost:3000/push_batch";
 var Configuration = _Configuration;
 
 // src/Session.ts
@@ -76,8 +90,8 @@ function detectBrowser(userAgent) {
 
 // src/Pusher.ts
 var Pusher = class {
-  static setEndpoint(url) {
-    this.endpoint = url;
+  static get endpoint() {
+    return Configuration.endpoint;
   }
   /**
    * Transform internal Event array to BatchPayload format
@@ -156,7 +170,6 @@ var Pusher = class {
   }
 };
 Pusher._isUploadInProgress = false;
-Pusher.endpoint = "http://localhost:3000/push_batch";
 
 // src/Flush.ts
 async function flush(useBeacon = false) {
@@ -294,28 +307,51 @@ AnonymousId.inMemoryAnonId = null;
 
 // src/HyperAnalytics.ts
 var HyperAnalytics = class {
-  static init() {
+  static init(config) {
     if (this.didInit) return;
     this.didInit = true;
+    if (config?.batchSize !== void 0) {
+      Configuration.setBatchSize(config.batchSize);
+    }
+    if (config?.endpoint !== void 0) {
+      Configuration.setEndpoint(config.endpoint);
+    }
+    if (config?.flushInterval !== void 0 && config.flushInterval > 0) {
+      Configuration.setFlushInterval(config.flushInterval);
+      this.startPeriodicFlush(config.flushInterval);
+    }
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") {
+          this.stopPeriodicFlush();
           this.flush(true).catch((err) => console.error("Flush on pagehide error:", err));
         }
       });
     }
   }
-  /**
-   * Set the batch size for event batching
-   */
-  static set batchSize(value) {
-    Configuration.batchSize = value;
+  static startPeriodicFlush(intervalMs) {
+    if (this.flushTimer !== null) return;
+    this.flushTimer = setInterval(() => {
+      this.flush(false).catch((err) => console.error("Periodic flush error:", err));
+    }, intervalMs);
+  }
+  static stopPeriodicFlush() {
+    if (this.flushTimer !== null) {
+      clearInterval(this.flushTimer);
+      this.flushTimer = null;
+    }
   }
   /**
    * Get the current batch size
    */
   static get batchSize() {
     return Configuration.batchSize;
+  }
+  /**
+   * Get the current endpoint URL
+   */
+  static get endpoint() {
+    return Configuration.endpoint;
   }
   /**
    * Add a property to super properties (included in all events)
@@ -406,6 +442,7 @@ var HyperAnalytics = class {
 HyperAnalytics.didInit = false;
 HyperAnalytics.currentUser = null;
 HyperAnalytics.currentGroup = null;
+HyperAnalytics.flushTimer = null;
 export {
   HyperAnalytics
 };
