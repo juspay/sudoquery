@@ -84,17 +84,15 @@ HyperAnalytics.track('purchase', {
 Attach default properties to every event:
 
 ```typescript
-import { SuperProperties } from 'hyper-analytics';
-
 // Add super properties
-SuperProperties.addToSuperProperties('app_version', '1.0.0');
-SuperProperties.addToSuperProperties('environment', 'production');
+HyperAnalytics.setSuperProperty('app_version', '1.0.0');
+HyperAnalytics.setSuperProperty('environment', 'production');
 
 // Get all super properties
-const props = SuperProperties.getSuperProperties();
+const props = HyperAnalytics.getSuperProperties();
 
 // Clear all super properties
-SuperProperties.clearSuperProperties();
+HyperAnalytics.clearSuperProperties();
 ```
 
 ### Manual Flush
@@ -102,9 +100,7 @@ SuperProperties.clearSuperProperties();
 Force upload of pending events:
 
 ```typescript
-import { flush } from 'hyper-analytics';
-
-await flush();
+await HyperAnalytics.flush();
 ```
 
 ## Configuration
@@ -114,9 +110,7 @@ await flush();
 Configure how many events to accumulate before auto-flushing:
 
 ```typescript
-import { Configuration } from 'hyper-analytics';
-
-Configuration.batchSize = 20; // Default is 10
+HyperAnalytics.batchSize = 20; // Default is 10
 ```
 
 ### Server Endpoint
@@ -124,9 +118,7 @@ Configuration.batchSize = 20; // Default is 10
 Set the analytics server endpoint:
 
 ```typescript
-import { Pusher } from 'hyper-analytics';
-
-Pusher.setEndpoint('https://api.yourcompany.com/analytics/batch');
+HyperAnalytics.setEndpoint('https://api.yourcompany.com/analytics/batch');
 // Default: http://localhost:3000/push_batch
 ```
 
@@ -135,15 +127,15 @@ Pusher.setEndpoint('https://api.yourcompany.com/analytics/batch');
 Start a scheduler to periodically flush events:
 
 ```typescript
-import { Pusher } from 'hyper-analytics';
-
 // Flush every 60 seconds
-Pusher.startScheduler(60000);
+HyperAnalytics.startScheduler(60000);
 ```
 
 ## API Reference
 
 ### HyperAnalytics
+
+All functionality is accessed through the `HyperAnalytics` class.
 
 | Method | Description |
 |--------|-------------|
@@ -151,34 +143,18 @@ Pusher.startScheduler(60000);
 | `setUser(userId: string)` | Set current user ID |
 | `getUser(): string \| null` | Get current user ID |
 | `removeUser()` | Clear user ID |
+| `setGroup(groupId: string)` | Set current group ID |
+| `getGroup(): string \| null` | Get current group ID |
+| `removeGroup()` | Clear group ID |
 | `track(eventName: string, properties: JSONSerializable)` | Track an event |
-
-### Configuration
-
-| Property | Type | Default |
-|----------|------|---------|
-| `batchSize` | number | 10 |
-
-### SuperProperties
-
-| Method | Description |
-|--------|-------------|
-| `addToSuperProperties(key: string, value: JSONSerializable)` | Add a super property |
+| `setSuperProperty(key: string, value: JSONSerializable)` | Add a super property |
 | `getSuperProperties(): Record<string, JSONSerializable>` | Get all super properties |
 | `clearSuperProperties()` | Remove all super properties |
-
-### Pusher
-
-| Method | Description |
-|--------|-------------|
+| `flush(useBeacon?: boolean): Promise<void>` | Manually flush pending events |
+| `set batchSize(value: number)` | Set batch size |
+| `get batchSize(): number` | Get current batch size |
 | `setEndpoint(url: string)` | Set server endpoint |
-| `startScheduler(time: number)` | Start periodic flush timer |
-
-### Utilities
-
-| Function | Description |
-|----------|-------------|
-| `flush()` | Manually flush pending events |
+| `startScheduler(intervalMs: number)` | Start periodic flush timer |
 
 ## Types
 

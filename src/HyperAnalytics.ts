@@ -2,9 +2,10 @@ import { JSONSerializable, Event } from "./types";
 import { containsNonPrimitives } from "./TypeValidator";
 import { Batcher } from "./Batcher";
 import { SuperProperties } from "./SuperProperties";
-import { flush } from "./Flush";
+import { flush as flushEvents } from "./Flush";
 import { AnonymousId } from "./AnonymousId";
 import { Pusher } from "./Pusher";
+import { Configuration } from "./Configuration";
 
 class HyperAnalytics {
     private static didInit = false;
@@ -23,10 +24,53 @@ class HyperAnalytics {
           // 'hidden' means the user switched tabs, minimized, or closed the browser.
           // This is your last reliable chance to send data.
           if (document.visibilityState === "hidden") {
-            flush(true).catch(err => console.error('Flush on pagehide error:', err));
+            this.flush(true).catch(err => console.error('Flush on pagehide error:', err));
           }
         });
       }
+    }
+
+    /**
+     * Set the batch size for event batching
+     */
+    static set batchSize(value: number) {
+      Configuration.batchSize = value;
+    }
+
+    /**
+     * Get the current batch size
+     */
+    static get batchSize(): number {
+      return Configuration.batchSize;
+    }
+
+    /**
+     * Add a property to super properties (included in all events)
+     */
+    static setSuperProperty(key: string, value: JSONSerializable): void {
+      SuperProperties.addToSuperProperties(key, value);
+    }
+
+    /**
+     * Get all current super properties
+     */
+    static getSuperProperties(): Record<string, JSONSerializable> {
+      return SuperProperties.getSuperProperties();
+    }
+
+    /**
+     * Clear all super properties
+     */
+    static clearSuperProperties(): void {
+      SuperProperties.clearSuperProperties();
+    }
+
+    /**
+     * Flush all pending events to the server
+     * @param useBeacon - Use navigator.sendBeacon for more reliable delivery during page unload
+     */
+    static async flush(useBeacon: boolean = false): Promise<void> {
+      await flushEvents(useBeacon);
     }
 
     /**
