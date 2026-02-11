@@ -369,22 +369,6 @@ var HyperAnalytics = class {
 HyperAnalytics.didInit = false;
 HyperAnalytics.currentUser = null;
 HyperAnalytics.currentGroup = null;
-
-// src/index.ts
-var add = (a, b) => {
-  return a + b;
-};
-var logMessage = (msg) => {
-  console.log(`[MyLib]: ${msg}`);
-};
 export {
-  Batcher,
-  Configuration,
-  HyperAnalytics,
-  Pusher,
-  SuperProperties,
-  add,
-  containsNonPrimitives,
-  flush,
-  logMessage
+  HyperAnalytics
 };

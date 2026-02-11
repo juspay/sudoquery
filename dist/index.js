@@ -20,15 +20,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/index.ts
 var index_exports = {};
 __export(index_exports, {
-  Batcher: () => Batcher,
-  Configuration: () => Configuration,
-  HyperAnalytics: () => HyperAnalytics,
-  Pusher: () => Pusher,
-  SuperProperties: () => SuperProperties,
-  add: () => add,
-  containsNonPrimitives: () => containsNonPrimitives,
-  flush: () => flush,
-  logMessage: () => logMessage
+  HyperAnalytics: () => HyperAnalytics
 });
 module.exports = __toCommonJS(index_exports);
 
@@ -403,23 +395,7 @@ var HyperAnalytics = class {
 HyperAnalytics.didInit = false;
 HyperAnalytics.currentUser = null;
 HyperAnalytics.currentGroup = null;
-
-// src/index.ts
-var add = (a, b) => {
-  return a + b;
-};
-var logMessage = (msg) => {
-  console.log(`[MyLib]: ${msg}`);
-};
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  Batcher,
-  Configuration,
-  HyperAnalytics,
-  Pusher,
-  SuperProperties,
-  add,
-  containsNonPrimitives,
-  flush,
-  logMessage
+  HyperAnalytics
 });
