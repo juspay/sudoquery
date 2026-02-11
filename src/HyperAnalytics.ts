@@ -11,10 +11,27 @@ class HyperAnalytics {
     private static didInit = false;
     private static currentUser: string | null = null;
     private static currentGroup: string | null = null;
+    private static flushTimer: ReturnType<typeof setInterval> | null = null;
 
-    static init() {
+    static init(config?: { flushInterval?: number; batchSize?: number; endpoint?: string }) {
       if(this.didInit) return;
       this.didInit = true;
+
+      // Configure batch size if provided
+      if (config?.batchSize !== undefined) {
+        Configuration.setBatchSize(config.batchSize);
+      }
+
+      // Configure endpoint if provided
+      if (config?.endpoint !== undefined) {
+        Configuration.setEndpoint(config.endpoint);
+      }
+
+      // Start periodic auto-flush if configured
+      if (config?.flushInterval !== undefined && config.flushInterval > 0) {
+        Configuration.setFlushInterval(config.flushInterval);
+        this.startPeriodicFlush(config.flushInterval);
+      }
 
       // Flush events when page is unloaded (user navigates away or closes tab)
       // Use pagehide event which is more reliable than visibilitychange for page unload
@@ -24,17 +41,25 @@ class HyperAnalytics {
           // 'hidden' means the user switched tabs, minimized, or closed the browser.
           // This is your last reliable chance to send data.
           if (document.visibilityState === "hidden") {
+            this.stopPeriodicFlush();
             this.flush(true).catch(err => console.error('Flush on pagehide error:', err));
           }
         });
       }
     }
 
-    /**
-     * Set the batch size for event batching
-     */
-    static set batchSize(value: number) {
-      Configuration.batchSize = value;
+    private static startPeriodicFlush(intervalMs: number): void {
+      if (this.flushTimer !== null) return;
+      this.flushTimer = setInterval(() => {
+        this.flush(false).catch(err => console.error('Periodic flush error:', err));
+      }, intervalMs);
+    }
+
+    private static stopPeriodicFlush(): void {
+      if (this.flushTimer !== null) {
+        clearInterval(this.flushTimer);
+        this.flushTimer = null;
+      }
     }
 
     /**
@@ -42,6 +67,13 @@ class HyperAnalytics {
      */
     static get batchSize(): number {
       return Configuration.batchSize;
+    }
+
+    /**
+     * Get the current endpoint URL
+     */
+    static get endpoint(): string {
+      return Configuration.endpoint;
     }
 
     /**

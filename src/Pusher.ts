@@ -3,13 +3,13 @@ import { flush } from "./Flush";
 import type { Event, BatchPayload, ClientEvent } from "./types";
 import { getSessionData } from "./Session";
 import { AnonymousId } from "./AnonymousId";
+import { Configuration } from "./Configuration";
 
 export class Pusher {
   private static _isUploadInProgress = false;
-  private static endpoint: string = "http://localhost:3000/push_batch";
 
-  static setEndpoint(url: string) {
-    this.endpoint = url;
+  private static get endpoint(): string {
+    return Configuration.endpoint;
   }
 
   /**

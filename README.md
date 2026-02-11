@@ -9,6 +9,7 @@ A lightweight TypeScript analytics SDK for tracking events in browser and Node.j
 - **Anonymous Users** - Track unauthenticated users with persistent anonymous IDs
 - **Super Properties** - Attach default properties to all events
 - **Auto-Flush** - Automatically sends events on page unload using `navigator.sendBeacon()`
+- **Periodic Auto-Flush** - Configurable interval-based automatic event flushing
 - **Cross-Platform** - Works in both browsers and Node.js
 - **TypeScript Support** - Full type definitions included
 
@@ -37,15 +38,23 @@ HyperAnalytics.track('button_click', {
 
 ### Initialization
 
-Call `init()` once when your application loads:
+Call `init()` once when your application loads. You can optionally configure:
 
 ```typescript
 import { HyperAnalytics } from 'hyper-analytics';
 
-HyperAnalytics.init();
+HyperAnalytics.init({
+  flushInterval: 5000,    // Auto-flush every 5 seconds (optional)
+  batchSize: 20,          // Batch 20 events before flushing (default: 10)
+  endpoint: 'https://api.example.com/events'  // Custom endpoint (default: http://localhost:3000/push_batch)
+});
 ```
 
-This sets up a page visibility listener to automatically flush events when the user navigates away.
+**Important:** Configuration can only be set during initialization and cannot be modified afterward.
+
+This sets up:
+- A page visibility listener to automatically flush events when the user navigates away
+- A periodic flush timer (if `flushInterval` is provided)
 
 ### Identifying Users
 
@@ -60,6 +69,21 @@ const userId = HyperAnalytics.getUser();
 
 // Clear user ID (on logout)
 HyperAnalytics.removeUser();
+```
+
+### Groups
+
+Associate events with groups (organizations, teams, etc.):
+
+```typescript
+// Set group ID
+HyperAnalytics.setGroup('org_abc');
+
+// Get current group ID
+const groupId = HyperAnalytics.getGroup();
+
+// Clear group ID
+HyperAnalytics.removeGroup();
 ```
 
 ### Tracking Events
@@ -103,32 +127,39 @@ Force upload of pending events:
 await HyperAnalytics.flush();
 ```
 
-## Configuration
+## Configuration Options
 
-### Batch Size
+All configuration is done through the `init()` method:
 
-Configure how many events to accumulate before auto-flushing:
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `flushInterval` | `number \| undefined` | `undefined` | Interval in milliseconds for periodic auto-flush. If not set, periodic flush is disabled. |
+| `batchSize` | `number \| undefined` | `10` | Number of events to accumulate before auto-flushing. |
+| `endpoint` | `string \| undefined` | `"http://localhost:3000/push_batch"` | URL where events are sent. |
 
+### Example Configurations
+
+**Default configuration:**
 ```typescript
-HyperAnalytics.batchSize = 20; // Default is 10
+HyperAnalytics.init();
+// Uses: batchSize=10, endpoint="http://localhost:3000/push_batch", no periodic flush
 ```
 
-### Server Endpoint
-
-Set the analytics server endpoint:
-
+**High-frequency tracking:**
 ```typescript
-HyperAnalytics.setEndpoint('https://api.yourcompany.com/analytics/batch');
-// Default: http://localhost:3000/push_batch
+HyperAnalytics.init({
+  flushInterval: 2000,   // Flush every 2 seconds
+  batchSize: 50,         // Larger batches
+  endpoint: 'https://analytics-api.example.com/batch'
+});
 ```
 
-### Periodic Auto-Flush
-
-Start a scheduler to periodically flush events:
-
+**Low-latency mode:**
 ```typescript
-// Flush every 60 seconds
-HyperAnalytics.startScheduler(60000);
+HyperAnalytics.init({
+  flushInterval: 1000,   // Flush every second
+  batchSize: 5            // Small batches
+});
 ```
 
 ## API Reference
@@ -139,7 +170,7 @@ All functionality is accessed through the `HyperAnalytics` class.
 
 | Method | Description |
 |--------|-------------|
-| `init()` | Initialize the SDK |
+| `init(config?)` | Initialize the SDK with optional configuration |
 | `setUser(userId: string)` | Set current user ID |
 | `getUser(): string \| null` | Get current user ID |
 | `removeUser()` | Clear user ID |
@@ -151,10 +182,8 @@ All functionality is accessed through the `HyperAnalytics` class.
 | `getSuperProperties(): Record<string, JSONSerializable>` | Get all super properties |
 | `clearSuperProperties()` | Remove all super properties |
 | `flush(useBeacon?: boolean): Promise<void>` | Manually flush pending events |
-| `set batchSize(value: number)` | Set batch size |
-| `get batchSize(): number` | Get current batch size |
-| `setEndpoint(url: string)` | Set server endpoint |
-| `startScheduler(intervalMs: number)` | Start periodic flush timer |
+| `get batchSize(): number` | Get current batch size (read-only) |
+| `get endpoint(): string` | Get current endpoint URL (read-only) |
 
 ## Types
 
