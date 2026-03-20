@@ -20,18 +20,23 @@ type JSONSerializable = string | number | boolean | null | JSONSerializable[] | 
     [key: string]: JSONSerializable;
 };
 
+interface HyperAnalyticsConfig {
+    flushInterval?: number;
+    batchSize?: number;
+    endpoint?: string;
+    token?: string;
+}
 declare class HyperAnalytics {
     private static didInit;
     private static currentUser;
     private static flushTimer;
-    static init(config?: {
-        flushInterval?: number;
-        batchSize?: number;
-        endpoint?: string;
-        token?: string;
-    }): void;
+    static init(config?: HyperAnalyticsConfig): void;
     private static startPeriodicFlush;
     private static stopPeriodicFlush;
+    /**
+     * Check if the SDK has been initialized
+     */
+    static get isInitialized(): boolean;
     /**
      * Get the current batch size
      */
@@ -71,7 +76,7 @@ declare class HyperAnalytics {
      * @returns The current user ID or null if not set
      */
     static getUser(): string | null;
-    static track(eventName: String, properties: JSONSerializable): void;
+    static track(eventName: string, properties?: JSONSerializable): void;
 }
 
-export { HyperAnalytics };
+export { HyperAnalytics, type HyperAnalyticsConfig, type JSONSerializable };

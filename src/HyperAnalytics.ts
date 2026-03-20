@@ -7,12 +7,19 @@ import { AnonymousId } from "./AnonymousId";
 import { Pusher } from "./Pusher";
 import { Configuration } from "./Configuration";
 
+export interface HyperAnalyticsConfig {
+  flushInterval?: number;
+  batchSize?: number;
+  endpoint?: string;
+  token?: string;
+}
+
 class HyperAnalytics {
     private static didInit = false;
     private static currentUser: string | null = null;
     private static flushTimer: ReturnType<typeof setInterval> | null = null;
 
-    static init(config?: { flushInterval?: number; batchSize?: number; endpoint?: string; token?: string }) {
+    static init(config?: HyperAnalyticsConfig) {
       if(this.didInit) return;
       this.didInit = true;
 
@@ -64,6 +71,13 @@ class HyperAnalytics {
         clearInterval(this.flushTimer);
         this.flushTimer = null;
       }
+    }
+
+    /**
+     * Check if the SDK has been initialized
+     */
+    static get isInitialized(): boolean {
+      return this.didInit;
     }
 
     /**
@@ -132,8 +146,10 @@ class HyperAnalytics {
       return this.currentUser;
     }
 
-    static track(eventName: String, properties: JSONSerializable){
-      if(containsNonPrimitives(properties)) throw new Error("only primitives are allowed as properties");
+    static track(eventName: string, properties?: JSONSerializable): void {
+      const props = properties ?? {};
+
+      if(containsNonPrimitives(props)) throw new Error("only primitives are allowed as properties");
 
       // Create session details (empty for now)
       const sessionDetails: Record<string, JSONSerializable> = {};
@@ -144,7 +160,7 @@ class HyperAnalytics {
       // Merge all properties (user properties take precedence over super properties)
       const mergedProperties: Record<string, JSONSerializable> = {
         ...superProperties,
-        ...(typeof properties === 'object' && properties !== null && !Array.isArray(properties) ? properties : {}),
+        ...(typeof props === 'object' && props !== null && !Array.isArray(props) ? props : {}),
         ...sessionDetails,
       };
 

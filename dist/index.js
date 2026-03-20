@@ -382,6 +382,12 @@ var HyperAnalytics = class {
     }
   }
   /**
+   * Check if the SDK has been initialized
+   */
+  static get isInitialized() {
+    return this.didInit;
+  }
+  /**
    * Get the current batch size
    */
   static get batchSize() {
@@ -439,12 +445,13 @@ var HyperAnalytics = class {
     return this.currentUser;
   }
   static track(eventName, properties) {
-    if (containsNonPrimitives(properties)) throw new Error("only primitives are allowed as properties");
+    const props = properties ?? {};
+    if (containsNonPrimitives(props)) throw new Error("only primitives are allowed as properties");
     const sessionDetails = {};
     const superProperties = SuperProperties.getSuperProperties();
     const mergedProperties = {
       ...superProperties,
-      ...typeof properties === "object" && properties !== null && !Array.isArray(properties) ? properties : {},
+      ...typeof props === "object" && props !== null && !Array.isArray(props) ? props : {},
       ...sessionDetails
     };
     const event = {
