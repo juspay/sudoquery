@@ -28,6 +28,7 @@ declare class HyperAnalytics {
         flushInterval?: number;
         batchSize?: number;
         endpoint?: string;
+        token?: string;
     }): void;
     private static startPeriodicFlush;
     private static stopPeriodicFlush;

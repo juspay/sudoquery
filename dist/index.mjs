@@ -28,6 +28,9 @@ var _Configuration = class _Configuration {
   static get endpoint() {
     return _Configuration._endpoint;
   }
+  static get token() {
+    return _Configuration._token;
+  }
   static setBatchSize(value) {
     _Configuration._batchSize = value;
   }
@@ -37,10 +40,14 @@ var _Configuration = class _Configuration {
   static setEndpoint(value) {
     _Configuration._endpoint = value;
   }
+  static setToken(value) {
+    _Configuration._token = value;
+  }
 };
 _Configuration._batchSize = 10;
 _Configuration._flushInterval = null;
-_Configuration._endpoint = "http://localhost:3000/push_batch";
+_Configuration._endpoint = "http://hyper-analytics-alb-c33157e-1810523293.ap-south-1.elb.amazonaws.com/push_batch";
+_Configuration._token = null;
 var Configuration = _Configuration;
 
 // src/Session.ts
@@ -150,11 +157,15 @@ var Pusher = class {
   }
   static async sendNormally(payload) {
     try {
+      const headers = {
+        "Content-Type": "application/json"
+      };
+      if (Configuration.token) {
+        headers["Authorization"] = `Bearer ${Configuration.token}`;
+      }
       const response = await fetch(this.endpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json"
-        },
+        headers,
         body: JSON.stringify(payload)
       });
       return response.ok;
@@ -315,6 +326,9 @@ var HyperAnalytics = class {
     }
     if (config?.endpoint !== void 0) {
       Configuration.setEndpoint(config.endpoint);
+    }
+    if (config?.token !== void 0) {
+      Configuration.setToken(config.token);
     }
     if (config?.flushInterval !== void 0 && config.flushInterval > 0) {
       Configuration.setFlushInterval(config.flushInterval);
