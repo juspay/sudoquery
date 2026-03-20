@@ -23,7 +23,6 @@ type JSONSerializable = string | number | boolean | null | JSONSerializable[] | 
 declare class HyperAnalytics {
     private static didInit;
     private static currentUser;
-    private static currentGroup;
     private static flushTimer;
     static init(config?: {
         flushInterval?: number;
@@ -71,20 +70,6 @@ declare class HyperAnalytics {
      * @returns The current user ID or null if not set
      */
     static getUser(): string | null;
-    /**
-     * Set the group ID for all subsequent events
-     * @param groupId - The group identifier
-     */
-    static setGroup(groupId: string): void;
-    /**
-     * Remove the current group ID (resets to null)
-     */
-    static removeGroup(): void;
-    /**
-     * Get the current group ID
-     * @returns The current group ID or null if not set
-     */
-    static getGroup(): string | null;
     static track(eventName: String, properties: JSONSerializable): void;
 }
 

@@ -28,7 +28,6 @@ export type Event = {
   eventName: string;
   properties: JSONSerializable;
   user: string | null;
-  group: string | null;
   anon_id: string; // Anonymous ID for session tracking
   eventId: string; // Unique event ID for deduplication
   at: number; // Unix timestamp in milliseconds (UTC)

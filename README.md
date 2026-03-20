@@ -46,7 +46,8 @@ import { HyperAnalytics } from 'hyper-analytics';
 HyperAnalytics.init({
   flushInterval: 5000,    // Auto-flush every 5 seconds (optional)
   batchSize: 20,          // Batch 20 events before flushing (default: 10)
-  endpoint: 'https://api.example.com/events'  // Custom endpoint (default: http://localhost:3000/push_batch)
+  endpoint: 'https://api.example.com/events',  // Custom endpoint (default: http://localhost:3000/push_batch)
+  token: 'YOUR_PROJECT_TOKEN'  // Project token for authentication (required)
 });
 ```
 
@@ -69,21 +70,6 @@ const userId = HyperAnalytics.getUser();
 
 // Clear user ID (on logout)
 HyperAnalytics.removeUser();
-```
-
-### Groups
-
-Associate events with groups (organizations, teams, etc.):
-
-```typescript
-// Set group ID
-HyperAnalytics.setGroup('org_abc');
-
-// Get current group ID
-const groupId = HyperAnalytics.getGroup();
-
-// Clear group ID
-HyperAnalytics.removeGroup();
 ```
 
 ### Tracking Events
@@ -136,6 +122,7 @@ All configuration is done through the `init()` method:
 | `flushInterval` | `number \| undefined` | `undefined` | Interval in milliseconds for periodic auto-flush. If not set, periodic flush is disabled. |
 | `batchSize` | `number \| undefined` | `10` | Number of events to accumulate before auto-flushing. |
 | `endpoint` | `string \| undefined` | `"http://localhost:3000/push_batch"` | URL where events are sent. |
+| `token` | `string \| undefined` | `undefined` | Project token for authentication. Required for sending events. |
 
 ### Example Configurations
 
@@ -174,9 +161,6 @@ All functionality is accessed through the `HyperAnalytics` class.
 | `setUser(userId: string)` | Set current user ID |
 | `getUser(): string \| null` | Get current user ID |
 | `removeUser()` | Clear user ID |
-| `setGroup(groupId: string)` | Set current group ID |
-| `getGroup(): string \| null` | Get current group ID |
-| `removeGroup()` | Clear group ID |
 | `track(eventName: string, properties: JSONSerializable)` | Track an event |
 | `setSuperProperty(key: string, value: JSONSerializable)` | Add a super property |
 | `getSuperProperties(): Record<string, JSONSerializable>` | Get all super properties |

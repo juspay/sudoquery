@@ -10,10 +10,9 @@ import { Configuration } from "./Configuration";
 class HyperAnalytics {
     private static didInit = false;
     private static currentUser: string | null = null;
-    private static currentGroup: string | null = null;
     private static flushTimer: ReturnType<typeof setInterval> | null = null;
 
-    static init(config?: { flushInterval?: number; batchSize?: number; endpoint?: string }) {
+    static init(config?: { flushInterval?: number; batchSize?: number; endpoint?: string; token?: string }) {
       if(this.didInit) return;
       this.didInit = true;
 
@@ -25,6 +24,11 @@ class HyperAnalytics {
       // Configure endpoint if provided
       if (config?.endpoint !== undefined) {
         Configuration.setEndpoint(config.endpoint);
+      }
+
+      // Configure token if provided
+      if (config?.token !== undefined) {
+        Configuration.setToken(config.token);
       }
 
       // Start periodic auto-flush if configured
@@ -128,29 +132,6 @@ class HyperAnalytics {
       return this.currentUser;
     }
 
-    /**
-     * Set the group ID for all subsequent events
-     * @param groupId - The group identifier
-     */
-    static setGroup(groupId: string): void {
-      this.currentGroup = groupId;
-    }
-
-    /**
-     * Remove the current group ID (resets to null)
-     */
-    static removeGroup(): void {
-      this.currentGroup = null;
-    }
-
-    /**
-     * Get the current group ID
-     * @returns The current group ID or null if not set
-     */
-    static getGroup(): string | null {
-      return this.currentGroup;
-    }
-
     static track(eventName: String, properties: JSONSerializable){
       if(containsNonPrimitives(properties)) throw new Error("only primitives are allowed as properties");
 
@@ -167,12 +148,11 @@ class HyperAnalytics {
         ...sessionDetails,
       };
 
-      // Create event object with current user and group
+      // Create event object with current user
       const event: Event = {
         eventName: eventName.toString(),
         properties: mergedProperties,
         user: this.currentUser,
-        group: this.currentGroup,
         anon_id: AnonymousId.getOrCreate(),
         eventId: crypto.randomUUID(),
         at: Date.now(),

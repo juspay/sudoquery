@@ -2,6 +2,7 @@ class Configuration {
   private static _batchSize: number = 10;
   private static _flushInterval: number | null = null;
   private static _endpoint: string = "http://localhost:3000/push_batch";
+  private static _token: string | null = null;
 
   static get batchSize(): number {
     return Configuration._batchSize;
@@ -15,6 +16,10 @@ class Configuration {
     return Configuration._endpoint;
   }
 
+  static get token(): string | null {
+    return Configuration._token;
+  }
+
   static setBatchSize(value: number): void {
     Configuration._batchSize = value;
   }
@@ -25,6 +30,10 @@ class Configuration {
 
   static setEndpoint(value: string): void {
     Configuration._endpoint = value;
+  }
+
+  static setToken(value: string | null): void {
+    Configuration._token = value;
   }
 }
 

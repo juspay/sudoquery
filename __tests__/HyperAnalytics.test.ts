@@ -265,87 +265,10 @@ describe('HyperAnalytics', () => {
     });
   });
 
-  describe('group management', () => {
-    beforeEach(() => {
-      // Reset group state before each test
-      HyperAnalytics.removeGroup();
-    });
-
-    describe('setGroup', () => {
-      it('should set a group ID', () => {
-        HyperAnalytics.setGroup('group_abc');
-        expect(HyperAnalytics.getGroup()).toBe('group_abc');
-      });
-
-      it('should update existing group ID', () => {
-        HyperAnalytics.setGroup('group_abc');
-        HyperAnalytics.setGroup('group_xyz');
-        expect(HyperAnalytics.getGroup()).toBe('group_xyz');
-      });
-
-      it('should accept empty string as group ID', () => {
-        HyperAnalytics.setGroup('');
-        expect(HyperAnalytics.getGroup()).toBe('');
-      });
-
-      it('should accept special characters in group ID', () => {
-        HyperAnalytics.setGroup('team-alpha');
-        expect(HyperAnalytics.getGroup()).toBe('team-alpha');
-      });
-
-      it('should be idempotent', () => {
-        HyperAnalytics.setGroup('group_abc');
-        HyperAnalytics.setGroup('group_abc');
-        expect(HyperAnalytics.getGroup()).toBe('group_abc');
-      });
-    });
-
-    describe('getGroup', () => {
-      it('should return null when no group is set', () => {
-        expect(HyperAnalytics.getGroup()).toBeNull();
-      });
-
-      it('should return the set group ID', () => {
-        HyperAnalytics.setGroup('group_abc');
-        expect(HyperAnalytics.getGroup()).toBe('group_abc');
-      });
-
-      it('should return the most recently set group ID', () => {
-        HyperAnalytics.setGroup('group_abc');
-        HyperAnalytics.setGroup('group_xyz');
-        expect(HyperAnalytics.getGroup()).toBe('group_xyz');
-      });
-    });
-
-    describe('removeGroup', () => {
-      it('should remove the current group ID', () => {
-        HyperAnalytics.setGroup('group_abc');
-        HyperAnalytics.removeGroup();
-        expect(HyperAnalytics.getGroup()).toBeNull();
-      });
-
-      it('should be idempotent', () => {
-        HyperAnalytics.setGroup('group_abc');
-        HyperAnalytics.removeGroup();
-        HyperAnalytics.removeGroup();
-        HyperAnalytics.removeGroup();
-        expect(HyperAnalytics.getGroup()).toBeNull();
-      });
-
-      it('should allow setting a new group after removal', () => {
-        HyperAnalytics.setGroup('group_abc');
-        HyperAnalytics.removeGroup();
-        HyperAnalytics.setGroup('group_xyz');
-        expect(HyperAnalytics.getGroup()).toBe('group_xyz');
-      });
-    });
-  });
-
   describe('integration with track', () => {
     beforeEach(() => {
       HyperAnalytics.init();
       HyperAnalytics.removeUser();
-      HyperAnalytics.removeGroup();
     });
 
     it('should not throw when tracking with user ID set', () => {
@@ -355,22 +278,7 @@ describe('HyperAnalytics', () => {
       }).not.toThrow();
     });
 
-    it('should not throw when tracking with group ID set', () => {
-      HyperAnalytics.setGroup('group_abc');
-      expect(() => {
-        HyperAnalytics.track('test_event', {});
-      }).not.toThrow();
-    });
-
-    it('should not throw when tracking with both user and group IDs set', () => {
-      HyperAnalytics.setUser('user_123');
-      HyperAnalytics.setGroup('group_abc');
-      expect(() => {
-        HyperAnalytics.track('test_event', {});
-      }).not.toThrow();
-    });
-
-    it('should not throw when tracking without user or group', () => {
+    it('should not throw when tracking without user', () => {
       expect(() => {
         HyperAnalytics.track('test_event', {});
       }).not.toThrow();

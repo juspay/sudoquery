@@ -18,7 +18,6 @@ describe('Batcher', () => {
     eventName: `event_${id}`,
     properties: { id },
     user: `user_${id}`,
-    group: `group_${id}`,
     eventId: crypto.randomUUID(),
     anon_id: crypto.randomUUID(),
     at: Date.now(),
@@ -265,7 +264,6 @@ describe('Batcher', () => {
           ...Array.from({ length: 100 }, (_, i) => [`key${i}`, `value${i}`]).reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {}),
         },
         user: 'user_1',
-        group: 'group_1',
         anon_id: crypto.randomUUID(),
         at: Date.now(),
       };

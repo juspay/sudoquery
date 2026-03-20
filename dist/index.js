@@ -424,26 +424,6 @@ var HyperAnalytics = class {
   static getUser() {
     return this.currentUser;
   }
-  /**
-   * Set the group ID for all subsequent events
-   * @param groupId - The group identifier
-   */
-  static setGroup(groupId) {
-    this.currentGroup = groupId;
-  }
-  /**
-   * Remove the current group ID (resets to null)
-   */
-  static removeGroup() {
-    this.currentGroup = null;
-  }
-  /**
-   * Get the current group ID
-   * @returns The current group ID or null if not set
-   */
-  static getGroup() {
-    return this.currentGroup;
-  }
   static track(eventName, properties) {
     if (containsNonPrimitives(properties)) throw new Error("only primitives are allowed as properties");
     const sessionDetails = {};
@@ -457,7 +437,6 @@ var HyperAnalytics = class {
       eventName: eventName.toString(),
       properties: mergedProperties,
       user: this.currentUser,
-      group: this.currentGroup,
       anon_id: AnonymousId.getOrCreate(),
       eventId: crypto.randomUUID(),
       at: Date.now()
@@ -467,7 +446,6 @@ var HyperAnalytics = class {
 };
 HyperAnalytics.didInit = false;
 HyperAnalytics.currentUser = null;
-HyperAnalytics.currentGroup = null;
 HyperAnalytics.flushTimer = null;
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {

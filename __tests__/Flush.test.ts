@@ -18,7 +18,6 @@ describe('flush', () => {
     eventId: crypto.randomUUID(),
     properties: { id },
     user: `user_${id}`,
-    group: `group_${id}`,
     anon_id: crypto.randomUUID(),
     at: Date.now(),
   });

@@ -64,6 +64,9 @@ export class Pusher {
   }
 
   private static sendWithBeacon(payload: BatchPayload): boolean {
+    // Note: navigator.sendBeacon doesn't support custom headers
+    // For authenticated requests during page unload, consider using fetch with keepalive
+    // or accept that beacon requests won't have authentication
     if (typeof navigator !== "undefined" && navigator.sendBeacon) {
       try {
         const blob = new Blob([JSON.stringify(payload)], {
@@ -80,11 +83,17 @@ export class Pusher {
 
   private static async sendNormally(payload: BatchPayload): Promise<boolean> {
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+      };
+
+      if (Configuration.token) {
+        headers["Authorization"] = `Bearer ${Configuration.token}`;
+      }
+
       const response = await fetch(this.endpoint, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
+        headers,
         body: JSON.stringify(payload),
       });
       return response.ok;

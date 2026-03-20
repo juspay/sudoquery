@@ -159,7 +159,6 @@ describe('Type Tests', () => {
         eventName: 'page_view',
         properties: { page: '/home' },
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -172,7 +171,6 @@ describe('Type Tests', () => {
         eventName: 'button_click',
         properties: { button: 'submit', color: 'blue' },
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -185,7 +183,6 @@ describe('Type Tests', () => {
         eventName: 'scroll',
         properties: { depth: 50, speed: 2.5 },
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -198,7 +195,6 @@ describe('Type Tests', () => {
         eventName: 'form_submit',
         properties: { success: true, validated: false },
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -211,7 +207,6 @@ describe('Type Tests', () => {
         eventName: 'error',
         properties: { message: null, code: null },
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -230,7 +225,6 @@ describe('Type Tests', () => {
           discount: null,
         },
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -243,7 +237,6 @@ describe('Type Tests', () => {
         eventName: 'simple_event',
         properties: {},
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -261,7 +254,6 @@ describe('Type Tests', () => {
         eventName: 'complex_event',
         properties,
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -269,12 +261,11 @@ describe('Type Tests', () => {
       expect(Object.keys(event.properties as Record<string, unknown>)).toHaveLength(100);
     });
 
-    it('should accept events with various user and group identifiers', () => {
+    it('should accept events with various user identifiers', () => {
       const event1: Event = {
         eventName: 'event_1',
         properties: {},
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -284,14 +275,13 @@ describe('Type Tests', () => {
         eventName: 'event_2',
         properties: {},
         user: 'anonymous_user',
-        group: 'public',
         anon_id: 'anon_456',
         eventId: 'evt_456',
         at: Date.now(),
       };
 
       expect(event1.user).toBe('user_123');
-      expect(event2.group).toBe('public');
+      expect(event2.user).toBe('anonymous_user');
     });
 
     it('should accept events with timestamp as number', () => {
@@ -300,7 +290,6 @@ describe('Type Tests', () => {
         eventName: 'timestamp_test',
         properties: {},
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: timestamp,
@@ -313,7 +302,6 @@ describe('Type Tests', () => {
         eventName: 'epoch_test',
         properties: {},
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: 0,
@@ -327,7 +315,6 @@ describe('Type Tests', () => {
         eventName: 'future_test',
         properties: {},
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: futureTimestamp,
@@ -347,7 +334,6 @@ describe('Type Tests', () => {
         eventName: 'test_event',
         properties,
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -361,7 +347,6 @@ describe('Type Tests', () => {
         eventName: 'test_event',
         properties: { key: 'value' },
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -377,8 +362,7 @@ describe('Type Tests', () => {
           eventName: 'event_1',
           properties: { id: 1 },
           user: 'user_123',
-          group: 'group_abc',
-          anon_id: 'anon_123',
+            anon_id: 'anon_123',
           eventId: 'evt_123',
           at: Date.now(),
         },
@@ -386,8 +370,7 @@ describe('Type Tests', () => {
           eventName: 'event_2',
           properties: { id: 2 },
           user: 'user_123',
-          group: 'group_abc',
-          anon_id: 'anon_456',
+            anon_id: 'anon_456',
           eventId: 'evt_456',
           at: Date.now(),
         },
@@ -402,8 +385,7 @@ describe('Type Tests', () => {
           eventName: 'event_1',
           properties: { id: 1 },
           user: 'user_123',
-          group: 'group_abc',
-          anon_id: 'anon_123',
+            anon_id: 'anon_123',
           eventId: 'evt_123',
           at: Date.now(),
         },
@@ -420,7 +402,6 @@ describe('Type Tests', () => {
         eventName: 'test_event',
         properties: {},
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -433,7 +414,6 @@ describe('Type Tests', () => {
         eventName: 'test_event',
         properties: {},
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -441,25 +421,11 @@ describe('Type Tests', () => {
       expect(typeof event.user).toBe('string');
     });
 
-    it('should enforce string type for group', () => {
-      const event: Event = {
-        eventName: 'test_event',
-        properties: {},
-        user: 'user_123',
-        group: 'group_abc',
-        anon_id: 'anon_123',
-        eventId: 'evt_123',
-        at: Date.now(),
-      };
-      expect(typeof event.group).toBe('string');
-    });
-
     it('should enforce number type for timestamp', () => {
       const event: Event = {
         eventName: 'test_event',
         properties: {},
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -472,7 +438,6 @@ describe('Type Tests', () => {
         eventName: 'test_event',
         properties: { key: 'value' },
         user: 'user_123',
-        group: 'group_abc',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -494,7 +459,6 @@ describe('Type Tests', () => {
           in_stock: true,
         },
         user: 'user_123',
-        group: 'customers',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -509,7 +473,6 @@ describe('Type Tests', () => {
           payment_method: 'credit_card',
         },
         user: 'user_123',
-        group: 'customers',
         anon_id: 'anon_456',
         eventId: 'evt_456',
         at: Date.now(),
@@ -528,7 +491,6 @@ describe('Type Tests', () => {
           load_time: 1.5,
         },
         user: 'user_123',
-        group: 'visitors',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -543,7 +505,6 @@ describe('Type Tests', () => {
           y: 200,
         },
         user: 'user_123',
-        group: 'visitors',
         anon_id: 'anon_456',
         eventId: 'evt_456',
         at: Date.now(),
@@ -562,7 +523,6 @@ describe('Type Tests', () => {
           speed: 2.5,
         },
         user: 'user_123',
-        group: 'engaged_users',
         anon_id: 'anon_123',
         eventId: 'evt_123',
         at: Date.now(),
@@ -576,7 +536,6 @@ describe('Type Tests', () => {
           validation_errors: null,
         },
         user: 'user_123',
-        group: 'engaged_users',
         anon_id: 'anon_456',
         eventId: 'evt_456',
         at: Date.now(),
