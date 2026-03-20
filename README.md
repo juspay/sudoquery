@@ -46,7 +46,7 @@ import { HyperAnalytics } from 'hyper-analytics';
 HyperAnalytics.init({
   flushInterval: 5000,    // Auto-flush every 5 seconds (optional)
   batchSize: 20,          // Batch 20 events before flushing (default: 10)
-  endpoint: 'https://api.example.com/events',  // Custom endpoint (default: http://localhost:3000/push_batch)
+  endpoint: 'https://api.example.com/events',  // Custom endpoint (default: http://hyper-analytics-alb-c33157e-1810523293.ap-south-1.elb.amazonaws.com/push_batch)
   token: 'YOUR_PROJECT_TOKEN'  // Project token for authentication (required)
 });
 ```
@@ -121,7 +121,7 @@ All configuration is done through the `init()` method:
 |--------|------|---------|-------------|
 | `flushInterval` | `number \| undefined` | `undefined` | Interval in milliseconds for periodic auto-flush. If not set, periodic flush is disabled. |
 | `batchSize` | `number \| undefined` | `10` | Number of events to accumulate before auto-flushing. |
-| `endpoint` | `string \| undefined` | `"http://localhost:3000/push_batch"` | URL where events are sent. |
+| `endpoint` | `string \| undefined` | `"http://hyper-analytics-alb-c33157e-1810523293.ap-south-1.elb.amazonaws.com/push_batch"` | URL where events are sent. |
 | `token` | `string \| undefined` | `undefined` | Project token for authentication. Required for sending events. |
 
 ### Example Configurations
@@ -129,7 +129,7 @@ All configuration is done through the `init()` method:
 **Default configuration:**
 ```typescript
 HyperAnalytics.init();
-// Uses: batchSize=10, endpoint="http://localhost:3000/push_batch", no periodic flush
+// Uses: batchSize=10, endpoint="http://hyper-analytics-alb-c33157e-1810523293.ap-south-1.elb.amazonaws.com/push_batch", no periodic flush
 ```
 
 **High-frequency tracking:**
