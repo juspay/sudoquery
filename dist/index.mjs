@@ -1,3 +1,7 @@
+import {
+  detectBrowser
+} from "./chunk-7Y3ODE36.mjs";
+
 // src/TypeValidator.ts
 function containsNonPrimitives(obj) {
   if (obj === null || typeof obj !== "object") {
@@ -50,547 +54,13 @@ _Configuration._endpoint = "http://hyper-analytics-alb-c33157e-1810523293.ap-sou
 _Configuration._token = null;
 var Configuration = _Configuration;
 
-// src/platform/browser/Storage.ts
-function createStorage() {
-  return {
-    getItem(key) {
-      if (typeof localStorage === "undefined") {
-        return Promise.resolve(null);
-      }
-      return Promise.resolve(localStorage.getItem(key));
-    },
-    setItem(key, value) {
-      if (typeof localStorage === "undefined") {
-        return Promise.resolve();
-      }
-      localStorage.setItem(key, value);
-      return Promise.resolve();
-    },
-    removeItem(key) {
-      if (typeof localStorage === "undefined") {
-        return Promise.resolve();
-      }
-      localStorage.removeItem(key);
-      return Promise.resolve();
-    }
-  };
-}
-
-// src/platform/browser/Lifecycle.ts
-function createLifecycle() {
-  return {
-    onBackground(callback) {
-      if (typeof document === "undefined") {
-        return () => {
-        };
-      }
-      const handler = () => {
-        if (document.visibilityState === "hidden") {
-          callback();
-        }
-      };
-      document.addEventListener("visibilitychange", handler);
-      return () => document.removeEventListener("visibilitychange", handler);
-    },
-    onForeground(callback) {
-      if (typeof document === "undefined") {
-        return () => {
-        };
-      }
-      const handler = () => {
-        if (document.visibilityState === "visible") {
-          callback();
-        }
-      };
-      document.addEventListener("visibilitychange", handler);
-      return () => document.removeEventListener("visibilitychange", handler);
-    },
-    onTerminate(callback) {
-      if (typeof document === "undefined") {
-        return () => {
-        };
-      }
-      const handler = () => {
-        if (document.visibilityState === "hidden") {
-          callback();
-        }
-      };
-      document.addEventListener("visibilitychange", handler);
-      window.addEventListener("pagehide", callback);
-      return () => {
-        document.removeEventListener("visibilitychange", handler);
-        window.removeEventListener("pagehide", callback);
-      };
-    }
-  };
-}
-
-// src/platform/browser/Network.ts
-function createNetwork() {
-  return {
-    async send(url, payload, headers) {
-      try {
-        const response = await fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(payload)
-        });
-        return response.ok;
-      } catch (error) {
-        console.error("Network send failed:", error);
-        return false;
-      }
-    },
-    sendUnreliable(url, payload, headers) {
-      if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-        try {
-          const blob = new Blob([JSON.stringify(payload)], {
-            type: "application/json"
-          });
-          return navigator.sendBeacon(url, blob);
-        } catch (error) {
-          console.error("Beacon send failed:", error);
-          return false;
-        }
-      }
-      if (typeof fetch !== "undefined") {
-        fetch(url, {
-          method: "POST",
-          headers: headers || { "Content-Type": "application/json" },
-          body: JSON.stringify(payload),
-          keepalive: true
-        }).catch(() => {
-        });
-        return true;
-      }
-      return false;
-    }
-  };
-}
-
-// src/platform/browser/DeviceInfo.ts
-function createDeviceInfo() {
-  return {
-    async getDeviceType() {
-      const userAgent = this.getUserAgent();
-      return detectDeviceType(userAgent);
-    },
-    async getPlatform() {
-      const userAgent = this.getUserAgent();
-      return detectPlatform(userAgent);
-    },
-    async getOSVersion() {
-      const userAgent = this.getUserAgent();
-      return detectOSVersion(userAgent);
-    },
-    async getAppVersion() {
-      return "";
-    },
-    getUserAgent() {
-      if (typeof navigator !== "undefined") {
-        return navigator.userAgent;
-      }
-      return "Unknown";
-    }
-  };
-}
-function detectDeviceType(userAgent) {
-  const ua = userAgent.toLowerCase();
-  if (/ipad|android(?!.*mobile)|tablet|kindle|silk/i.test(ua)) {
-    return "tablet";
-  }
-  if (/mobile|android|iphone|ipod|blackberry|opera mini|iemobile|wpdesktop/i.test(
-    ua
-  )) {
-    return "mobile";
-  }
-  return "desktop";
-}
-function detectPlatform(userAgent) {
-  const ua = userAgent.toLowerCase();
-  if (ua.includes("windows")) return "Windows";
-  if (ua.includes("mac os x") || ua.includes("macintosh")) return "macOS";
-  if (ua.includes("linux")) return "Linux";
-  if (ua.includes("android")) return "Android";
-  if (ua.includes("ios") || ua.includes("iphone") || ua.includes("ipad") || ua.includes("ipod"))
-    return "iOS";
-  return "Unknown";
-}
-function detectBrowser(userAgent) {
-  const ua = userAgent.toLowerCase();
-  if (ua.includes("firefox") && !ua.includes("seamonkey")) return "Firefox";
-  if (ua.includes("seamonkey")) return "SeaMonkey";
-  if (ua.includes("chrome") && !ua.includes("chromium") && !ua.includes("edge") && !ua.includes("opr"))
-    return "Chrome";
-  if (ua.includes("chromium")) return "Chromium";
-  if (ua.includes("safari") && !ua.includes("chrome") && !ua.includes("chromium"))
-    return "Safari";
-  if (ua.includes("opr") || ua.includes("opera")) return "Opera";
-  if (ua.includes("edge") || ua.includes("edg")) return "Edge";
-  if (ua.includes("trident") || ua.includes("msie")) return "Internet Explorer";
-  return "Unknown";
-}
-function detectOSVersion(userAgent) {
-  const ua = userAgent.toLowerCase();
-  const iosMatch = ua.match(/os (\d+)[._](\d+)/);
-  if (iosMatch) return `${iosMatch[1]}.${iosMatch[2]}`;
-  const androidMatch = ua.match(/android (\d+)[._](\d+)?/);
-  if (androidMatch) {
-    return androidMatch[2] ? `${androidMatch[1]}.${androidMatch[2]}` : androidMatch[1];
-  }
-  const windowsMatch = ua.match(/windows nt (\d+)[._](\d+)/);
-  if (windowsMatch) return `${windowsMatch[1]}.${windowsMatch[2]}`;
-  const macMatch = ua.match(/mac os x (\d+)[._](\d+)/);
-  if (macMatch) return `${macMatch[1]}.${macMatch[2]}`;
-  return "";
-}
-
-// src/platform/node/Storage.ts
-var memoryStorage = /* @__PURE__ */ new Map();
-function createStorage2() {
-  return {
-    getItem(key) {
-      return Promise.resolve(memoryStorage.get(key) ?? null);
-    },
-    setItem(key, value) {
-      memoryStorage.set(key, value);
-      return Promise.resolve();
-    },
-    removeItem(key) {
-      memoryStorage.delete(key);
-      return Promise.resolve();
-    }
-  };
-}
-
-// src/platform/node/Lifecycle.ts
-function createLifecycle2() {
-  return {
-    onBackground(_callback) {
-      return () => {
-      };
-    },
-    onForeground(_callback) {
-      return () => {
-      };
-    },
-    onTerminate(_callback) {
-      return () => {
-      };
-    }
-  };
-}
-
-// src/platform/node/Network.ts
-function createNetwork2() {
-  return {
-    async send(url, payload, headers) {
-      try {
-        const response = await fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(payload)
-        });
-        return response.ok;
-      } catch (error) {
-        console.error("Network send failed:", error);
-        return false;
-      }
-    },
-    sendUnreliable(url, payload, headers) {
-      fetch(url, {
-        method: "POST",
-        headers: headers || { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      }).catch(() => {
-      });
-      return true;
-    }
-  };
-}
-
-// src/platform/node/DeviceInfo.ts
-function createDeviceInfo2() {
-  return {
-    async getDeviceType() {
-      return "server";
-    },
-    async getPlatform() {
-      return process.platform || "node";
-    },
-    async getOSVersion() {
-      return process.release?.version || "";
-    },
-    async getAppVersion() {
-      return "";
-    },
-    getUserAgent() {
-      return `Node.js/${process.version}`;
-    }
-  };
-}
-
-// src/platform/react-native/Storage.ts
-var AsyncStorage = null;
-async function getAsyncStorage() {
-  if (AsyncStorage) return AsyncStorage;
-  try {
-    const module = await import("@react-native-async-storage/async-storage");
-    AsyncStorage = module.default || module;
-    return AsyncStorage;
-  } catch {
-    throw new Error(
-      "@react-native-async-storage/async-storage is required for React Native. Install it with: npm install @react-native-async-storage/async-storage"
-    );
-  }
-}
-function createStorage3() {
-  return {
-    async getItem(key) {
-      const storage2 = await getAsyncStorage();
-      return storage2.getItem(key);
-    },
-    async setItem(key, value) {
-      const storage2 = await getAsyncStorage();
-      await storage2.setItem(key, value);
-    },
-    async removeItem(key) {
-      const storage2 = await getAsyncStorage();
-      await storage2.removeItem(key);
-    }
-  };
-}
-
-// src/platform/react-native/Lifecycle.ts
-var AppState = null;
-var AppStatePromise = null;
-function getAppState() {
-  if (AppState) return Promise.resolve(AppState);
-  if (AppStatePromise) return AppStatePromise;
-  AppStatePromise = (async () => {
-    try {
-      const rn = await import("react-native");
-      AppState = rn.AppState;
-      if (!AppState) {
-        throw new Error("AppState not available in react-native");
-      }
-      return AppState;
-    } catch {
-      throw new Error(
-        "react-native is required. Install it with: npm install react-native"
-      );
-    }
-  })();
-  return AppStatePromise;
-}
-function createLifecycle3() {
-  return {
-    onBackground(callback) {
-      let subscription = null;
-      getAppState().then((appState) => {
-        subscription = appState.addEventListener("change", (state) => {
-          if (state === "background" || state === "inactive") {
-            callback();
-          }
-        });
-      }).catch(() => {
-      });
-      return () => {
-        subscription?.remove();
-      };
-    },
-    onForeground(callback) {
-      let subscription = null;
-      getAppState().then((appState) => {
-        subscription = appState.addEventListener("change", (state) => {
-          if (state === "active") {
-            callback();
-          }
-        });
-      }).catch(() => {
-      });
-      return () => {
-        subscription?.remove();
-      };
-    },
-    onTerminate(callback) {
-      let subscription = null;
-      getAppState().then((appState) => {
-        subscription = appState.addEventListener("change", (state) => {
-          if (state === "background") {
-            callback();
-          }
-        });
-      }).catch(() => {
-      });
-      return () => {
-        subscription?.remove();
-      };
-    }
-  };
-}
-
-// src/platform/react-native/Network.ts
-function createNetwork3() {
-  return {
-    async send(url, payload, headers) {
-      try {
-        const response = await fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(payload)
-        });
-        return response.ok;
-      } catch (error) {
-        console.error("Network send failed:", error);
-        return false;
-      }
-    },
-    sendUnreliable(url, payload, headers) {
-      fetch(url, {
-        method: "POST",
-        headers: headers || { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      }).catch(() => {
-      });
-      return true;
-    }
-  };
-}
-
-// src/platform/react-native/DeviceInfo.ts
-var deviceInfo = null;
-async function getDeviceInfo() {
-  if (deviceInfo) return deviceInfo;
-  try {
-    const expoDevice = await import("expo-device");
-    const expoApplication = await import("expo-application");
-    deviceInfo = {
-      async getDeviceType() {
-        const type = expoDevice.deviceType;
-        const typeMap = {
-          1: "unknown",
-          2: "mobile",
-          3: "tablet",
-          4: "desktop",
-          5: "tv"
-        };
-        return typeMap[type] || "mobile";
-      },
-      async getPlatform() {
-        return expoDevice.osName || "Unknown";
-      },
-      async getOSVersion() {
-        return expoDevice.osVersion || "";
-      },
-      async getAppVersion() {
-        const version = expoApplication.nativeApplicationVersion || "";
-        const build = expoApplication.nativeBuildVersion || "";
-        return build ? `${version} (${build})` : version;
-      },
-      getUserAgent() {
-        return "ReactNative";
-      }
-    };
-    return deviceInfo;
-  } catch {
-  }
-  try {
-    const rnDeviceInfo = await import("react-native-device-info");
-    const info = rnDeviceInfo.default || rnDeviceInfo;
-    deviceInfo = {
-      async getDeviceType() {
-        const type = await info.getDeviceType();
-        return type.toLowerCase();
-      },
-      async getPlatform() {
-        return info.getSystemName();
-      },
-      async getOSVersion() {
-        return info.getSystemVersion();
-      },
-      async getAppVersion() {
-        return `${info.getVersion()} (${info.getBuildNumber()})`;
-      },
-      getUserAgent() {
-        return "ReactNative";
-      }
-    };
-    return deviceInfo;
-  } catch {
-  }
-  try {
-    const { Platform } = await import("react-native");
-    deviceInfo = {
-      async getDeviceType() {
-        return "mobile";
-      },
-      async getPlatform() {
-        return Platform.OS === "ios" ? "iOS" : "Android";
-      },
-      async getOSVersion() {
-        return Platform.Version?.toString() || "";
-      },
-      async getAppVersion() {
-        return "";
-      },
-      getUserAgent() {
-        return "ReactNative";
-      }
-    };
-    return deviceInfo;
-  } catch {
-    deviceInfo = {
-      async getDeviceType() {
-        return "mobile";
-      },
-      async getPlatform() {
-        return "Unknown";
-      },
-      async getOSVersion() {
-        return "";
-      },
-      async getAppVersion() {
-        return "";
-      },
-      getUserAgent() {
-        return "ReactNative";
-      }
-    };
-    return deviceInfo;
-  }
-}
-function createDeviceInfo3() {
-  return {
-    async getDeviceType() {
-      const info = await getDeviceInfo();
-      return info.getDeviceType();
-    },
-    async getPlatform() {
-      const info = await getDeviceInfo();
-      return info.getPlatform();
-    },
-    async getOSVersion() {
-      const info = await getDeviceInfo();
-      return info.getOSVersion();
-    },
-    async getAppVersion() {
-      const info = await getDeviceInfo();
-      return info.getAppVersion();
-    },
-    getUserAgent() {
-      return "ReactNative";
-    }
-  };
-}
-
 // src/platform/index.ts
 var storage = null;
 var lifecycle = null;
 var network = null;
-var deviceInfo2 = null;
+var deviceInfo = null;
 var currentPlatform = null;
-function detectPlatform2() {
+function detectPlatform() {
   if (typeof navigator !== "undefined" && navigator.product === "ReactNative") {
     return "react-native";
   }
@@ -612,27 +82,30 @@ function resetPlatform() {
   storage = null;
   lifecycle = null;
   network = null;
-  deviceInfo2 = null;
+  deviceInfo = null;
   currentPlatform = null;
 }
 async function initializePlatform() {
   if (currentPlatform) return;
-  currentPlatform = detectPlatform2();
+  currentPlatform = detectPlatform();
   if (currentPlatform === "react-native") {
-    storage = createStorage3();
-    lifecycle = createLifecycle3();
-    network = createNetwork3();
-    deviceInfo2 = createDeviceInfo3();
+    const rn = await import("./react-native-PQN66W33.mjs");
+    storage = rn.createStorage();
+    lifecycle = rn.createLifecycle();
+    network = rn.createNetwork();
+    deviceInfo = rn.createDeviceInfo();
   } else if (currentPlatform === "browser") {
-    storage = createStorage();
-    lifecycle = createLifecycle();
-    network = createNetwork();
-    deviceInfo2 = createDeviceInfo();
+    const browser = await import("./browser-H3MMG6BA.mjs");
+    storage = browser.createStorage();
+    lifecycle = browser.createLifecycle();
+    network = browser.createNetwork();
+    deviceInfo = browser.createDeviceInfo();
   } else {
-    storage = createStorage2();
-    lifecycle = createLifecycle2();
-    network = createNetwork2();
-    deviceInfo2 = createDeviceInfo2();
+    const node = await import("./node-CPH6KV7J.mjs");
+    storage = node.createStorage();
+    lifecycle = node.createLifecycle();
+    network = node.createNetwork();
+    deviceInfo = node.createDeviceInfo();
   }
 }
 function getStorage() {
@@ -653,11 +126,11 @@ function getNetwork() {
   }
   return network;
 }
-function getDeviceInfo2() {
-  if (!deviceInfo2) {
+function getDeviceInfo() {
+  if (!deviceInfo) {
     throw new Error("Platform not initialized. Call initializePlatform() first.");
   }
-  return deviceInfo2;
+  return deviceInfo;
 }
 
 // src/Session.ts
@@ -666,13 +139,13 @@ async function getSessionData() {
     return getDefaultSessionData();
   }
   const platform = getPlatform();
-  const deviceInfo3 = getDeviceInfo2();
+  const deviceInfo2 = getDeviceInfo();
   if (platform === "react-native") {
     const [deviceType, platformName, osVersion, appVersion] = await Promise.all([
-      deviceInfo3.getDeviceType(),
-      deviceInfo3.getPlatform(),
-      deviceInfo3.getOSVersion(),
-      deviceInfo3.getAppVersion()
+      deviceInfo2.getDeviceType(),
+      deviceInfo2.getPlatform(),
+      deviceInfo2.getOSVersion(),
+      deviceInfo2.getAppVersion()
     ]);
     return {
       device_type: deviceType,
@@ -685,10 +158,10 @@ async function getSessionData() {
       user_agent: `${platformName}/${osVersion} App/${appVersion}`
     };
   }
-  const userAgent = deviceInfo3.getUserAgent();
+  const userAgent = deviceInfo2.getUserAgent();
   return {
-    device_type: await deviceInfo3.getDeviceType(),
-    platform: await deviceInfo3.getPlatform(),
+    device_type: await deviceInfo2.getDeviceType(),
+    platform: await deviceInfo2.getPlatform(),
     browser: detectBrowser(userAgent),
     country: "",
     city: "",
@@ -1186,7 +659,7 @@ HyperAnalytics.flushTimer = null;
 HyperAnalytics.cleanupFns = [];
 export {
   HyperAnalytics,
-  detectPlatform2 as detectPlatform,
+  detectPlatform,
   getPlatform,
   isPlatformInitialized,
   resetPlatform

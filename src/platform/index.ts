@@ -1,6 +1,7 @@
 /**
  * Platform abstraction layer.
  * Detects runtime environment and provides appropriate adapters.
+ * Uses dynamic imports to avoid bundling native modules in Expo Go.
  */
 
 import type {
@@ -64,14 +65,9 @@ export function resetPlatform(): void {
   currentPlatform = null;
 }
 
-// Import adapters statically to avoid dynamic import issues
-import { createStorage as createBrowserStorage, createLifecycle as createBrowserLifecycle, createNetwork as createBrowserNetwork, createDeviceInfo as createBrowserDeviceInfo } from './browser/index';
-import { createStorage as createNodeStorage, createLifecycle as createNodeLifecycle, createNetwork as createNodeNetwork, createDeviceInfo as createNodeDeviceInfo } from './node/index';
-import { createStorage as createRNStorage, createLifecycle as createRNLifecycle, createNetwork as createRNNetwork, createDeviceInfo as createRNDeviceInfo } from './react-native/index';
-
 /**
  * Initialize the platform abstraction layer.
- * Must be called before using any adapters.
+ * Uses dynamic imports to avoid bundling native modules unnecessarily.
  */
 export async function initializePlatform(): Promise<void> {
   if (currentPlatform) return; // Already initialized
@@ -79,21 +75,26 @@ export async function initializePlatform(): Promise<void> {
   currentPlatform = detectPlatform();
 
   if (currentPlatform === 'react-native') {
-    storage = createRNStorage();
-    lifecycle = createRNLifecycle();
-    network = createRNNetwork();
-    deviceInfo = createRNDeviceInfo();
+    // Dynamic import for React Native - only loads when actually running in RN
+    const rn = await import('./react-native/index.js');
+    storage = rn.createStorage();
+    lifecycle = rn.createLifecycle();
+    network = rn.createNetwork();
+    deviceInfo = rn.createDeviceInfo();
   } else if (currentPlatform === 'browser') {
-    storage = createBrowserStorage();
-    lifecycle = createBrowserLifecycle();
-    network = createBrowserNetwork();
-    deviceInfo = createBrowserDeviceInfo();
+    // Dynamic import for browser
+    const browser = await import('./browser/index.js');
+    storage = browser.createStorage();
+    lifecycle = browser.createLifecycle();
+    network = browser.createNetwork();
+    deviceInfo = browser.createDeviceInfo();
   } else {
     // Node.js
-    storage = createNodeStorage();
-    lifecycle = createNodeLifecycle();
-    network = createNodeNetwork();
-    deviceInfo = createNodeDeviceInfo();
+    const node = await import('./node/index.js');
+    storage = node.createStorage();
+    lifecycle = node.createLifecycle();
+    network = node.createNetwork();
+    deviceInfo = node.createDeviceInfo();
   }
 }
 

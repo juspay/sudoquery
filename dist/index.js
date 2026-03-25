@@ -5,6 +5,9 @@ var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
 var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
+var __esm = (fn, res) => function __init() {
+  return fn && (res = (0, fn[__getOwnPropNames(fn)[0]])(fn = 0)), res;
+};
 var __export = (target, all) => {
   for (var name in all)
     __defProp(target, name, { get: all[name], enumerable: true });
@@ -27,71 +30,305 @@ var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__ge
 ));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
-// src/index.ts
-var index_exports = {};
-__export(index_exports, {
-  HyperAnalytics: () => HyperAnalytics,
-  detectPlatform: () => detectPlatform2,
-  getPlatform: () => getPlatform,
-  isPlatformInitialized: () => isPlatformInitialized,
-  resetPlatform: () => resetPlatform
-});
-module.exports = __toCommonJS(index_exports);
-
-// src/TypeValidator.ts
-function containsNonPrimitives(obj) {
-  if (obj === null || typeof obj !== "object") {
-    return false;
+// src/platform/react-native/Storage.ts
+async function getAsyncStorage() {
+  if (AsyncStorage) return AsyncStorage;
+  try {
+    const module2 = await import("@react-native-async-storage/async-storage").catch(() => null);
+    if (module2) {
+      AsyncStorage = module2.default || module2;
+      return AsyncStorage;
+    }
+  } catch {
   }
-  if (Array.isArray(obj)) {
-    return false;
-  }
-  for (const key in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      const value = obj[key];
-      if (typeof value === "object" && value !== null) {
-        return true;
+  return null;
+}
+function createStorage() {
+  return {
+    async getItem(key) {
+      const storage2 = await getAsyncStorage();
+      if (storage2) {
+        return storage2.getItem(key);
+      }
+      return memoryStorage.get(key) ?? null;
+    },
+    async setItem(key, value) {
+      const storage2 = await getAsyncStorage();
+      if (storage2) {
+        await storage2.setItem(key, value);
+      } else {
+        memoryStorage.set(key, value);
+      }
+    },
+    async removeItem(key) {
+      const storage2 = await getAsyncStorage();
+      if (storage2) {
+        await storage2.removeItem(key);
+      } else {
+        memoryStorage.delete(key);
       }
     }
-  }
-  return false;
+  };
 }
+var AsyncStorage, memoryStorage;
+var init_Storage = __esm({
+  "src/platform/react-native/Storage.ts"() {
+    "use strict";
+    AsyncStorage = null;
+    memoryStorage = /* @__PURE__ */ new Map();
+  }
+});
 
-// src/Configuration.ts
-var _Configuration = class _Configuration {
-  static get batchSize() {
-    return _Configuration._batchSize;
+// src/platform/react-native/Lifecycle.ts
+function getAppState() {
+  if (AppState) return Promise.resolve(AppState);
+  if (AppStatePromise) return AppStatePromise;
+  AppStatePromise = (async () => {
+    try {
+      const rn = await import("react-native").catch(() => null);
+      if (rn?.AppState) {
+        AppState = rn.AppState;
+        return AppState;
+      }
+    } catch {
+    }
+    return null;
+  })();
+  return AppStatePromise;
+}
+function createLifecycle() {
+  return {
+    onBackground(callback) {
+      let subscription = null;
+      getAppState().then((appState) => {
+        if (appState) {
+          subscription = appState.addEventListener("change", (state) => {
+            if (state === "background" || state === "inactive") {
+              callback();
+            }
+          });
+        }
+      }).catch(() => {
+      });
+      return () => {
+        subscription?.remove();
+      };
+    },
+    onForeground(callback) {
+      let subscription = null;
+      getAppState().then((appState) => {
+        if (appState) {
+          subscription = appState.addEventListener("change", (state) => {
+            if (state === "active") {
+              callback();
+            }
+          });
+        }
+      }).catch(() => {
+      });
+      return () => {
+        subscription?.remove();
+      };
+    },
+    onTerminate(callback) {
+      let subscription = null;
+      getAppState().then((appState) => {
+        if (appState) {
+          subscription = appState.addEventListener("change", (state) => {
+            if (state === "background") {
+              callback();
+            }
+          });
+        }
+      }).catch(() => {
+      });
+      return () => {
+        subscription?.remove();
+      };
+    }
+  };
+}
+var AppState, AppStatePromise;
+var init_Lifecycle = __esm({
+  "src/platform/react-native/Lifecycle.ts"() {
+    "use strict";
+    AppState = null;
+    AppStatePromise = null;
   }
-  static get flushInterval() {
-    return _Configuration._flushInterval;
+});
+
+// src/platform/react-native/Network.ts
+function createNetwork() {
+  return {
+    async send(url, payload, headers) {
+      try {
+        const response = await fetch(url, {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload)
+        });
+        return response.ok;
+      } catch (error) {
+        console.error("Network send failed:", error);
+        return false;
+      }
+    },
+    sendUnreliable(url, payload, headers) {
+      fetch(url, {
+        method: "POST",
+        headers: headers || { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      }).catch(() => {
+      });
+      return true;
+    }
+  };
+}
+var init_Network = __esm({
+  "src/platform/react-native/Network.ts"() {
+    "use strict";
   }
-  static get endpoint() {
-    return _Configuration._endpoint;
+});
+
+// src/platform/react-native/DeviceInfo.ts
+async function getDeviceInfo() {
+  if (deviceInfo) return deviceInfo;
+  try {
+    const [expoDevice, expoApplication] = await Promise.all([
+      import("expo-device").catch(() => null),
+      import("expo-application").catch(() => null)
+    ]);
+    if (expoDevice) {
+      deviceInfo = {
+        async getDeviceType() {
+          const type = expoDevice.deviceType;
+          const typeMap = {
+            1: "unknown",
+            2: "mobile",
+            3: "tablet",
+            4: "desktop",
+            5: "tv"
+          };
+          return typeMap[type] || "mobile";
+        },
+        async getPlatform() {
+          return expoDevice.osName || "Unknown";
+        },
+        async getOSVersion() {
+          return expoDevice.osVersion || "";
+        },
+        async getAppVersion() {
+          if (expoApplication) {
+            const version = expoApplication.nativeApplicationVersion || "";
+            const build = expoApplication.nativeBuildVersion || "";
+            return build ? `${version} (${build})` : version;
+          }
+          return "";
+        },
+        getUserAgent() {
+          return "ReactNative";
+        }
+      };
+      return deviceInfo;
+    }
+  } catch {
   }
-  static get token() {
-    return _Configuration._token;
+  try {
+    const rnDeviceInfo = await import("react-native-device-info").catch(() => null);
+    if (rnDeviceInfo) {
+      const info = rnDeviceInfo.default || rnDeviceInfo;
+      deviceInfo = {
+        async getDeviceType() {
+          const type = await info.getDeviceType();
+          return type.toLowerCase();
+        },
+        async getPlatform() {
+          return info.getSystemName();
+        },
+        async getOSVersion() {
+          return info.getSystemVersion();
+        },
+        async getAppVersion() {
+          return `${info.getVersion()} (${info.getBuildNumber()})`;
+        },
+        getUserAgent() {
+          return "ReactNative";
+        }
+      };
+      return deviceInfo;
+    }
+  } catch {
   }
-  static setBatchSize(value) {
-    _Configuration._batchSize = value;
+  deviceInfo = {
+    async getDeviceType() {
+      return "mobile";
+    },
+    async getPlatform() {
+      return "Unknown";
+    },
+    async getOSVersion() {
+      return "";
+    },
+    async getAppVersion() {
+      return "";
+    },
+    getUserAgent() {
+      return "ReactNative";
+    }
+  };
+  return deviceInfo;
+}
+function createDeviceInfo() {
+  return {
+    async getDeviceType() {
+      const info = await getDeviceInfo();
+      return info.getDeviceType();
+    },
+    async getPlatform() {
+      const info = await getDeviceInfo();
+      return info.getPlatform();
+    },
+    async getOSVersion() {
+      const info = await getDeviceInfo();
+      return info.getOSVersion();
+    },
+    async getAppVersion() {
+      const info = await getDeviceInfo();
+      return info.getAppVersion();
+    },
+    getUserAgent() {
+      return "ReactNative";
+    }
+  };
+}
+var deviceInfo;
+var init_DeviceInfo = __esm({
+  "src/platform/react-native/DeviceInfo.ts"() {
+    "use strict";
+    deviceInfo = null;
   }
-  static setFlushInterval(value) {
-    _Configuration._flushInterval = value;
+});
+
+// src/platform/react-native/index.ts
+var react_native_exports = {};
+__export(react_native_exports, {
+  createDeviceInfo: () => createDeviceInfo,
+  createLifecycle: () => createLifecycle,
+  createNetwork: () => createNetwork,
+  createStorage: () => createStorage
+});
+var init_react_native = __esm({
+  "src/platform/react-native/index.ts"() {
+    "use strict";
+    init_Storage();
+    init_Lifecycle();
+    init_Network();
+    init_DeviceInfo();
   }
-  static setEndpoint(value) {
-    _Configuration._endpoint = value;
-  }
-  static setToken(value) {
-    _Configuration._token = value;
-  }
-};
-_Configuration._batchSize = 10;
-_Configuration._flushInterval = null;
-_Configuration._endpoint = "http://hyper-analytics-alb-c33157e-1810523293.ap-south-1.elb.amazonaws.com/push_batch";
-_Configuration._token = null;
-var Configuration = _Configuration;
+});
 
 // src/platform/browser/Storage.ts
-function createStorage() {
+function createStorage2() {
   return {
     getItem(key) {
       if (typeof localStorage === "undefined") {
@@ -115,9 +352,14 @@ function createStorage() {
     }
   };
 }
+var init_Storage2 = __esm({
+  "src/platform/browser/Storage.ts"() {
+    "use strict";
+  }
+});
 
 // src/platform/browser/Lifecycle.ts
-function createLifecycle() {
+function createLifecycle2() {
   return {
     onBackground(callback) {
       if (typeof document === "undefined") {
@@ -164,9 +406,14 @@ function createLifecycle() {
     }
   };
 }
+var init_Lifecycle2 = __esm({
+  "src/platform/browser/Lifecycle.ts"() {
+    "use strict";
+  }
+});
 
 // src/platform/browser/Network.ts
-function createNetwork() {
+function createNetwork2() {
   return {
     async send(url, payload, headers) {
       try {
@@ -207,9 +454,14 @@ function createNetwork() {
     }
   };
 }
+var init_Network2 = __esm({
+  "src/platform/browser/Network.ts"() {
+    "use strict";
+  }
+});
 
 // src/platform/browser/DeviceInfo.ts
-function createDeviceInfo() {
+function createDeviceInfo2() {
   return {
     async getDeviceType() {
       const userAgent = this.getUserAgent();
@@ -284,27 +536,57 @@ function detectOSVersion(userAgent) {
   if (macMatch) return `${macMatch[1]}.${macMatch[2]}`;
   return "";
 }
+var init_DeviceInfo2 = __esm({
+  "src/platform/browser/DeviceInfo.ts"() {
+    "use strict";
+  }
+});
+
+// src/platform/browser/index.ts
+var browser_exports = {};
+__export(browser_exports, {
+  createDeviceInfo: () => createDeviceInfo2,
+  createLifecycle: () => createLifecycle2,
+  createNetwork: () => createNetwork2,
+  createStorage: () => createStorage2,
+  detectBrowser: () => detectBrowser
+});
+var init_browser = __esm({
+  "src/platform/browser/index.ts"() {
+    "use strict";
+    init_Storage2();
+    init_Lifecycle2();
+    init_Network2();
+    init_DeviceInfo2();
+  }
+});
 
 // src/platform/node/Storage.ts
-var memoryStorage = /* @__PURE__ */ new Map();
-function createStorage2() {
+function createStorage3() {
   return {
     getItem(key) {
-      return Promise.resolve(memoryStorage.get(key) ?? null);
+      return Promise.resolve(memoryStorage2.get(key) ?? null);
     },
     setItem(key, value) {
-      memoryStorage.set(key, value);
+      memoryStorage2.set(key, value);
       return Promise.resolve();
     },
     removeItem(key) {
-      memoryStorage.delete(key);
+      memoryStorage2.delete(key);
       return Promise.resolve();
     }
   };
 }
+var memoryStorage2;
+var init_Storage3 = __esm({
+  "src/platform/node/Storage.ts"() {
+    "use strict";
+    memoryStorage2 = /* @__PURE__ */ new Map();
+  }
+});
 
 // src/platform/node/Lifecycle.ts
-function createLifecycle2() {
+function createLifecycle3() {
   return {
     onBackground(_callback) {
       return () => {
@@ -320,157 +602,13 @@ function createLifecycle2() {
     }
   };
 }
+var init_Lifecycle3 = __esm({
+  "src/platform/node/Lifecycle.ts"() {
+    "use strict";
+  }
+});
 
 // src/platform/node/Network.ts
-function createNetwork2() {
-  return {
-    async send(url, payload, headers) {
-      try {
-        const response = await fetch(url, {
-          method: "POST",
-          headers,
-          body: JSON.stringify(payload)
-        });
-        return response.ok;
-      } catch (error) {
-        console.error("Network send failed:", error);
-        return false;
-      }
-    },
-    sendUnreliable(url, payload, headers) {
-      fetch(url, {
-        method: "POST",
-        headers: headers || { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
-      }).catch(() => {
-      });
-      return true;
-    }
-  };
-}
-
-// src/platform/node/DeviceInfo.ts
-function createDeviceInfo2() {
-  return {
-    async getDeviceType() {
-      return "server";
-    },
-    async getPlatform() {
-      return process.platform || "node";
-    },
-    async getOSVersion() {
-      return process.release?.version || "";
-    },
-    async getAppVersion() {
-      return "";
-    },
-    getUserAgent() {
-      return `Node.js/${process.version}`;
-    }
-  };
-}
-
-// src/platform/react-native/Storage.ts
-var AsyncStorage = null;
-async function getAsyncStorage() {
-  if (AsyncStorage) return AsyncStorage;
-  try {
-    const module2 = await import("@react-native-async-storage/async-storage");
-    AsyncStorage = module2.default || module2;
-    return AsyncStorage;
-  } catch {
-    throw new Error(
-      "@react-native-async-storage/async-storage is required for React Native. Install it with: npm install @react-native-async-storage/async-storage"
-    );
-  }
-}
-function createStorage3() {
-  return {
-    async getItem(key) {
-      const storage2 = await getAsyncStorage();
-      return storage2.getItem(key);
-    },
-    async setItem(key, value) {
-      const storage2 = await getAsyncStorage();
-      await storage2.setItem(key, value);
-    },
-    async removeItem(key) {
-      const storage2 = await getAsyncStorage();
-      await storage2.removeItem(key);
-    }
-  };
-}
-
-// src/platform/react-native/Lifecycle.ts
-var AppState = null;
-var AppStatePromise = null;
-function getAppState() {
-  if (AppState) return Promise.resolve(AppState);
-  if (AppStatePromise) return AppStatePromise;
-  AppStatePromise = (async () => {
-    try {
-      const rn = await import("react-native");
-      AppState = rn.AppState;
-      if (!AppState) {
-        throw new Error("AppState not available in react-native");
-      }
-      return AppState;
-    } catch {
-      throw new Error(
-        "react-native is required. Install it with: npm install react-native"
-      );
-    }
-  })();
-  return AppStatePromise;
-}
-function createLifecycle3() {
-  return {
-    onBackground(callback) {
-      let subscription = null;
-      getAppState().then((appState) => {
-        subscription = appState.addEventListener("change", (state) => {
-          if (state === "background" || state === "inactive") {
-            callback();
-          }
-        });
-      }).catch(() => {
-      });
-      return () => {
-        subscription?.remove();
-      };
-    },
-    onForeground(callback) {
-      let subscription = null;
-      getAppState().then((appState) => {
-        subscription = appState.addEventListener("change", (state) => {
-          if (state === "active") {
-            callback();
-          }
-        });
-      }).catch(() => {
-      });
-      return () => {
-        subscription?.remove();
-      };
-    },
-    onTerminate(callback) {
-      let subscription = null;
-      getAppState().then((appState) => {
-        subscription = appState.addEventListener("change", (state) => {
-          if (state === "background") {
-            callback();
-          }
-        });
-      }).catch(() => {
-      });
-      return () => {
-        subscription?.remove();
-      };
-    }
-  };
-}
-
-// src/platform/react-native/Network.ts
 function createNetwork3() {
   return {
     async send(url, payload, headers) {
@@ -497,132 +635,118 @@ function createNetwork3() {
     }
   };
 }
+var init_Network3 = __esm({
+  "src/platform/node/Network.ts"() {
+    "use strict";
+  }
+});
 
-// src/platform/react-native/DeviceInfo.ts
-var deviceInfo = null;
-async function getDeviceInfo() {
-  if (deviceInfo) return deviceInfo;
-  try {
-    const expoDevice = await import("expo-device");
-    const expoApplication = await import("expo-application");
-    deviceInfo = {
-      async getDeviceType() {
-        const type = expoDevice.deviceType;
-        const typeMap = {
-          1: "unknown",
-          2: "mobile",
-          3: "tablet",
-          4: "desktop",
-          5: "tv"
-        };
-        return typeMap[type] || "mobile";
-      },
-      async getPlatform() {
-        return expoDevice.osName || "Unknown";
-      },
-      async getOSVersion() {
-        return expoDevice.osVersion || "";
-      },
-      async getAppVersion() {
-        const version = expoApplication.nativeApplicationVersion || "";
-        const build = expoApplication.nativeBuildVersion || "";
-        return build ? `${version} (${build})` : version;
-      },
-      getUserAgent() {
-        return "ReactNative";
-      }
-    };
-    return deviceInfo;
-  } catch {
-  }
-  try {
-    const rnDeviceInfo = await import("react-native-device-info");
-    const info = rnDeviceInfo.default || rnDeviceInfo;
-    deviceInfo = {
-      async getDeviceType() {
-        const type = await info.getDeviceType();
-        return type.toLowerCase();
-      },
-      async getPlatform() {
-        return info.getSystemName();
-      },
-      async getOSVersion() {
-        return info.getSystemVersion();
-      },
-      async getAppVersion() {
-        return `${info.getVersion()} (${info.getBuildNumber()})`;
-      },
-      getUserAgent() {
-        return "ReactNative";
-      }
-    };
-    return deviceInfo;
-  } catch {
-  }
-  try {
-    const { Platform } = await import("react-native");
-    deviceInfo = {
-      async getDeviceType() {
-        return "mobile";
-      },
-      async getPlatform() {
-        return Platform.OS === "ios" ? "iOS" : "Android";
-      },
-      async getOSVersion() {
-        return Platform.Version?.toString() || "";
-      },
-      async getAppVersion() {
-        return "";
-      },
-      getUserAgent() {
-        return "ReactNative";
-      }
-    };
-    return deviceInfo;
-  } catch {
-    deviceInfo = {
-      async getDeviceType() {
-        return "mobile";
-      },
-      async getPlatform() {
-        return "Unknown";
-      },
-      async getOSVersion() {
-        return "";
-      },
-      async getAppVersion() {
-        return "";
-      },
-      getUserAgent() {
-        return "ReactNative";
-      }
-    };
-    return deviceInfo;
-  }
-}
+// src/platform/node/DeviceInfo.ts
 function createDeviceInfo3() {
   return {
     async getDeviceType() {
-      const info = await getDeviceInfo();
-      return info.getDeviceType();
+      return "server";
     },
     async getPlatform() {
-      const info = await getDeviceInfo();
-      return info.getPlatform();
+      return process.platform || "node";
     },
     async getOSVersion() {
-      const info = await getDeviceInfo();
-      return info.getOSVersion();
+      return process.release?.version || "";
     },
     async getAppVersion() {
-      const info = await getDeviceInfo();
-      return info.getAppVersion();
+      return "";
     },
     getUserAgent() {
-      return "ReactNative";
+      return `Node.js/${process.version}`;
     }
   };
 }
+var init_DeviceInfo3 = __esm({
+  "src/platform/node/DeviceInfo.ts"() {
+    "use strict";
+  }
+});
+
+// src/platform/node/index.ts
+var node_exports = {};
+__export(node_exports, {
+  createDeviceInfo: () => createDeviceInfo3,
+  createLifecycle: () => createLifecycle3,
+  createNetwork: () => createNetwork3,
+  createStorage: () => createStorage3
+});
+var init_node = __esm({
+  "src/platform/node/index.ts"() {
+    "use strict";
+    init_Storage3();
+    init_Lifecycle3();
+    init_Network3();
+    init_DeviceInfo3();
+  }
+});
+
+// src/index.ts
+var index_exports = {};
+__export(index_exports, {
+  HyperAnalytics: () => HyperAnalytics,
+  detectPlatform: () => detectPlatform2,
+  getPlatform: () => getPlatform,
+  isPlatformInitialized: () => isPlatformInitialized,
+  resetPlatform: () => resetPlatform
+});
+module.exports = __toCommonJS(index_exports);
+
+// src/TypeValidator.ts
+function containsNonPrimitives(obj) {
+  if (obj === null || typeof obj !== "object") {
+    return false;
+  }
+  if (Array.isArray(obj)) {
+    return false;
+  }
+  for (const key in obj) {
+    if (Object.prototype.hasOwnProperty.call(obj, key)) {
+      const value = obj[key];
+      if (typeof value === "object" && value !== null) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+// src/Configuration.ts
+var _Configuration = class _Configuration {
+  static get batchSize() {
+    return _Configuration._batchSize;
+  }
+  static get flushInterval() {
+    return _Configuration._flushInterval;
+  }
+  static get endpoint() {
+    return _Configuration._endpoint;
+  }
+  static get token() {
+    return _Configuration._token;
+  }
+  static setBatchSize(value) {
+    _Configuration._batchSize = value;
+  }
+  static setFlushInterval(value) {
+    _Configuration._flushInterval = value;
+  }
+  static setEndpoint(value) {
+    _Configuration._endpoint = value;
+  }
+  static setToken(value) {
+    _Configuration._token = value;
+  }
+};
+_Configuration._batchSize = 10;
+_Configuration._flushInterval = null;
+_Configuration._endpoint = "http://hyper-analytics-alb-c33157e-1810523293.ap-south-1.elb.amazonaws.com/push_batch";
+_Configuration._token = null;
+var Configuration = _Configuration;
 
 // src/platform/index.ts
 var storage = null;
@@ -659,20 +783,23 @@ async function initializePlatform() {
   if (currentPlatform) return;
   currentPlatform = detectPlatform2();
   if (currentPlatform === "react-native") {
-    storage = createStorage3();
-    lifecycle = createLifecycle3();
-    network = createNetwork3();
-    deviceInfo2 = createDeviceInfo3();
+    const rn = await Promise.resolve().then(() => (init_react_native(), react_native_exports));
+    storage = rn.createStorage();
+    lifecycle = rn.createLifecycle();
+    network = rn.createNetwork();
+    deviceInfo2 = rn.createDeviceInfo();
   } else if (currentPlatform === "browser") {
-    storage = createStorage();
-    lifecycle = createLifecycle();
-    network = createNetwork();
-    deviceInfo2 = createDeviceInfo();
+    const browser = await Promise.resolve().then(() => (init_browser(), browser_exports));
+    storage = browser.createStorage();
+    lifecycle = browser.createLifecycle();
+    network = browser.createNetwork();
+    deviceInfo2 = browser.createDeviceInfo();
   } else {
-    storage = createStorage2();
-    lifecycle = createLifecycle2();
-    network = createNetwork2();
-    deviceInfo2 = createDeviceInfo2();
+    const node = await Promise.resolve().then(() => (init_node(), node_exports));
+    storage = node.createStorage();
+    lifecycle = node.createLifecycle();
+    network = node.createNetwork();
+    deviceInfo2 = node.createDeviceInfo();
   }
 }
 function getStorage() {
@@ -701,6 +828,7 @@ function getDeviceInfo2() {
 }
 
 // src/Session.ts
+init_DeviceInfo2();
 async function getSessionData() {
   if (!isPlatformInitialized()) {
     return getDefaultSessionData();

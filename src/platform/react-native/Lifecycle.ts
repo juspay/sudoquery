@@ -1,5 +1,6 @@
 /**
  * React Native lifecycle adapter using AppState.
+ * Gracefully handles Expo Go and bare React Native.
  */
 import type { LifecycleAdapter } from '../types';
 
@@ -14,25 +15,23 @@ interface AppStateStatic {
 }
 
 let AppState: AppStateStatic | null = null;
-let AppStatePromise: Promise<AppStateStatic> | null = null;
+let AppStatePromise: Promise<AppStateStatic | null> | null = null;
 
-function getAppState(): Promise<AppStateStatic> {
+function getAppState(): Promise<AppStateStatic | null> {
   if (AppState) return Promise.resolve(AppState);
   if (AppStatePromise) return AppStatePromise;
 
   AppStatePromise = (async () => {
     try {
-      const rn = await import('react-native');
-      AppState = rn.AppState;
-      if (!AppState) {
-        throw new Error('AppState not available in react-native');
+      const rn = await import('react-native').catch(() => null);
+      if (rn?.AppState) {
+        AppState = rn.AppState;
+        return AppState;
       }
-      return AppState;
     } catch {
-      throw new Error(
-        'react-native is required. Install it with: npm install react-native'
-      );
+      // react-native not available or in Expo Go without native modules
     }
+    return null;
   })();
 
   return AppStatePromise;
@@ -44,11 +43,13 @@ export function createLifecycle(): LifecycleAdapter {
       let subscription: { remove: () => void } | null = null;
 
       getAppState().then(appState => {
-        subscription = appState.addEventListener('change', (state) => {
-          if (state === 'background' || state === 'inactive') {
-            callback();
-          }
-        });
+        if (appState) {
+          subscription = appState.addEventListener('change', (state) => {
+            if (state === 'background' || state === 'inactive') {
+              callback();
+            }
+          });
+        }
       }).catch(() => {});
 
       return () => {
@@ -60,11 +61,13 @@ export function createLifecycle(): LifecycleAdapter {
       let subscription: { remove: () => void } | null = null;
 
       getAppState().then(appState => {
-        subscription = appState.addEventListener('change', (state) => {
-          if (state === 'active') {
-            callback();
-          }
-        });
+        if (appState) {
+          subscription = appState.addEventListener('change', (state) => {
+            if (state === 'active') {
+              callback();
+            }
+          });
+        }
       }).catch(() => {});
 
       return () => {
@@ -78,12 +81,14 @@ export function createLifecycle(): LifecycleAdapter {
       let subscription: { remove: () => void } | null = null;
 
       getAppState().then(appState => {
-        subscription = appState.addEventListener('change', (state) => {
-          if (state === 'background') {
-            // This is our best chance to flush/persist before termination
-            callback();
-          }
-        });
+        if (appState) {
+          subscription = appState.addEventListener('change', (state) => {
+            if (state === 'background') {
+              // This is our best chance to flush/persist before termination
+              callback();
+            }
+          });
+        }
       }).catch(() => {});
 
       return () => {

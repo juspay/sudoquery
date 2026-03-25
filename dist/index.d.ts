@@ -198,6 +198,7 @@ type PlatformType = 'browser' | 'react-native' | 'node';
 /**
  * Platform abstraction layer.
  * Detects runtime environment and provides appropriate adapters.
+ * Uses dynamic imports to avoid bundling native modules in Expo Go.
  */
 
 /**
