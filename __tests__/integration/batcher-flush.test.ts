@@ -15,7 +15,7 @@ jest.mock('../../src/Pusher', () => ({
 describe('Batcher and Flush Integration', () => {
   beforeEach(() => {
     // Reset state before each test
-    Configuration.batchSize = 3;
+    Configuration.setBatchSize(3);
     Batcher.reset();
     jest.clearAllMocks();
   });
@@ -32,7 +32,7 @@ describe('Batcher and Flush Integration', () => {
   describe('batch lifecycle', () => {
     it('should create and fill batches correctly', () => {
       // Create batches
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       Batcher.addToBatch(createMockEvent(1));
       Batcher.addToBatch(createMockEvent(2)); // First batch complete
@@ -53,7 +53,7 @@ describe('Batcher and Flush Integration', () => {
     });
 
     it('should handle partial batches', () => {
-      Configuration.batchSize = 5;
+      Configuration.setBatchSize(5);
 
       // Add only 3 events (partial batch)
       Batcher.addToBatch(createMockEvent(1));
@@ -72,7 +72,7 @@ describe('Batcher and Flush Integration', () => {
 
   describe('concurrent batch creation', () => {
     it('should handle adding events while batching', () => {
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       // Add initial events
       Batcher.addToBatch(createMockEvent(1));
@@ -93,7 +93,7 @@ describe('Batcher and Flush Integration', () => {
     });
 
     it('should handle multiple batches', () => {
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       Batcher.addToBatch(createMockEvent(1));
       Batcher.addToBatch(createMockEvent(2));
@@ -116,7 +116,7 @@ describe('Batcher and Flush Integration', () => {
 
   describe('batch state management', () => {
     it('should correctly track uploaded batches', () => {
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       // Create 3 batches
       for (let i = 1; i <= 6; i++) {
@@ -135,7 +135,7 @@ describe('Batcher and Flush Integration', () => {
     });
 
     it('should resume from last uploaded batch', () => {
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       // Create 4 batches
       for (let i = 1; i <= 8; i++) {
@@ -168,7 +168,7 @@ describe('Batcher and Flush Integration', () => {
 
   describe('batch size configuration', () => {
     it('should adapt to changing batch sizes', () => {
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       Batcher.addToBatch(createMockEvent(1));
       Batcher.addToBatch(createMockEvent(2)); // Batch 0 complete
@@ -180,7 +180,7 @@ describe('Batcher and Flush Integration', () => {
       Batcher.setMarkLastBatchUploaded();
 
       // Change batch size
-      Configuration.batchSize = 5;
+      Configuration.setBatchSize(5);
 
       // Now add new events - they go to the new accumulating batch
       Batcher.addToBatch(createMockEvent(3));
@@ -194,7 +194,7 @@ describe('Batcher and Flush Integration', () => {
     });
 
     it('should handle large batch sizes', () => {
-      Configuration.batchSize = 50;
+      Configuration.setBatchSize(50);
 
       // Add 75 events
       for (let i = 1; i <= 75; i++) {
@@ -210,7 +210,7 @@ describe('Batcher and Flush Integration', () => {
     });
 
     it('should handle batch size of 1', () => {
-      Configuration.batchSize = 1;
+      Configuration.setBatchSize(1);
 
       // Add 5 events
       for (let i = 1; i <= 5; i++) {
@@ -233,7 +233,7 @@ describe('Batcher and Flush Integration', () => {
     });
 
     it('should handle single batch', () => {
-      Configuration.batchSize = 3;
+      Configuration.setBatchSize(3);
 
       Batcher.addToBatch(createMockEvent(1));
       Batcher.addToBatch(createMockEvent(2));
@@ -244,7 +244,7 @@ describe('Batcher and Flush Integration', () => {
     });
 
     it('should handle events with varying sizes', () => {
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       const smallEvent = createMockEvent(1);
       const largeEvent = {

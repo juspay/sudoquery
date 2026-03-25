@@ -14,10 +14,10 @@ jest.mock('../../src/Pusher', () => ({
 }));
 
 describe('Full Analytics Workflow - End-to-End', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     // Reset all state before each test
-    Configuration.batchSize = 3;
-    HyperAnalytics['didInit'] = false;
+    Configuration.setBatchSize(3);
+    await HyperAnalytics.reset();
     Batcher.reset();
     jest.clearAllMocks();
   });
@@ -25,8 +25,8 @@ describe('Full Analytics Workflow - End-to-End', () => {
   describe('complete user journey', () => {
     it('should handle the full analytics lifecycle: init -> track -> batch', async () => {
       // Step 1: Initialize analytics
-      HyperAnalytics.init();
-      expect(HyperAnalytics['didInit']).toBe(true);
+      await HyperAnalytics.init();
+      expect(HyperAnalytics.isInitialized).toBe(true);
 
       // Step 2: Track multiple events with valid properties
       HyperAnalytics.track('page_view', { page: '/home' });
@@ -39,9 +39,9 @@ describe('Full Analytics Workflow - End-to-End', () => {
       expect(batch).toHaveLength(3);
     });
 
-    it('should handle tracking events with invalid properties', () => {
+    it('should handle tracking events with invalid properties', async () => {
       // Step 1: Initialize
-      HyperAnalytics.init();
+      await HyperAnalytics.init();
 
       // Step 2: Track valid event
       HyperAnalytics.track('valid_event', { prop: 'value' });
@@ -58,11 +58,11 @@ describe('Full Analytics Workflow - End-to-End', () => {
   });
 
   describe('configuration changes', () => {
-    it('should handle configuration changes affecting runtime behavior', () => {
-      HyperAnalytics.init();
+    it('should handle configuration changes affecting runtime behavior', async () => {
+      await HyperAnalytics.init();
 
       // Initial configuration
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       HyperAnalytics.track('event_1', { id: 1 });
       HyperAnalytics.track('event_2', { id: 2 });
@@ -73,7 +73,7 @@ describe('Full Analytics Workflow - End-to-End', () => {
       Batcher.setMarkLastBatchUploaded();
 
       // Change configuration
-      Configuration.batchSize = 3;
+      Configuration.setBatchSize(3);
 
       HyperAnalytics.track('event_3', { id: 3 });
       HyperAnalytics.track('event_4', { id: 4 });
@@ -84,14 +84,14 @@ describe('Full Analytics Workflow - End-to-End', () => {
   });
 
   describe('error recovery', () => {
-    it('should recover from initialization errors', () => {
+    it('should recover from initialization errors', async () => {
       // First initialization
-      HyperAnalytics.init();
-      expect(HyperAnalytics['didInit']).toBe(true);
+      await HyperAnalytics.init();
+      expect(HyperAnalytics.isInitialized).toBe(true);
 
       // Second initialization (should be idempotent)
-      HyperAnalytics.init();
-      expect(HyperAnalytics['didInit']).toBe(true);
+      await HyperAnalytics.init();
+      expect(HyperAnalytics.isInitialized).toBe(true);
 
       // Should still work
       HyperAnalytics.track('event_1', { id: 1 });
@@ -104,8 +104,8 @@ describe('Full Analytics Workflow - End-to-End', () => {
   describe('state persistence across operations', () => {
     it('should maintain state across multiple init-track cycles', async () => {
       // Cycle 1
-      HyperAnalytics.init();
-      Configuration.batchSize = 2;
+      await HyperAnalytics.init();
+      Configuration.setBatchSize(2);
 
       HyperAnalytics.track('event_1', { id: 1 });
       HyperAnalytics.track('event_2', { id: 2 });
@@ -125,8 +125,8 @@ describe('Full Analytics Workflow - End-to-End', () => {
 
   describe('real-world scenarios', () => {
     it('should simulate a typical web application analytics flow', async () => {
-      HyperAnalytics.init();
-      Configuration.batchSize = 3;
+      await HyperAnalytics.init();
+      Configuration.setBatchSize(3);
 
       // User lands on page
       HyperAnalytics.track('page_view', { page: '/home', referrer: 'google' });

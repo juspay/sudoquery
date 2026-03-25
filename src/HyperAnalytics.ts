@@ -6,6 +6,13 @@ import { flush as flushEvents } from "./Flush";
 import { AnonymousId } from "./AnonymousId";
 import { Pusher } from "./Pusher";
 import { Configuration } from "./Configuration";
+import {
+  initializePlatform,
+  getLifecycle,
+  getPlatform,
+  isPlatformInitialized,
+  resetPlatform,
+} from "./platform";
 
 export interface HyperAnalyticsConfig {
   flushInterval?: number;
@@ -18,10 +25,19 @@ class HyperAnalytics {
     private static didInit = false;
     private static currentUser: string | null = null;
     private static flushTimer: ReturnType<typeof setInterval> | null = null;
+    private static cleanupFns: (() => void)[] = [];
 
-    static init(config?: HyperAnalyticsConfig) {
+    /**
+     * Initialize the analytics SDK.
+     * This method is async for React Native support (storage initialization).
+     *
+     * @param config - Configuration options
+     */
+    static async init(config?: HyperAnalyticsConfig): Promise<void> {
       if(this.didInit) return;
-      this.didInit = true;
+
+      // Initialize platform abstraction layer
+      await initializePlatform();
 
       // Configure batch size if provided
       if (config?.batchSize !== undefined) {
@@ -44,18 +60,52 @@ class HyperAnalytics {
         this.startPeriodicFlush(config.flushInterval);
       }
 
-      // Flush events when page is unloaded (user navigates away or closes tab)
-      // Use pagehide event which is more reliable than visibilitychange for page unload
-      // Beacon/keepalive ensures events are delivered even during page unload
-      if (typeof document!== 'undefined') {
-        document.addEventListener("visibilitychange", () => {
-          // 'hidden' means the user switched tabs, minimized, or closed the browser.
-          // This is your last reliable chance to send data.
-          if (document.visibilityState === "hidden") {
-            this.stopPeriodicFlush();
-            this.flush(true).catch(err => console.error('Flush on pagehide error:', err));
+      // Initialize anonymous ID (async for React Native)
+      await AnonymousId.initialize();
+
+      // Restore pending events from previous session (React Native only)
+      await Batcher.restoreBatch();
+
+      // Set up lifecycle event handlers
+      this.setupLifecycleHandlers();
+
+      this.didInit = true;
+    }
+
+    /**
+     * Set up platform-specific lifecycle handlers.
+     */
+    private static setupLifecycleHandlers(): void {
+      if (!isPlatformInitialized()) return;
+
+      const platform = getPlatform();
+      const lifecycle = getLifecycle();
+
+      if (platform === 'react-native') {
+        // React Native: Flush on background, prepare for termination
+        const cleanupBackground = lifecycle.onBackground(async () => {
+          this.stopPeriodicFlush();
+          // Flush events
+          await this.flush(true);
+          // Persist any remaining events for next launch
+          await Batcher.persistBatch();
+        });
+
+        const cleanupForeground = lifecycle.onForeground(() => {
+          if (Configuration.flushInterval) {
+            this.startPeriodicFlush(Configuration.flushInterval);
           }
         });
+
+        this.cleanupFns.push(cleanupBackground, cleanupForeground);
+      } else if (platform === 'browser') {
+        // Browser: visibilitychange for page unload
+        const cleanupBackground = lifecycle.onBackground(() => {
+          this.stopPeriodicFlush();
+          this.flush(true).catch(err => console.error('Flush on hidden error:', err));
+        });
+
+        this.cleanupFns.push(cleanupBackground);
       }
     }
 
@@ -117,7 +167,7 @@ class HyperAnalytics {
 
     /**
      * Flush all pending events to the server
-     * @param useBeacon - Use navigator.sendBeacon for more reliable delivery during page unload
+     * @param useBeacon - Use unreliable delivery for page unload/app background
      */
     static async flush(useBeacon: boolean = false): Promise<void> {
       await flushEvents(useBeacon);
@@ -170,12 +220,41 @@ class HyperAnalytics {
         properties: mergedProperties,
         user: this.currentUser,
         anon_id: AnonymousId.getOrCreate(),
-        eventId: crypto.randomUUID(),
+        eventId: this.generateEventId(),
         at: Date.now(),
       };
 
       // Add to batch
       Batcher.addToBatch(event);
+    }
+
+    /**
+     * Generate a unique event ID.
+     */
+    private static generateEventId(): string {
+      if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+        return crypto.randomUUID();
+      }
+      // Fallback UUID generation
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+        const r = (Math.random() * 16) | 0;
+        const v = c === 'x' ? r : (r & 0x3) | 0x8;
+        return v.toString(16);
+      });
+    }
+
+    /**
+     * Reset the SDK state. Useful for testing or logging out.
+     */
+    static async reset(): Promise<void> {
+      this.stopPeriodicFlush();
+      this.cleanupFns.forEach(fn => fn());
+      this.cleanupFns = [];
+      this.currentUser = null;
+      this.didInit = false;
+      Batcher.reset();
+      AnonymousId.resetSync();
+      resetPlatform();
     }
 }
 

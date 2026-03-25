@@ -2,8 +2,8 @@ import { Batcher } from "./Batcher";
 import { flush } from "./Flush";
 import type { Event, BatchPayload, ClientEvent } from "./types";
 import { getSessionData } from "./Session";
-import { AnonymousId } from "./AnonymousId";
 import { Configuration } from "./Configuration";
+import { getNetwork, getPlatform, isPlatformInitialized } from "./platform";
 
 export class Pusher {
   private static _isUploadInProgress = false;
@@ -13,10 +13,25 @@ export class Pusher {
   }
 
   /**
+   * Get headers for API requests.
+   */
+  private static getHeaders(): Record<string, string> {
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (Configuration.token) {
+      headers["Authorization"] = `Bearer ${Configuration.token}`;
+    }
+
+    return headers;
+  }
+
+  /**
    * Transform internal Event array to BatchPayload format
    */
-  private static transformBatch(batch: Event[]): BatchPayload {
-    const sessionData = getSessionData();
+  private static async transformBatch(batch: Event[]): Promise<BatchPayload> {
+    const sessionData = await getSessionData();
 
     const clientEvents: ClientEvent[] = batch.map((event) => ({
       event_id: event.eventId,
@@ -43,63 +58,31 @@ export class Pusher {
     }
 
     // Transform batch to new format
-    const payload = this.transformBatch(batch);
+    const payload = await this.transformBatch(batch);
     if (!payload) {
       this._isUploadInProgress = false;
       return null;
     }
 
-    if (useBeacon) {
-      // Use navigator.sendBeacon() for reliable delivery during page unload
-      // Beacon is fire-and-forget - we don't wait for response
-      this.sendWithBeacon(payload);
+    // Use platform network adapter
+    if (useBeacon && isPlatformInitialized()) {
+      const network = getNetwork();
+      const headers = this.getHeaders();
+
+      // For unreliable delivery (page unload / app background)
+      network.sendUnreliable(this.endpoint, payload, headers);
       this._isUploadInProgress = false;
       return null; // Don't mark batch as uploaded since we don't know if it succeeded
-    } else {
-      // Use normal fetch for regular operations
-      const success = await this.sendNormally(payload);
+    } else if (isPlatformInitialized()) {
+      const network = getNetwork();
+      const headers = this.getHeaders();
+      const success = await network.send(this.endpoint, payload, headers);
       this._isUploadInProgress = false;
       return success ? batch : null;
-    }
-  }
-
-  private static sendWithBeacon(payload: BatchPayload): boolean {
-    // Note: navigator.sendBeacon doesn't support custom headers
-    // For authenticated requests during page unload, consider using fetch with keepalive
-    // or accept that beacon requests won't have authentication
-    if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-      try {
-        const blob = new Blob([JSON.stringify(payload)], {
-          type: "application/json",
-        });
-        return navigator.sendBeacon(this.endpoint, blob);
-      } catch (error) {
-        console.error("Beacon send failed:", error);
-        return false;
-      }
-    }
-    return false;
-  }
-
-  private static async sendNormally(payload: BatchPayload): Promise<boolean> {
-    try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-
-      if (Configuration.token) {
-        headers["Authorization"] = `Bearer ${Configuration.token}`;
-      }
-
-      const response = await fetch(this.endpoint, {
-        method: "POST",
-        headers,
-        body: JSON.stringify(payload),
-      });
-      return response.ok;
-    } catch (error) {
-      console.error("Fetch failed:", error);
-      return false;
+    } else {
+      // Fallback for when platform isn't initialized (shouldn't happen)
+      this._isUploadInProgress = false;
+      return null;
     }
   }
 

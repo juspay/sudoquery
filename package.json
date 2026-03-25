@@ -6,9 +6,14 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "require": "./dist/index.js",
-      "import": "./dist/index.mjs",
-      "types": "./dist/index.d.ts"
+      "import": "./dist/index.mjs"
+    },
+    "./react-native": {
+      "types": "./dist/index.d.ts",
+      "require": "./dist/index.js",
+      "import": "./dist/index.mjs"
     }
   },
   "scripts": {
@@ -18,10 +23,28 @@
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"
   },
-  "keywords": [],
+  "keywords": [
+    "analytics",
+    "tracking",
+    "browser",
+    "react-native",
+    "typescript"
+  ],
   "author": "",
   "license": "ISC",
-  "description": "",
+  "description": "Lightweight analytics SDK for browser and React Native applications",
+  "peerDependencies": {
+    "@react-native-async-storage/async-storage": "^1.21.0",
+    "react-native-device-info": "^10.0.0"
+  },
+  "peerDependenciesMeta": {
+    "@react-native-async-storage/async-storage": {
+      "optional": true
+    },
+    "react-native-device-info": {
+      "optional": true
+    }
+  },
   "devDependencies": {
     "@types/jest": "^30.0.0",
     "jest": "^30.2.0",

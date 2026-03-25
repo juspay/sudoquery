@@ -2,83 +2,130 @@
  * AnonymousId manages the generation and persistence of anonymous user IDs.
  *
  * - Browser: IDs persist across browser sessions using localStorage
+ * - React Native: IDs persist using AsyncStorage
  * - Node.js: IDs persist only for the current application session (in-memory)
  */
+
+import { getStorage, isPlatformInitialized } from './platform';
 
 const STORAGE_KEY = 'hyper_analytics_anon_id';
 
 export class AnonymousId {
-  // In-memory storage for Node.js environment
-  private static inMemoryAnonId: string | null = null;
+  // In-memory cache for all environments
+  private static cachedAnonId: string | null = null;
+  private static initPromise: Promise<void> | null = null;
 
   /**
-   * Generates a new UUID v4 using crypto.randomUUID()
+   * Generates a new UUID v4.
+   * Works in browser, React Native, and Node.js.
    */
   private static generateId(): string {
-    return crypto.randomUUID();
+    // crypto.randomUUID is available in modern browsers, Node.js 16.7+, and React Native with polyfill
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    // Fallback UUID generation
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+      const r = (Math.random() * 16) | 0;
+      const v = c === 'x' ? r : (r & 0x3) | 0x8;
+      return v.toString(16);
+    });
   }
 
   /**
-   * Checks if running in browser environment
+   * Initialize the anonymous ID from storage.
+   * Must be called before getOrCreate() in React Native.
    */
-  private static isBrowser(): boolean {
-    return typeof window !== 'undefined';
+  static async initialize(): Promise<void> {
+    if (this.initPromise) return this.initPromise;
+
+    this.initPromise = (async () => {
+      // Check if we already have a cached ID
+      if (this.cachedAnonId) return;
+
+      // If platform is initialized, use storage adapter
+      if (isPlatformInitialized()) {
+        try {
+          const storage = getStorage();
+          let anonId = await storage.getItem(STORAGE_KEY);
+
+          if (!anonId) {
+            anonId = this.generateId();
+            await storage.setItem(STORAGE_KEY, anonId);
+          }
+
+          this.cachedAnonId = anonId;
+        } catch {
+          // Fallback to memory-only if storage fails
+          this.cachedAnonId = this.generateId();
+        }
+      } else {
+        // Fallback for cases where platform isn't initialized (shouldn't happen normally)
+        this.cachedAnonId = this.generateId();
+      }
+    })();
+
+    return this.initPromise;
   }
 
   /**
    * Gets the current anonymous ID.
-   * - Browser: retrieves from localStorage, creates if not exists
-   * - Node.js: retrieves from in-memory storage, creates if not exists
+   * Synchronous version - returns cached ID.
+   *
+   * @returns The anonymous ID string
+   * @throws Error if not initialized (call init() first)
+   */
+  public static getOrCreate(): string {
+    if (this.cachedAnonId) return this.cachedAnonId;
+    throw new Error(
+      'AnonymousId not initialized. Call HyperAnalytics.init() first.'
+    );
+  }
+
+  /**
+   * Gets the current anonymous ID (async version).
+   * Initializes if not already done.
    *
    * @returns The anonymous ID string
    */
-  public static getOrCreate(): string {
-    if (this.isBrowser()) {
-      // Browser: use localStorage
-      let anonId = localStorage.getItem(STORAGE_KEY);
-
-      if (!anonId) {
-        anonId = this.generateId();
-        localStorage.setItem(STORAGE_KEY, anonId);
-      }
-
-      return anonId;
-    } else {
-      // Node.js: use in-memory storage
-      if (!this.inMemoryAnonId) {
-        this.inMemoryAnonId = this.generateId();
-      }
-
-      return this.inMemoryAnonId;
-    }
+  public static async getOrCreateAsync(): Promise<string> {
+    await this.initialize();
+    return this.cachedAnonId!;
   }
 
   /**
    * Resets the anonymous ID.
-   * - Browser: removes from localStorage
-   * - Node.js: clears in-memory storage
-   * The next call to getOrCreate() will generate a new ID.
+   * Removes from storage and clears memory.
    */
-  public static reset(): void {
-    if (this.isBrowser()) {
-      localStorage.removeItem(STORAGE_KEY);
-    } else {
-      this.inMemoryAnonId = null;
+  public static async reset(): Promise<void> {
+    this.cachedAnonId = null;
+    this.initPromise = null;
+
+    if (isPlatformInitialized()) {
+      try {
+        const storage = getStorage();
+        await storage.removeItem(STORAGE_KEY);
+      } catch {
+        // Ignore errors if storage is not available
+      }
     }
   }
 
   /**
+   * Sync reset - clears memory only.
+   * Used when resetting without async context.
+   */
+  public static resetSync(): void {
+    this.cachedAnonId = null;
+    this.initPromise = null;
+  }
+
+  /**
    * Gets the current anonymous ID without creating a new one if it doesn't exist.
-   * - Browser: reads from localStorage
-   * - Node.js: reads from in-memory storage
    *
    * @returns The anonymous ID string, or null if not set
    */
   public static get(): string | null {
-    if (this.isBrowser()) {
-      return localStorage.getItem(STORAGE_KEY);
-    } else {
-      return this.inMemoryAnonId;
-    }
+    return this.cachedAnonId;
   }
 }

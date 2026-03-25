@@ -5,10 +5,10 @@ import { flush } from '../../src/Flush';
 import { Configuration } from '../../src/Configuration';
 
 describe('Analytics Flow Integration', () => {
-  beforeEach(() => {
+  beforeEach(async () => {
     // Reset all state before each test
-    Configuration.batchSize = 3;
-    HyperAnalytics['didInit'] = false;
+    Configuration.setBatchSize(3);
+    await HyperAnalytics.reset();
     jest.clearAllMocks();
     Batcher.reset();
   });
@@ -16,8 +16,8 @@ describe('Analytics Flow Integration', () => {
   describe('complete analytics workflow', () => {
     it('should track events, batch them, and prepare for upload', async () => {
       // Step 1: Initialize analytics
-      HyperAnalytics.init();
-      expect(HyperAnalytics['didInit']).toBe(true);
+      await HyperAnalytics.init();
+      expect(HyperAnalytics.isInitialized).toBe(true);
 
       // Step 2: Track multiple events
       HyperAnalytics.track('event_1', { prop1: 'value1' });
@@ -30,10 +30,10 @@ describe('Analytics Flow Integration', () => {
       expect(batch).toHaveLength(3);
     });
 
-    it('should handle multiple batches correctly', () => {
-      HyperAnalytics.init();
+    it('should handle multiple batches correctly', async () => {
+      await HyperAnalytics.init();
 
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       // Track 5 events (should create 3 batches: 2, 2, 1)
       for (let i = 1; i <= 5; i++) {
@@ -57,8 +57,8 @@ describe('Analytics Flow Integration', () => {
       expect(batch4).toBeNull();
     });
 
-    it('should reject events with non-primitive properties', () => {
-      HyperAnalytics.init();
+    it('should reject events with non-primitive properties', async () => {
+      await HyperAnalytics.init();
 
       expect(() => {
         HyperAnalytics.track('event_1', { nested: { value: 'test' } });
@@ -71,10 +71,10 @@ describe('Analytics Flow Integration', () => {
   });
 
   describe('batching behavior', () => {
-    it('should respect batch size configuration', () => {
-      HyperAnalytics.init();
+    it('should respect batch size configuration', async () => {
+      await HyperAnalytics.init();
 
-      Configuration.batchSize = 5;
+      Configuration.setBatchSize(5);
 
       for (let i = 1; i <= 12; i++) {
         HyperAnalytics.track(`event_${i}`, { id: i });
@@ -93,10 +93,10 @@ describe('Analytics Flow Integration', () => {
       expect(batch3).toHaveLength(2);
     });
 
-    it('should dynamically adjust to batch size changes', () => {
-      HyperAnalytics.init();
+    it('should dynamically adjust to batch size changes', async () => {
+      await HyperAnalytics.init();
 
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       HyperAnalytics.track('event_1', { id: 1 });
       HyperAnalytics.track('event_2', { id: 2 });
@@ -113,7 +113,7 @@ describe('Analytics Flow Integration', () => {
       Batcher.setMarkLastBatchUploaded();
 
       // Change batch size mid-stream
-      Configuration.batchSize = 5;
+      Configuration.setBatchSize(5);
 
       HyperAnalytics.track('event_4', { id: 4 });
       HyperAnalytics.track('event_5', { id: 5 });
@@ -123,10 +123,10 @@ describe('Analytics Flow Integration', () => {
       expect(batch3).toHaveLength(2);
     });
 
-    it('should handle batch size of 1', () => {
-      HyperAnalytics.init();
+    it('should handle batch size of 1', async () => {
+      await HyperAnalytics.init();
 
-      Configuration.batchSize = 1;
+      Configuration.setBatchSize(1);
 
       for (let i = 1; i <= 5; i++) {
         HyperAnalytics.track(`event_${i}`, { id: i });
@@ -142,11 +142,11 @@ describe('Analytics Flow Integration', () => {
   });
 
   describe('state persistence', () => {
-    it('should maintain state across multiple operations', () => {
-      HyperAnalytics.init();
+    it('should maintain state across multiple operations', async () => {
+      await HyperAnalytics.init();
 
       // First batch
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
       HyperAnalytics.track('event_1', { id: 1 });
       HyperAnalytics.track('event_2', { id: 2 });
 
@@ -161,16 +161,16 @@ describe('Analytics Flow Integration', () => {
       expect(batch).toHaveLength(2);
     });
 
-    it('should handle reinitialization gracefully', () => {
-      HyperAnalytics.init();
+    it('should handle reinitialization gracefully', async () => {
+      await HyperAnalytics.init();
       HyperAnalytics.track('event_1', { id: 1 });
 
       const batch1 = Batcher.fetchBatchToUpload();
       expect(batch1).toHaveLength(1);
 
       // Reinitialize (should be idempotent)
-      HyperAnalytics.init();
-      expect(HyperAnalytics['didInit']).toBe(true);
+      await HyperAnalytics.init();
+      expect(HyperAnalytics.isInitialized).toBe(true);
 
       // Reset Batcher for clean test
       Batcher.reset();
@@ -184,8 +184,8 @@ describe('Analytics Flow Integration', () => {
   });
 
   describe('error handling', () => {
-    it('should handle invalid event properties without crashing', () => {
-      HyperAnalytics.init();
+    it('should handle invalid event properties without crashing', async () => {
+      await HyperAnalytics.init();
 
       // Valid event
       HyperAnalytics.track('valid_event', { prop: 'value' });
@@ -206,9 +206,9 @@ describe('Analytics Flow Integration', () => {
   });
 
   describe('performance and scalability', () => {
-    it('should handle large volumes of events efficiently', () => {
-      HyperAnalytics.init();
-      Configuration.batchSize = 50;
+    it('should handle large volumes of events efficiently', async () => {
+      await HyperAnalytics.init();
+      Configuration.setBatchSize(50);
 
       // Track 100 events (reduced from 1000 to avoid memory issues)
       for (let i = 1; i <= 100; i++) {
@@ -223,9 +223,9 @@ describe('Analytics Flow Integration', () => {
       }
     });
 
-    it('should handle events with large payloads', () => {
-      HyperAnalytics.init();
-      Configuration.batchSize = 2;
+    it('should handle events with large payloads', async () => {
+      await HyperAnalytics.init();
+      Configuration.setBatchSize(2);
 
       const largePayload: Record<string, string> = {};
       for (let i = 0; i < 100; i++) {

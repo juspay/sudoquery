@@ -1,38 +1,38 @@
 import { HyperAnalytics } from '../src/HyperAnalytics';
+import { Batcher } from '../src/Batcher';
 
 describe('HyperAnalytics', () => {
-  beforeEach(() => {
-    // Reset initialization state before each test
-    // Note: There's no public method to reset didInit, so we can't fully isolate tests
-    // This is a limitation of the current implementation
+  beforeEach(async () => {
+    // Reset state before each test
+    await HyperAnalytics.reset();
   });
 
   describe('init', () => {
-    it('should initialize the analytics SDK', () => {
+    it('should initialize the analytics SDK', async () => {
       // First call should succeed
-      expect(() => HyperAnalytics.init()).not.toThrow();
+      await expect(HyperAnalytics.init()).resolves.not.toThrow();
     });
 
-    it('should prevent double initialization', () => {
-      HyperAnalytics.init();
+    it('should prevent double initialization', async () => {
+      await HyperAnalytics.init();
 
       // Second call should not throw but should also not reinitialize
-      expect(() => HyperAnalytics.init()).not.toThrow();
+      await expect(HyperAnalytics.init()).resolves.not.toThrow();
     });
 
-    it('should be idempotent - multiple calls are safe', () => {
-      expect(() => {
-        HyperAnalytics.init();
-        HyperAnalytics.init();
-        HyperAnalytics.init();
+    it('should be idempotent - multiple calls are safe', async () => {
+      await expect(async () => {
+        await HyperAnalytics.init();
+        await HyperAnalytics.init();
+        await HyperAnalytics.init();
       }).not.toThrow();
     });
   });
 
   describe('track', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
       // Initialize before each track test
-      HyperAnalytics.init();
+      await HyperAnalytics.init();
     });
 
     describe('with valid primitive properties', () => {
@@ -172,15 +172,15 @@ describe('HyperAnalytics', () => {
   });
 
   describe('static behavior', () => {
-    it('should not require instantiation', () => {
+    it('should not require instantiation', async () => {
+      await HyperAnalytics.init();
       expect(() => {
-        HyperAnalytics.init();
         HyperAnalytics.track('test', {});
       }).not.toThrow();
     });
 
-    it('should maintain state across calls', () => {
-      HyperAnalytics.init();
+    it('should maintain state across calls', async () => {
+      await HyperAnalytics.init();
       expect(() => {
         HyperAnalytics.track('event1', {});
         HyperAnalytics.track('event2', {});
@@ -190,7 +190,8 @@ describe('HyperAnalytics', () => {
   });
 
   describe('user management', () => {
-    beforeEach(() => {
+    beforeEach(async () => {
+      await HyperAnalytics.init();
       // Reset user state before each test
       HyperAnalytics.removeUser();
     });
@@ -266,8 +267,8 @@ describe('HyperAnalytics', () => {
   });
 
   describe('integration with track', () => {
-    beforeEach(() => {
-      HyperAnalytics.init();
+    beforeEach(async () => {
+      await HyperAnalytics.init();
       HyperAnalytics.removeUser();
     });
 
@@ -282,6 +283,19 @@ describe('HyperAnalytics', () => {
       expect(() => {
         HyperAnalytics.track('test_event', {});
       }).not.toThrow();
+    });
+  });
+
+  describe('reset', () => {
+    it('should reset all state', async () => {
+      await HyperAnalytics.init();
+      HyperAnalytics.setUser('user_123');
+      HyperAnalytics.track('test_event', {});
+
+      await HyperAnalytics.reset();
+
+      expect(HyperAnalytics.getUser()).toBeNull();
+      expect(HyperAnalytics.isInitialized).toBe(false);
     });
   });
 });
