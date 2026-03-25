@@ -18,24 +18,21 @@ function getDeviceInfo(): Promise<RNDeviceInfo> {
   if (DeviceInfo) return Promise.resolve(DeviceInfo);
   if (DeviceInfoPromise) return DeviceInfoPromise;
 
-  DeviceInfoPromise = new Promise((resolve, reject) => {
+  DeviceInfoPromise = (async () => {
     try {
-      // Use require for better Jest compatibility
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const module = require('react-native-device-info');
+      const module = await import('react-native-device-info');
       DeviceInfo = module.default || module;
-      if (DeviceInfo) {
-        resolve(DeviceInfo);
-      } else {
-        reject(new Error('DeviceInfo not available in react-native-device-info'));
+      if (!DeviceInfo) {
+        throw new Error('DeviceInfo not available in react-native-device-info');
       }
+      return DeviceInfo;
     } catch {
-      reject(new Error(
+      throw new Error(
         'react-native-device-info is required for React Native. ' +
           'Install it with: npm install react-native-device-info'
-      ));
+      );
     }
-  });
+  })();
 
   return DeviceInfoPromise;
 }

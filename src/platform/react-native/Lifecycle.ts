@@ -20,23 +20,20 @@ function getAppState(): Promise<AppStateStatic> {
   if (AppState) return Promise.resolve(AppState);
   if (AppStatePromise) return AppStatePromise;
 
-  AppStatePromise = new Promise((resolve, reject) => {
+  AppStatePromise = (async () => {
     try {
-      // Use require for better Jest compatibility
-      // eslint-disable-next-line @typescript-eslint/no-require-imports
-      const rn = require('react-native');
+      const rn = await import('react-native');
       AppState = rn.AppState;
-      if (AppState) {
-        resolve(AppState);
-      } else {
-        reject(new Error('AppState not available in react-native'));
+      if (!AppState) {
+        throw new Error('AppState not available in react-native');
       }
+      return AppState;
     } catch {
-      reject(new Error(
+      throw new Error(
         'react-native is required. Install it with: npm install react-native'
-      ));
+      );
     }
-  });
+  })();
 
   return AppStatePromise;
 }

@@ -10,16 +10,13 @@ type AsyncStorageType = {
   removeItem: (key: string) => Promise<void>;
 };
 
-// Lazy import to avoid errors in non-RN environments
 let AsyncStorage: AsyncStorageType | null = null;
 
 async function getAsyncStorage(): Promise<AsyncStorageType> {
   if (AsyncStorage) return AsyncStorage;
 
   try {
-    // Dynamic import for React Native
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const module = require('@react-native-async-storage/async-storage');
+    const module = await import('@react-native-async-storage/async-storage');
     AsyncStorage = module.default || module;
     return AsyncStorage!;
   } catch {

@@ -1,10 +1,3 @@
-var __require = /* @__PURE__ */ ((x) => typeof require !== "undefined" ? require : typeof Proxy !== "undefined" ? new Proxy(x, {
-  get: (a, b) => (typeof require !== "undefined" ? require : a)[b]
-}) : x)(function(x) {
-  if (typeof require !== "undefined") return require.apply(this, arguments);
-  throw Error('Dynamic require of "' + x + '" is not supported');
-});
-
 // src/TypeValidator.ts
 function containsNonPrimitives(obj) {
   if (obj === null || typeof obj !== "object") {
@@ -342,7 +335,7 @@ var AsyncStorage = null;
 async function getAsyncStorage() {
   if (AsyncStorage) return AsyncStorage;
   try {
-    const module = __require("@react-native-async-storage/async-storage");
+    const module = await import("@react-native-async-storage/async-storage");
     AsyncStorage = module.default || module;
     return AsyncStorage;
   } catch {
@@ -374,21 +367,20 @@ var AppStatePromise = null;
 function getAppState() {
   if (AppState) return Promise.resolve(AppState);
   if (AppStatePromise) return AppStatePromise;
-  AppStatePromise = new Promise((resolve, reject) => {
+  AppStatePromise = (async () => {
     try {
-      const rn = __require("react-native");
+      const rn = await import("react-native");
       AppState = rn.AppState;
-      if (AppState) {
-        resolve(AppState);
-      } else {
-        reject(new Error("AppState not available in react-native"));
+      if (!AppState) {
+        throw new Error("AppState not available in react-native");
       }
+      return AppState;
     } catch {
-      reject(new Error(
+      throw new Error(
         "react-native is required. Install it with: npm install react-native"
-      ));
+      );
     }
-  });
+  })();
   return AppStatePromise;
 }
 function createLifecycle3() {
@@ -472,21 +464,20 @@ var DeviceInfoPromise = null;
 function getDeviceInfo() {
   if (DeviceInfo) return Promise.resolve(DeviceInfo);
   if (DeviceInfoPromise) return DeviceInfoPromise;
-  DeviceInfoPromise = new Promise((resolve, reject) => {
+  DeviceInfoPromise = (async () => {
     try {
-      const module = __require("react-native-device-info");
+      const module = await import("react-native-device-info");
       DeviceInfo = module.default || module;
-      if (DeviceInfo) {
-        resolve(DeviceInfo);
-      } else {
-        reject(new Error("DeviceInfo not available in react-native-device-info"));
+      if (!DeviceInfo) {
+        throw new Error("DeviceInfo not available in react-native-device-info");
       }
+      return DeviceInfo;
     } catch {
-      reject(new Error(
+      throw new Error(
         "react-native-device-info is required for React Native. Install it with: npm install react-native-device-info"
-      ));
+      );
     }
-  });
+  })();
   return DeviceInfoPromise;
 }
 function createDeviceInfo3() {

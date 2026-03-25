@@ -14,6 +14,9 @@ module.exports = {
   verbose: true,
   moduleNameMapper: {
     '^(\\.{1,2}/.*)\\.js$': '$1',
+    '^@react-native-async-storage/async-storage$': '<rootDir>/__mocks__/asyncStorage.ts',
+    '^react-native$': '<rootDir>/__mocks__/reactNative.ts',
+    '^react-native-device-info$': '<rootDir>/__mocks__/deviceInfo.ts',
   },
   transform: {
     '^.+\\.tsx?$': [

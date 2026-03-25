@@ -1,7 +1,9 @@
 "use strict";
+var __create = Object.create;
 var __defProp = Object.defineProperty;
 var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
 var __getOwnPropNames = Object.getOwnPropertyNames;
+var __getProtoOf = Object.getPrototypeOf;
 var __hasOwnProp = Object.prototype.hasOwnProperty;
 var __export = (target, all) => {
   for (var name in all)
@@ -15,6 +17,14 @@ var __copyProps = (to, from, except, desc) => {
   }
   return to;
 };
+var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(
+  // If the importer is in node compatibility mode or this is not an ESM
+  // file that has been converted to a CommonJS file using a Babel-
+  // compatible transform (i.e. "__esModule" has not been set), then set
+  // "default" to the CommonJS "module.exports" for node compatibility.
+  isNodeMode || !mod || !mod.__esModule ? __defProp(target, "default", { value: mod, enumerable: true }) : target,
+  mod
+));
 var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: true }), mod);
 
 // src/index.ts
@@ -365,7 +375,7 @@ var AsyncStorage = null;
 async function getAsyncStorage() {
   if (AsyncStorage) return AsyncStorage;
   try {
-    const module2 = require("@react-native-async-storage/async-storage");
+    const module2 = await import("@react-native-async-storage/async-storage");
     AsyncStorage = module2.default || module2;
     return AsyncStorage;
   } catch {
@@ -397,21 +407,20 @@ var AppStatePromise = null;
 function getAppState() {
   if (AppState) return Promise.resolve(AppState);
   if (AppStatePromise) return AppStatePromise;
-  AppStatePromise = new Promise((resolve, reject) => {
+  AppStatePromise = (async () => {
     try {
-      const rn = require("react-native");
+      const rn = await import("react-native");
       AppState = rn.AppState;
-      if (AppState) {
-        resolve(AppState);
-      } else {
-        reject(new Error("AppState not available in react-native"));
+      if (!AppState) {
+        throw new Error("AppState not available in react-native");
       }
+      return AppState;
     } catch {
-      reject(new Error(
+      throw new Error(
         "react-native is required. Install it with: npm install react-native"
-      ));
+      );
     }
-  });
+  })();
   return AppStatePromise;
 }
 function createLifecycle3() {
@@ -495,21 +504,20 @@ var DeviceInfoPromise = null;
 function getDeviceInfo() {
   if (DeviceInfo) return Promise.resolve(DeviceInfo);
   if (DeviceInfoPromise) return DeviceInfoPromise;
-  DeviceInfoPromise = new Promise((resolve, reject) => {
+  DeviceInfoPromise = (async () => {
     try {
-      const module2 = require("react-native-device-info");
+      const module2 = await import("react-native-device-info");
       DeviceInfo = module2.default || module2;
-      if (DeviceInfo) {
-        resolve(DeviceInfo);
-      } else {
-        reject(new Error("DeviceInfo not available in react-native-device-info"));
+      if (!DeviceInfo) {
+        throw new Error("DeviceInfo not available in react-native-device-info");
       }
+      return DeviceInfo;
     } catch {
-      reject(new Error(
+      throw new Error(
         "react-native-device-info is required for React Native. Install it with: npm install react-native-device-info"
-      ));
+      );
     }
-  });
+  })();
   return DeviceInfoPromise;
 }
 function createDeviceInfo3() {
