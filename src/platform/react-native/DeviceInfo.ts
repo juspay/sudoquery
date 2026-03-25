@@ -1,9 +1,7 @@
 /**
  * React Native device info adapter.
- * Supports:
- * - expo-device + expo-application (works in Expo Go)
- * - react-native-device-info (for bare React Native)
- * Falls back to basic info if none are available.
+ * Uses only expo-device and expo-application which work in Expo Go.
+ * NO react-native or react-native-device-info imports to avoid native module errors.
  */
 import type { DeviceInfoAdapter } from '../types';
 
@@ -20,99 +18,66 @@ let deviceInfo: DeviceInfo | null = null;
 async function getDeviceInfo(): Promise<DeviceInfo> {
   if (deviceInfo) return deviceInfo;
 
-  // Try expo-device + expo-application first (works in Expo Go)
+  let expoDevice: typeof import('expo-device') | null = null;
+  let expoApplication: typeof import('expo-application') | null = null;
+
+  // Try to load expo-device (works in Expo Go)
   try {
-    const [expoDevice, expoApplication] = await Promise.all([
-      import('expo-device').catch(() => null),
-      import('expo-application').catch(() => null),
-    ]);
-
-    if (expoDevice) {
-      deviceInfo = {
-        async getDeviceType(): Promise<string> {
-          const type = expoDevice.deviceType;
-          // expo-device returns: 1=Unknown, 2=Phone, 3=Tablet, 4=Desktop, 5=TV
-          const typeMap: Record<number, string> = {
-            1: 'unknown',
-            2: 'mobile',
-            3: 'tablet',
-            4: 'desktop',
-            5: 'tv',
-          };
-          return typeMap[type] || 'mobile';
-        },
-
-        async getPlatform(): Promise<string> {
-          return expoDevice.osName || 'Unknown';
-        },
-
-        async getOSVersion(): Promise<string> {
-          return expoDevice.osVersion || '';
-        },
-
-        async getAppVersion(): Promise<string> {
-          if (expoApplication) {
-            const version = expoApplication.nativeApplicationVersion || '';
-            const build = expoApplication.nativeBuildVersion || '';
-            return build ? `${version} (${build})` : version;
-          }
-          return '';
-        },
-
-        getUserAgent(): string {
-          return 'ReactNative';
-        },
-      };
-
-      return deviceInfo;
-    }
+    expoDevice = await import('expo-device');
   } catch {
-    // expo packages not available
+    // expo-device not available
   }
 
-  // Try react-native-device-info (for bare React Native)
+  // Try to load expo-application (works in Expo Go)
   try {
-    const rnDeviceInfo = await import('react-native-device-info').catch(() => null);
-    if (rnDeviceInfo) {
-      const info = rnDeviceInfo.default || rnDeviceInfo;
-
-      deviceInfo = {
-        async getDeviceType(): Promise<string> {
-          const type = await info.getDeviceType();
-          return type.toLowerCase();
-        },
-
-        async getPlatform(): Promise<string> {
-          return info.getSystemName();
-        },
-
-        async getOSVersion(): Promise<string> {
-          return info.getSystemVersion();
-        },
-
-        async getAppVersion(): Promise<string> {
-          return `${info.getVersion()} (${info.getBuildNumber()})`;
-        },
-
-        getUserAgent(): string {
-          return 'ReactNative';
-        },
-      };
-
-      return deviceInfo;
-    }
+    expoApplication = await import('expo-application');
   } catch {
-    // react-native-device-info not available
+    // expo-application not available
   }
 
-  // Fallback: return minimal info without importing react-native
-  // to avoid native module access errors in Expo Go
   deviceInfo = {
-    async getDeviceType(): Promise<string> { return 'mobile'; },
-    async getPlatform(): Promise<string> { return 'Unknown'; },
-    async getOSVersion(): Promise<string> { return ''; },
-    async getAppVersion(): Promise<string> { return ''; },
-    getUserAgent(): string { return 'ReactNative'; },
+    async getDeviceType(): Promise<string> {
+      if (expoDevice) {
+        const type = expoDevice.deviceType;
+        // expo-device returns: 1=Unknown, 2=Phone, 3=Tablet, 4=Desktop, 5=TV
+        const typeMap: Record<number, string> = {
+          1: 'unknown',
+          2: 'mobile',
+          3: 'tablet',
+          4: 'desktop',
+          5: 'tv',
+        };
+        return typeMap[type] || 'mobile';
+      }
+      return 'mobile';
+    },
+
+    async getPlatform(): Promise<string> {
+      if (expoDevice?.osName) {
+        return expoDevice.osName;
+      }
+      return 'Unknown';
+    },
+
+    async getOSVersion(): Promise<string> {
+      if (expoDevice?.osVersion) {
+        return expoDevice.osVersion;
+      }
+      return '';
+    },
+
+    async getAppVersion(): Promise<string> {
+      if (expoApplication) {
+        const version = expoApplication.nativeApplicationVersion || '';
+        const build = expoApplication.nativeBuildVersion || '';
+        return build ? `${version} (${build})` : version;
+      }
+      return '';
+    },
+
+    getUserAgent(): string {
+      return 'ReactNative';
+    },
   };
 
   return deviceInfo;

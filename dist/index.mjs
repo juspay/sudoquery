@@ -89,7 +89,7 @@ async function initializePlatform() {
   if (currentPlatform) return;
   currentPlatform = detectPlatform();
   if (currentPlatform === "react-native") {
-    const rn = await import("./react-native-PQN66W33.mjs");
+    const rn = await import("./react-native-E4M32KG5.mjs");
     storage = rn.createStorage();
     lifecycle = rn.createLifecycle();
     network = rn.createNetwork();

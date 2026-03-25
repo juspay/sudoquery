@@ -33,15 +33,17 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/platform/react-native/Storage.ts
 async function getAsyncStorage() {
   if (AsyncStorage) return AsyncStorage;
-  try {
-    const module2 = await import("@react-native-async-storage/async-storage").catch(() => null);
-    if (module2) {
+  if (storagePromise) return storagePromise;
+  storagePromise = (async () => {
+    try {
+      const module2 = await import("@react-native-async-storage/async-storage");
       AsyncStorage = module2.default || module2;
       return AsyncStorage;
+    } catch {
+      return null;
     }
-  } catch {
-  }
-  return null;
+  })();
+  return storagePromise;
 }
 function createStorage() {
   return {
@@ -70,90 +72,36 @@ function createStorage() {
     }
   };
 }
-var AsyncStorage, memoryStorage;
+var AsyncStorage, storagePromise, memoryStorage;
 var init_Storage = __esm({
   "src/platform/react-native/Storage.ts"() {
     "use strict";
     AsyncStorage = null;
+    storagePromise = null;
     memoryStorage = /* @__PURE__ */ new Map();
   }
 });
 
 // src/platform/react-native/Lifecycle.ts
-function getAppState() {
-  if (AppState) return Promise.resolve(AppState);
-  if (AppStatePromise) return AppStatePromise;
-  AppStatePromise = (async () => {
-    try {
-      const rn = await import("react-native").catch(() => null);
-      if (rn?.AppState) {
-        AppState = rn.AppState;
-        return AppState;
-      }
-    } catch {
-    }
-    return null;
-  })();
-  return AppStatePromise;
-}
 function createLifecycle() {
   return {
-    onBackground(callback) {
-      let subscription = null;
-      getAppState().then((appState) => {
-        if (appState) {
-          subscription = appState.addEventListener("change", (state) => {
-            if (state === "background" || state === "inactive") {
-              callback();
-            }
-          });
-        }
-      }).catch(() => {
-      });
+    onBackground(_callback) {
       return () => {
-        subscription?.remove();
       };
     },
-    onForeground(callback) {
-      let subscription = null;
-      getAppState().then((appState) => {
-        if (appState) {
-          subscription = appState.addEventListener("change", (state) => {
-            if (state === "active") {
-              callback();
-            }
-          });
-        }
-      }).catch(() => {
-      });
+    onForeground(_callback) {
       return () => {
-        subscription?.remove();
       };
     },
-    onTerminate(callback) {
-      let subscription = null;
-      getAppState().then((appState) => {
-        if (appState) {
-          subscription = appState.addEventListener("change", (state) => {
-            if (state === "background") {
-              callback();
-            }
-          });
-        }
-      }).catch(() => {
-      });
+    onTerminate(_callback) {
       return () => {
-        subscription?.remove();
       };
     }
   };
 }
-var AppState, AppStatePromise;
 var init_Lifecycle = __esm({
   "src/platform/react-native/Lifecycle.ts"() {
     "use strict";
-    AppState = null;
-    AppStatePromise = null;
   }
 });
 
@@ -193,83 +141,49 @@ var init_Network = __esm({
 // src/platform/react-native/DeviceInfo.ts
 async function getDeviceInfo() {
   if (deviceInfo) return deviceInfo;
+  let expoDevice = null;
+  let expoApplication = null;
   try {
-    const [expoDevice, expoApplication] = await Promise.all([
-      import("expo-device").catch(() => null),
-      import("expo-application").catch(() => null)
-    ]);
-    if (expoDevice) {
-      deviceInfo = {
-        async getDeviceType() {
-          const type = expoDevice.deviceType;
-          const typeMap = {
-            1: "unknown",
-            2: "mobile",
-            3: "tablet",
-            4: "desktop",
-            5: "tv"
-          };
-          return typeMap[type] || "mobile";
-        },
-        async getPlatform() {
-          return expoDevice.osName || "Unknown";
-        },
-        async getOSVersion() {
-          return expoDevice.osVersion || "";
-        },
-        async getAppVersion() {
-          if (expoApplication) {
-            const version = expoApplication.nativeApplicationVersion || "";
-            const build = expoApplication.nativeBuildVersion || "";
-            return build ? `${version} (${build})` : version;
-          }
-          return "";
-        },
-        getUserAgent() {
-          return "ReactNative";
-        }
-      };
-      return deviceInfo;
-    }
+    expoDevice = await import("expo-device");
   } catch {
   }
   try {
-    const rnDeviceInfo = await import("react-native-device-info").catch(() => null);
-    if (rnDeviceInfo) {
-      const info = rnDeviceInfo.default || rnDeviceInfo;
-      deviceInfo = {
-        async getDeviceType() {
-          const type = await info.getDeviceType();
-          return type.toLowerCase();
-        },
-        async getPlatform() {
-          return info.getSystemName();
-        },
-        async getOSVersion() {
-          return info.getSystemVersion();
-        },
-        async getAppVersion() {
-          return `${info.getVersion()} (${info.getBuildNumber()})`;
-        },
-        getUserAgent() {
-          return "ReactNative";
-        }
-      };
-      return deviceInfo;
-    }
+    expoApplication = await import("expo-application");
   } catch {
   }
   deviceInfo = {
     async getDeviceType() {
+      if (expoDevice) {
+        const type = expoDevice.deviceType;
+        const typeMap = {
+          1: "unknown",
+          2: "mobile",
+          3: "tablet",
+          4: "desktop",
+          5: "tv"
+        };
+        return typeMap[type] || "mobile";
+      }
       return "mobile";
     },
     async getPlatform() {
+      if (expoDevice?.osName) {
+        return expoDevice.osName;
+      }
       return "Unknown";
     },
     async getOSVersion() {
+      if (expoDevice?.osVersion) {
+        return expoDevice.osVersion;
+      }
       return "";
     },
     async getAppVersion() {
+      if (expoApplication) {
+        const version = expoApplication.nativeApplicationVersion || "";
+        const build = expoApplication.nativeBuildVersion || "";
+        return build ? `${version} (${build})` : version;
+      }
       return "";
     },
     getUserAgent() {

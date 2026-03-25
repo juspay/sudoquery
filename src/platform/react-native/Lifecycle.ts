@@ -1,99 +1,42 @@
 /**
- * React Native lifecycle adapter using AppState.
- * Gracefully handles Expo Go and bare React Native.
+ * React Native lifecycle adapter.
+ *
+ * IMPORTANT: This adapter does NOT import react-native to avoid native module errors in Expo Go.
+ * Lifecycle events (background/foreground) are not supported in Expo Go.
+ *
+ * For bare React Native apps, you can extend this to use AppState from react-native.
  */
 import type { LifecycleAdapter } from '../types';
 
-type AppStateStatus = 'active' | 'background' | 'inactive' | 'unknown' | 'extension';
-
-interface AppStateStatic {
-  currentState: AppStateStatus;
-  addEventListener: (
-    type: 'change',
-    handler: (state: AppStateStatus) => void
-  ) => { remove: () => void };
-}
-
-let AppState: AppStateStatic | null = null;
-let AppStatePromise: Promise<AppStateStatic | null> | null = null;
-
-function getAppState(): Promise<AppStateStatic | null> {
-  if (AppState) return Promise.resolve(AppState);
-  if (AppStatePromise) return AppStatePromise;
-
-  AppStatePromise = (async () => {
-    try {
-      const rn = await import('react-native').catch(() => null);
-      if (rn?.AppState) {
-        AppState = rn.AppState;
-        return AppState;
-      }
-    } catch {
-      // react-native not available or in Expo Go without native modules
-    }
-    return null;
-  })();
-
-  return AppStatePromise;
-}
-
 export function createLifecycle(): LifecycleAdapter {
+  // Note: We intentionally do NOT import react-native here
+  // because it causes native module errors in Expo Go.
+  // Lifecycle events will be no-ops in Expo Go.
+
+  // If you need lifecycle events in bare React Native, you can
+  // manually set up AppState listeners in your app code:
+  //
+  // import { AppState } from 'react-native';
+  // AppState.addEventListener('change', (state) => {
+  //   if (state === 'background') {
+  //     HyperAnalytics.flush();
+  //   }
+  // });
+
   return {
-    onBackground(callback: () => void): () => void {
-      let subscription: { remove: () => void } | null = null;
-
-      getAppState().then(appState => {
-        if (appState) {
-          subscription = appState.addEventListener('change', (state) => {
-            if (state === 'background' || state === 'inactive') {
-              callback();
-            }
-          });
-        }
-      }).catch(() => {});
-
-      return () => {
-        subscription?.remove();
-      };
+    onBackground(_callback: () => void): () => void {
+      // No-op in Expo Go - react-native AppState not available
+      return () => {};
     },
 
-    onForeground(callback: () => void): () => void {
-      let subscription: { remove: () => void } | null = null;
-
-      getAppState().then(appState => {
-        if (appState) {
-          subscription = appState.addEventListener('change', (state) => {
-            if (state === 'active') {
-              callback();
-            }
-          });
-        }
-      }).catch(() => {});
-
-      return () => {
-        subscription?.remove();
-      };
+    onForeground(_callback: () => void): () => void {
+      // No-op in Expo Go - react-native AppState not available
+      return () => {};
     },
 
-    onTerminate(callback: () => void): () => void {
-      // React Native doesn't have a native terminate event
-      // Use background event as approximation and persist events
-      let subscription: { remove: () => void } | null = null;
-
-      getAppState().then(appState => {
-        if (appState) {
-          subscription = appState.addEventListener('change', (state) => {
-            if (state === 'background') {
-              // This is our best chance to flush/persist before termination
-              callback();
-            }
-          });
-        }
-      }).catch(() => {});
-
-      return () => {
-        subscription?.remove();
-      };
+    onTerminate(_callback: () => void): () => void {
+      // No-op in Expo Go - react-native AppState not available
+      return () => {};
     },
   };
 }

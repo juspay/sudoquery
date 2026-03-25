@@ -1,6 +1,6 @@
 /**
  * React Native storage adapter using AsyncStorage.
- * Gracefully handles Expo Go and bare React Native.
+ * AsyncStorage works in Expo Go without native module issues.
  */
 import type { StorageAdapter } from '../types';
 
@@ -12,21 +12,24 @@ type AsyncStorageType = {
 };
 
 let AsyncStorage: AsyncStorageType | null = null;
+let storagePromise: Promise<AsyncStorageType | null> | null = null;
 
 async function getAsyncStorage(): Promise<AsyncStorageType | null> {
   if (AsyncStorage) return AsyncStorage;
+  if (storagePromise) return storagePromise;
 
-  try {
-    const module = await import('@react-native-async-storage/async-storage').catch(() => null);
-    if (module) {
+  storagePromise = (async () => {
+    try {
+      const module = await import('@react-native-async-storage/async-storage');
       AsyncStorage = module.default || module;
       return AsyncStorage;
+    } catch {
+      // AsyncStorage not available - will use memory fallback
+      return null;
     }
-  } catch {
-    // AsyncStorage not available
-  }
+  })();
 
-  return null;
+  return storagePromise;
 }
 
 // In-memory fallback for when AsyncStorage is not available
