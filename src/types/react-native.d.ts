@@ -54,3 +54,27 @@ declare module 'react-native-device-info' {
   const DeviceInfo: DeviceInfoStatic;
   export default DeviceInfo;
 }
+
+declare module 'expo-device' {
+  export const deviceType: number;
+  export const osName: string | null;
+  export const osVersion: string | null;
+  export const deviceName: string | null;
+  export const brand: string | null;
+  export const modelName: string | null;
+
+  export const DeviceType: {
+    Unknown: 1;
+    Phone: 2;
+    Tablet: 3;
+    Desktop: 4;
+    TV: 5;
+  };
+}
+
+declare module 'expo-application' {
+  export const nativeApplicationVersion: string | null;
+  export const nativeBuildVersion: string | null;
+  export const applicationName: string | null;
+  export const applicationId: string | null;
+}

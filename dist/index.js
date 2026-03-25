@@ -499,45 +499,124 @@ function createNetwork3() {
 }
 
 // src/platform/react-native/DeviceInfo.ts
-var DeviceInfo = null;
-var DeviceInfoPromise = null;
-function getDeviceInfo() {
-  if (DeviceInfo) return Promise.resolve(DeviceInfo);
-  if (DeviceInfoPromise) return DeviceInfoPromise;
-  DeviceInfoPromise = (async () => {
-    try {
-      const module2 = await import("react-native-device-info");
-      DeviceInfo = module2.default || module2;
-      if (!DeviceInfo) {
-        throw new Error("DeviceInfo not available in react-native-device-info");
+var deviceInfo = null;
+async function getDeviceInfo() {
+  if (deviceInfo) return deviceInfo;
+  try {
+    const expoDevice = await import("expo-device");
+    const expoApplication = await import("expo-application");
+    deviceInfo = {
+      async getDeviceType() {
+        const type = expoDevice.deviceType;
+        const typeMap = {
+          1: "unknown",
+          2: "mobile",
+          3: "tablet",
+          4: "desktop",
+          5: "tv"
+        };
+        return typeMap[type] || "mobile";
+      },
+      async getPlatform() {
+        return expoDevice.osName || "Unknown";
+      },
+      async getOSVersion() {
+        return expoDevice.osVersion || "";
+      },
+      async getAppVersion() {
+        const version = expoApplication.nativeApplicationVersion || "";
+        const build = expoApplication.nativeBuildVersion || "";
+        return build ? `${version} (${build})` : version;
+      },
+      getUserAgent() {
+        return "ReactNative";
       }
-      return DeviceInfo;
-    } catch {
-      throw new Error(
-        "react-native-device-info is required for React Native. Install it with: npm install react-native-device-info"
-      );
-    }
-  })();
-  return DeviceInfoPromise;
+    };
+    return deviceInfo;
+  } catch {
+  }
+  try {
+    const rnDeviceInfo = await import("react-native-device-info");
+    const info = rnDeviceInfo.default || rnDeviceInfo;
+    deviceInfo = {
+      async getDeviceType() {
+        const type = await info.getDeviceType();
+        return type.toLowerCase();
+      },
+      async getPlatform() {
+        return info.getSystemName();
+      },
+      async getOSVersion() {
+        return info.getSystemVersion();
+      },
+      async getAppVersion() {
+        return `${info.getVersion()} (${info.getBuildNumber()})`;
+      },
+      getUserAgent() {
+        return "ReactNative";
+      }
+    };
+    return deviceInfo;
+  } catch {
+  }
+  try {
+    const { Platform } = await import("react-native");
+    deviceInfo = {
+      async getDeviceType() {
+        return "mobile";
+      },
+      async getPlatform() {
+        return Platform.OS === "ios" ? "iOS" : "Android";
+      },
+      async getOSVersion() {
+        return Platform.Version?.toString() || "";
+      },
+      async getAppVersion() {
+        return "";
+      },
+      getUserAgent() {
+        return "ReactNative";
+      }
+    };
+    return deviceInfo;
+  } catch {
+    deviceInfo = {
+      async getDeviceType() {
+        return "mobile";
+      },
+      async getPlatform() {
+        return "Unknown";
+      },
+      async getOSVersion() {
+        return "";
+      },
+      async getAppVersion() {
+        return "";
+      },
+      getUserAgent() {
+        return "ReactNative";
+      }
+    };
+    return deviceInfo;
+  }
 }
 function createDeviceInfo3() {
   return {
     async getDeviceType() {
       const info = await getDeviceInfo();
-      const type = await info.getDeviceType();
-      return type.toLowerCase();
+      return info.getDeviceType();
     },
     async getPlatform() {
       const info = await getDeviceInfo();
-      return info.getSystemName();
+      return info.getPlatform();
     },
     async getOSVersion() {
       const info = await getDeviceInfo();
-      return info.getSystemVersion();
+      return info.getOSVersion();
     },
     async getAppVersion() {
       const info = await getDeviceInfo();
-      return `${info.getVersion()} (${info.getBuildNumber()})`;
+      return info.getAppVersion();
     },
     getUserAgent() {
       return "ReactNative";
@@ -549,7 +628,7 @@ function createDeviceInfo3() {
 var storage = null;
 var lifecycle = null;
 var network = null;
-var deviceInfo = null;
+var deviceInfo2 = null;
 var currentPlatform = null;
 function detectPlatform2() {
   if (typeof navigator !== "undefined" && navigator.product === "ReactNative") {
@@ -573,7 +652,7 @@ function resetPlatform() {
   storage = null;
   lifecycle = null;
   network = null;
-  deviceInfo = null;
+  deviceInfo2 = null;
   currentPlatform = null;
 }
 async function initializePlatform() {
@@ -583,17 +662,17 @@ async function initializePlatform() {
     storage = createStorage3();
     lifecycle = createLifecycle3();
     network = createNetwork3();
-    deviceInfo = createDeviceInfo3();
+    deviceInfo2 = createDeviceInfo3();
   } else if (currentPlatform === "browser") {
     storage = createStorage();
     lifecycle = createLifecycle();
     network = createNetwork();
-    deviceInfo = createDeviceInfo();
+    deviceInfo2 = createDeviceInfo();
   } else {
     storage = createStorage2();
     lifecycle = createLifecycle2();
     network = createNetwork2();
-    deviceInfo = createDeviceInfo2();
+    deviceInfo2 = createDeviceInfo2();
   }
 }
 function getStorage() {
@@ -615,10 +694,10 @@ function getNetwork() {
   return network;
 }
 function getDeviceInfo2() {
-  if (!deviceInfo) {
+  if (!deviceInfo2) {
     throw new Error("Platform not initialized. Call initializePlatform() first.");
   }
-  return deviceInfo;
+  return deviceInfo2;
 }
 
 // src/Session.ts
@@ -627,13 +706,13 @@ async function getSessionData() {
     return getDefaultSessionData();
   }
   const platform = getPlatform();
-  const deviceInfo2 = getDeviceInfo2();
+  const deviceInfo3 = getDeviceInfo2();
   if (platform === "react-native") {
     const [deviceType, platformName, osVersion, appVersion] = await Promise.all([
-      deviceInfo2.getDeviceType(),
-      deviceInfo2.getPlatform(),
-      deviceInfo2.getOSVersion(),
-      deviceInfo2.getAppVersion()
+      deviceInfo3.getDeviceType(),
+      deviceInfo3.getPlatform(),
+      deviceInfo3.getOSVersion(),
+      deviceInfo3.getAppVersion()
     ]);
     return {
       device_type: deviceType,
@@ -646,10 +725,10 @@ async function getSessionData() {
       user_agent: `${platformName}/${osVersion} App/${appVersion}`
     };
   }
-  const userAgent = deviceInfo2.getUserAgent();
+  const userAgent = deviceInfo3.getUserAgent();
   return {
-    device_type: await deviceInfo2.getDeviceType(),
-    platform: await deviceInfo2.getPlatform(),
+    device_type: await deviceInfo3.getDeviceType(),
+    platform: await deviceInfo3.getPlatform(),
     browser: detectBrowser(userAgent),
     country: "",
     city: "",

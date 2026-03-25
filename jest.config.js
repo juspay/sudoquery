@@ -17,6 +17,8 @@ module.exports = {
     '^@react-native-async-storage/async-storage$': '<rootDir>/__mocks__/asyncStorage.ts',
     '^react-native$': '<rootDir>/__mocks__/reactNative.ts',
     '^react-native-device-info$': '<rootDir>/__mocks__/deviceInfo.ts',
+    '^expo-device$': '<rootDir>/__mocks__/expoDevice.ts',
+    '^expo-application$': '<rootDir>/__mocks__/expoApplication.ts',
   },
   transform: {
     '^.+\\.tsx?$': [

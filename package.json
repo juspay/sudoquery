@@ -28,20 +28,29 @@
     "tracking",
     "browser",
     "react-native",
+    "expo",
     "typescript"
   ],
   "author": "",
   "license": "ISC",
-  "description": "Lightweight analytics SDK for browser and React Native applications",
+  "description": "Lightweight analytics SDK for browser, React Native, and Expo applications",
   "peerDependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
-    "react-native-device-info": "^10.0.0"
+    "react-native-device-info": "^10.0.0",
+    "expo-device": "^6.0.0",
+    "expo-application": "^6.0.0"
   },
   "peerDependenciesMeta": {
     "@react-native-async-storage/async-storage": {
       "optional": true
     },
     "react-native-device-info": {
+      "optional": true
+    },
+    "expo-device": {
+      "optional": true
+    },
+    "expo-application": {
       "optional": true
     }
   },
