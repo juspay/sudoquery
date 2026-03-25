@@ -16,7 +16,7 @@ A lightweight TypeScript analytics SDK for tracking events in browser and Node.j
 ## Installation
 
 ```bash
-npm install git+ssh://git@ssh.bitbucket.juspay.net/~sridatta.yalla_juspay.in/hyper-analytics-ts.git#main
+npm install git+ssh://git@ssh.bitbucket.juspay.net/picaf/hyper-analytics-ts.git#release
 ```
 
 ## Quick Start
