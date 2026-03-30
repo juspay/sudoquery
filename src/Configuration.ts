@@ -1,7 +1,7 @@
 class Configuration {
   private static _batchSize: number = 10;
   private static _flushInterval: number | null = null;
-  private static _endpoint: string = "http://hyper-analytics-alb-c33157e-1810523293.ap-south-1.elb.amazonaws.com/push_batch";
+  private static _endpoint: string = "https://sudoquery.juspay.io/api/push_batch";
   private static _token: string | null = null;
 
   static get batchSize(): number {
