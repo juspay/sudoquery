@@ -1,6 +1,6 @@
-import { HyperAnalytics } from '../src/HyperAnalytics';
+import { SudoQuery } from '../src/SudoQuery';
 
-describe('HyperAnalytics', () => {
+describe('SudoQuery', () => {
   beforeEach(() => {
     // Reset initialization state before each test
     // Note: There's no public method to reset didInit, so we can't fully isolate tests
@@ -10,21 +10,21 @@ describe('HyperAnalytics', () => {
   describe('init', () => {
     it('should initialize the analytics SDK', () => {
       // First call should succeed
-      expect(() => HyperAnalytics.init()).not.toThrow();
+      expect(() => SudoQuery.init()).not.toThrow();
     });
 
     it('should prevent double initialization', () => {
-      HyperAnalytics.init();
+      SudoQuery.init();
 
       // Second call should not throw but should also not reinitialize
-      expect(() => HyperAnalytics.init()).not.toThrow();
+      expect(() => SudoQuery.init()).not.toThrow();
     });
 
     it('should be idempotent - multiple calls are safe', () => {
       expect(() => {
-        HyperAnalytics.init();
-        HyperAnalytics.init();
-        HyperAnalytics.init();
+        SudoQuery.init();
+        SudoQuery.init();
+        SudoQuery.init();
       }).not.toThrow();
     });
   });
@@ -32,37 +32,37 @@ describe('HyperAnalytics', () => {
   describe('track', () => {
     beforeEach(() => {
       // Initialize before each track test
-      HyperAnalytics.init();
+      SudoQuery.init();
     });
 
     describe('with valid primitive properties', () => {
       it('should not throw with string properties', () => {
         expect(() => {
-          HyperAnalytics.track('event_name', { key: 'value' });
+          SudoQuery.track('event_name', { key: 'value' });
         }).not.toThrow();
       });
 
       it('should not throw with number properties', () => {
         expect(() => {
-          HyperAnalytics.track('event_name', { count: 42 });
+          SudoQuery.track('event_name', { count: 42 });
         }).not.toThrow();
       });
 
       it('should not throw with boolean properties', () => {
         expect(() => {
-          HyperAnalytics.track('event_name', { active: true });
+          SudoQuery.track('event_name', { active: true });
         }).not.toThrow();
       });
 
       it('should not throw with null properties', () => {
         expect(() => {
-          HyperAnalytics.track('event_name', { value: null });
+          SudoQuery.track('event_name', { value: null });
         }).not.toThrow();
       });
 
       it('should not throw with mixed primitive properties', () => {
         expect(() => {
-          HyperAnalytics.track('event_name', {
+          SudoQuery.track('event_name', {
             name: 'test',
             count: 42,
             active: true,
@@ -73,15 +73,15 @@ describe('HyperAnalytics', () => {
 
       it('should not throw with empty object properties', () => {
         expect(() => {
-          HyperAnalytics.track('event_name', {});
+          SudoQuery.track('event_name', {});
         }).not.toThrow();
       });
 
       it('should accept any event name string', () => {
         expect(() => {
-          HyperAnalytics.track('page_view', {});
-          HyperAnalytics.track('button_click', {});
-          HyperAnalytics.track('user_signup', {});
+          SudoQuery.track('page_view', {});
+          SudoQuery.track('button_click', {});
+          SudoQuery.track('user_signup', {});
         }).not.toThrow();
       });
     });
@@ -89,25 +89,25 @@ describe('HyperAnalytics', () => {
     describe('with invalid non-primitive properties', () => {
       it('should throw with nested object properties', () => {
         expect(() => {
-          HyperAnalytics.track('event_name', { user: { name: 'test' } });
+          SudoQuery.track('event_name', { user: { name: 'test' } });
         }).toThrow('only primitives are allowed as properties');
       });
 
       it('should throw with array properties', () => {
         expect(() => {
-          HyperAnalytics.track('event_name', { items: [1, 2, 3] });
+          SudoQuery.track('event_name', { items: [1, 2, 3] });
         }).toThrow('only primitives are allowed as properties');
       });
 
       it('should throw with empty array properties', () => {
         expect(() => {
-          HyperAnalytics.track('event_name', { items: [] });
+          SudoQuery.track('event_name', { items: [] });
         }).toThrow('only primitives are allowed as properties');
       });
 
       it('should throw with deeply nested object properties', () => {
         expect(() => {
-          HyperAnalytics.track('event_name', {
+          SudoQuery.track('event_name', {
             level1: {
               level2: {
                 level3: { value: 'deep' },
@@ -119,7 +119,7 @@ describe('HyperAnalytics', () => {
 
       it('should throw with array of objects', () => {
         expect(() => {
-          HyperAnalytics.track('event_name', {
+          SudoQuery.track('event_name', {
             users: [{ name: 'a' }, { name: 'b' }],
           });
         }).toThrow('only primitives are allowed as properties');
@@ -127,7 +127,7 @@ describe('HyperAnalytics', () => {
 
       it('should throw with mixed nested structures', () => {
         expect(() => {
-          HyperAnalytics.track('event_name', {
+          SudoQuery.track('event_name', {
             name: 'test',
             nested: { value: 'inner' },
           });
@@ -136,7 +136,7 @@ describe('HyperAnalytics', () => {
 
       it('should throw an Error object with correct message', () => {
         expect(() => {
-          HyperAnalytics.track('event_name', { nested: {} });
+          SudoQuery.track('event_name', { nested: {} });
         }).toThrow('only primitives are allowed as properties');
       });
     });
@@ -144,10 +144,10 @@ describe('HyperAnalytics', () => {
     describe('edge cases', () => {
       it('should handle special event names', () => {
         expect(() => {
-          HyperAnalytics.track('', {});
-          HyperAnalytics.track('event with spaces', {});
-          HyperAnalytics.track('event-with-dashes', {});
-          HyperAnalytics.track('event_with_underscores', {});
+          SudoQuery.track('', {});
+          SudoQuery.track('event with spaces', {});
+          SudoQuery.track('event-with-dashes', {});
+          SudoQuery.track('event_with_underscores', {});
         }).not.toThrow();
       });
 
@@ -158,14 +158,14 @@ describe('HyperAnalytics', () => {
         }
 
         expect(() => {
-          HyperAnalytics.track('event_name', manyProps);
+          SudoQuery.track('event_name', manyProps);
         }).not.toThrow();
       });
 
       it('should handle very long event names', () => {
         const longName = 'a'.repeat(1000);
         expect(() => {
-          HyperAnalytics.track(longName, {});
+          SudoQuery.track(longName, {});
         }).not.toThrow();
       });
     });
@@ -174,17 +174,17 @@ describe('HyperAnalytics', () => {
   describe('static behavior', () => {
     it('should not require instantiation', () => {
       expect(() => {
-        HyperAnalytics.init();
-        HyperAnalytics.track('test', {});
+        SudoQuery.init();
+        SudoQuery.track('test', {});
       }).not.toThrow();
     });
 
     it('should maintain state across calls', () => {
-      HyperAnalytics.init();
+      SudoQuery.init();
       expect(() => {
-        HyperAnalytics.track('event1', {});
-        HyperAnalytics.track('event2', {});
-        HyperAnalytics.track('event3', {});
+        SudoQuery.track('event1', {});
+        SudoQuery.track('event2', {});
+        SudoQuery.track('event3', {});
       }).not.toThrow();
     });
   });
@@ -192,95 +192,95 @@ describe('HyperAnalytics', () => {
   describe('user management', () => {
     beforeEach(() => {
       // Reset user state before each test
-      HyperAnalytics.removeUser();
+      SudoQuery.removeUser();
     });
 
     describe('setUser', () => {
       it('should set a user ID', () => {
-        HyperAnalytics.setUser('user_123');
-        expect(HyperAnalytics.getUser()).toBe('user_123');
+        SudoQuery.setUser('user_123');
+        expect(SudoQuery.getUser()).toBe('user_123');
       });
 
       it('should update existing user ID', () => {
-        HyperAnalytics.setUser('user_123');
-        HyperAnalytics.setUser('user_456');
-        expect(HyperAnalytics.getUser()).toBe('user_456');
+        SudoQuery.setUser('user_123');
+        SudoQuery.setUser('user_456');
+        expect(SudoQuery.getUser()).toBe('user_456');
       });
 
       it('should accept empty string as user ID', () => {
-        HyperAnalytics.setUser('');
-        expect(HyperAnalytics.getUser()).toBe('');
+        SudoQuery.setUser('');
+        expect(SudoQuery.getUser()).toBe('');
       });
 
       it('should accept special characters in user ID', () => {
-        HyperAnalytics.setUser('user@example.com');
-        expect(HyperAnalytics.getUser()).toBe('user@example.com');
+        SudoQuery.setUser('user@example.com');
+        expect(SudoQuery.getUser()).toBe('user@example.com');
       });
 
       it('should be idempotent', () => {
-        HyperAnalytics.setUser('user_123');
-        HyperAnalytics.setUser('user_123');
-        expect(HyperAnalytics.getUser()).toBe('user_123');
+        SudoQuery.setUser('user_123');
+        SudoQuery.setUser('user_123');
+        expect(SudoQuery.getUser()).toBe('user_123');
       });
     });
 
     describe('getUser', () => {
       it('should return null when no user is set', () => {
-        expect(HyperAnalytics.getUser()).toBeNull();
+        expect(SudoQuery.getUser()).toBeNull();
       });
 
       it('should return the set user ID', () => {
-        HyperAnalytics.setUser('user_123');
-        expect(HyperAnalytics.getUser()).toBe('user_123');
+        SudoQuery.setUser('user_123');
+        expect(SudoQuery.getUser()).toBe('user_123');
       });
 
       it('should return the most recently set user ID', () => {
-        HyperAnalytics.setUser('user_123');
-        HyperAnalytics.setUser('user_456');
-        expect(HyperAnalytics.getUser()).toBe('user_456');
+        SudoQuery.setUser('user_123');
+        SudoQuery.setUser('user_456');
+        expect(SudoQuery.getUser()).toBe('user_456');
       });
     });
 
     describe('removeUser', () => {
       it('should remove the current user ID', () => {
-        HyperAnalytics.setUser('user_123');
-        HyperAnalytics.removeUser();
-        expect(HyperAnalytics.getUser()).toBeNull();
+        SudoQuery.setUser('user_123');
+        SudoQuery.removeUser();
+        expect(SudoQuery.getUser()).toBeNull();
       });
 
       it('should be idempotent', () => {
-        HyperAnalytics.setUser('user_123');
-        HyperAnalytics.removeUser();
-        HyperAnalytics.removeUser();
-        HyperAnalytics.removeUser();
-        expect(HyperAnalytics.getUser()).toBeNull();
+        SudoQuery.setUser('user_123');
+        SudoQuery.removeUser();
+        SudoQuery.removeUser();
+        SudoQuery.removeUser();
+        expect(SudoQuery.getUser()).toBeNull();
       });
 
       it('should allow setting a new user after removal', () => {
-        HyperAnalytics.setUser('user_123');
-        HyperAnalytics.removeUser();
-        HyperAnalytics.setUser('user_456');
-        expect(HyperAnalytics.getUser()).toBe('user_456');
+        SudoQuery.setUser('user_123');
+        SudoQuery.removeUser();
+        SudoQuery.setUser('user_456');
+        expect(SudoQuery.getUser()).toBe('user_456');
       });
     });
   });
 
   describe('integration with track', () => {
     beforeEach(() => {
-      HyperAnalytics.init();
-      HyperAnalytics.removeUser();
+      SudoQuery.init();
+      SudoQuery.removeUser();
     });
 
     it('should not throw when tracking with user ID set', () => {
-      HyperAnalytics.setUser('user_123');
+      SudoQuery.setUser('user_123');
       expect(() => {
-        HyperAnalytics.track('test_event', {});
+        SudoQuery.track('test_event', {});
       }).not.toThrow();
     });
 
     it('should not throw when tracking without user', () => {
       expect(() => {
-        HyperAnalytics.track('test_event', {});
+        SudoQuery.track('test_event', {});
       }).not.toThrow();
     });
   });

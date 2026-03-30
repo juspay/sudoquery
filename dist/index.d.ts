@@ -20,17 +20,17 @@ type JSONSerializable = string | number | boolean | null | JSONSerializable[] | 
     [key: string]: JSONSerializable;
 };
 
-interface HyperAnalyticsConfig {
+interface SudoQueryConfig {
     flushInterval?: number;
     batchSize?: number;
     endpoint?: string;
     token?: string;
 }
-declare class HyperAnalytics {
+declare class SudoQuery {
     private static didInit;
     private static currentUser;
     private static flushTimer;
-    static init(config?: HyperAnalyticsConfig): void;
+    static init(config?: SudoQueryConfig): void;
     private static startPeriodicFlush;
     private static stopPeriodicFlush;
     /**
@@ -79,4 +79,4 @@ declare class HyperAnalytics {
     static track(eventName: string, properties?: JSONSerializable): void;
 }
 
-export { HyperAnalytics, type HyperAnalyticsConfig, type JSONSerializable };
+export { type JSONSerializable, SudoQuery, type SudoQueryConfig };

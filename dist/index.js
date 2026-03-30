@@ -20,7 +20,7 @@ var __toCommonJS = (mod) => __copyProps(__defProp({}, "__esModule", { value: tru
 // src/index.ts
 var index_exports = {};
 __export(index_exports, {
-  HyperAnalytics: () => HyperAnalytics
+  SudoQuery: () => SudoQuery
 });
 module.exports = __toCommonJS(index_exports);
 
@@ -342,8 +342,8 @@ var AnonymousId = class {
 // In-memory storage for Node.js environment
 AnonymousId.inMemoryAnonId = null;
 
-// src/HyperAnalytics.ts
-var HyperAnalytics = class {
+// src/SudoQuery.ts
+var SudoQuery = class {
   static init(config) {
     if (this.didInit) return;
     this.didInit = true;
@@ -465,10 +465,10 @@ var HyperAnalytics = class {
     Batcher.addToBatch(event);
   }
 };
-HyperAnalytics.didInit = false;
-HyperAnalytics.currentUser = null;
-HyperAnalytics.flushTimer = null;
+SudoQuery.didInit = false;
+SudoQuery.currentUser = null;
+SudoQuery.flushTimer = null;
 // Annotate the CommonJS export names for ESM import in node:
 0 && (module.exports = {
-  HyperAnalytics
+  SudoQuery
 });

@@ -126,7 +126,7 @@ describe('SuperProperties', () => {
     });
   });
 
-  describe('integration with HyperAnalytics', () => {
+  describe('integration with SudoQuery', () => {
     it('should merge super properties with event properties', () => {
       SuperProperties.addToSuperProperties('platform', 'web');
       SuperProperties.addToSuperProperties('app_version', '1.0.0');

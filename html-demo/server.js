@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 /**
- * Simple HTTP Server for HyperAnalytics Demo
+ * Simple HTTP Server for SudoQuery Demo
  *
  * Usage:
  *   node server.js [port]
@@ -68,7 +68,7 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log('='.repeat(50));
-  console.log('🚀 HyperAnalytics Demo Server');
+  console.log('🚀 SudoQuery Demo Server');
   console.log('='.repeat(50));
   console.log(`\nServer running at:`);
   console.log(`  → http://localhost:${PORT}`);

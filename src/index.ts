@@ -1,3 +1,3 @@
 // src/index.ts
-export { HyperAnalytics, type HyperAnalyticsConfig } from './HyperAnalytics';
+export { SudoQuery, type SudoQueryConfig } from './SudoQuery';
 export type { JSONSerializable } from './types';

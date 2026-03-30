@@ -9,7 +9,7 @@ __tests__/
 ├── unit/                    # Unit tests for individual modules
 │   ├── Configuration.test.ts
 │   ├── TypeValidator.test.ts
-│   ├── HyperAnalytics.test.ts
+│   ├── SudoQuery.test.ts
 │   ├── Batcher.test.ts
 │   ├── Pusher.test.ts
 │   ├── Flush.test.ts
@@ -60,7 +60,7 @@ The test suite provides **high coverage (80%+)** across all modules:
    - Tests with mixed data structures
    - Tests edge cases (empty objects, deeply nested structures)
 
-3. **HyperAnalytics.test.ts**
+3. **SudoQuery.test.ts**
    - Tests `init()` prevents double initialization
    - Tests `track()` with valid primitives
    - Tests `track()` throws error for non-primitive properties
@@ -152,11 +152,11 @@ The following bugs are documented in the test suite (tests will fail on these bu
 **Impact**: Runtime error when accessing empty array
 **Test**: `Batcher.test.ts` - "BUG: .at(-1) may fail if batches array is empty"
 
-### 4. HyperAnalytics.ts:12 - Throws String Instead of Error
-**Location**: `src/HyperAnalytics.ts:12`
+### 4. SudoQuery.ts:12 - Throws String Instead of Error
+**Location**: `src/SudoQuery.ts:12`
 **Issue**: Throws string `"only primitives are allowed as properties"` instead of Error object
 **Impact**: Poor error handling practices, inconsistent with JavaScript/TypeScript conventions
-**Test**: `HyperAnalytics.test.ts` - "BUG: should throw a string error message (BUG: should throw Error object)"
+**Test**: `SudoQuery.test.ts` - "BUG: should throw a string error message (BUG: should throw Error object)"
 
 ### 5. Pusher.ts:15 - Network Call Not Implemented
 **Location**: `src/Pusher.ts:15`

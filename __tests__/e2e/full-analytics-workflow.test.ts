@@ -1,4 +1,4 @@
-import { HyperAnalytics } from '../../src/HyperAnalytics';
+import { SudoQuery } from '../../src/SudoQuery';
 import { Batcher } from '../../src/Batcher';
 import { Pusher } from '../../src/Pusher';
 import { flush } from '../../src/Flush';
@@ -17,7 +17,7 @@ describe('Full Analytics Workflow - End-to-End', () => {
   beforeEach(() => {
     // Reset all state before each test
     Configuration.batchSize = 3;
-    HyperAnalytics['didInit'] = false;
+    SudoQuery['didInit'] = false;
     Batcher.reset();
     jest.clearAllMocks();
   });
@@ -25,13 +25,13 @@ describe('Full Analytics Workflow - End-to-End', () => {
   describe('complete user journey', () => {
     it('should handle the full analytics lifecycle: init -> track -> batch', async () => {
       // Step 1: Initialize analytics
-      HyperAnalytics.init();
-      expect(HyperAnalytics['didInit']).toBe(true);
+      SudoQuery.init();
+      expect(SudoQuery['didInit']).toBe(true);
 
       // Step 2: Track multiple events with valid properties
-      HyperAnalytics.track('page_view', { page: '/home' });
-      HyperAnalytics.track('button_click', { button: 'submit' });
-      HyperAnalytics.track('form_submit', { form: 'contact' });
+      SudoQuery.track('page_view', { page: '/home' });
+      SudoQuery.track('button_click', { button: 'submit' });
+      SudoQuery.track('form_submit', { form: 'contact' });
 
       // Step 3: Verify batching using public API
       const batch = Batcher.fetchBatchToUpload();
@@ -41,14 +41,14 @@ describe('Full Analytics Workflow - End-to-End', () => {
 
     it('should handle tracking events with invalid properties', () => {
       // Step 1: Initialize
-      HyperAnalytics.init();
+      SudoQuery.init();
 
       // Step 2: Track valid event
-      HyperAnalytics.track('valid_event', { prop: 'value' });
+      SudoQuery.track('valid_event', { prop: 'value' });
 
       // Step 3: Attempt to track invalid event (should throw)
       expect(() => {
-        HyperAnalytics.track('invalid_event', { nested: { value: 'test' } });
+        SudoQuery.track('invalid_event', { nested: { value: 'test' } });
       }).toThrow('only primitives are allowed as properties');
 
       // Step 4: Verify only valid event was batched
@@ -59,13 +59,13 @@ describe('Full Analytics Workflow - End-to-End', () => {
 
   describe('configuration changes', () => {
     it('should handle configuration changes affecting runtime behavior', () => {
-      HyperAnalytics.init();
+      SudoQuery.init();
 
       // Initial configuration
       Configuration.batchSize = 2;
 
-      HyperAnalytics.track('event_1', { id: 1 });
-      HyperAnalytics.track('event_2', { id: 2 });
+      SudoQuery.track('event_1', { id: 1 });
+      SudoQuery.track('event_2', { id: 2 });
 
       let batch = Batcher.fetchBatchToUpload();
       expect(batch).toHaveLength(2);
@@ -75,8 +75,8 @@ describe('Full Analytics Workflow - End-to-End', () => {
       // Change configuration
       Configuration.batchSize = 3;
 
-      HyperAnalytics.track('event_3', { id: 3 });
-      HyperAnalytics.track('event_4', { id: 4 });
+      SudoQuery.track('event_3', { id: 3 });
+      SudoQuery.track('event_4', { id: 4 });
 
       batch = Batcher.fetchBatchToUpload();
       expect(batch).toHaveLength(2);
@@ -86,15 +86,15 @@ describe('Full Analytics Workflow - End-to-End', () => {
   describe('error recovery', () => {
     it('should recover from initialization errors', () => {
       // First initialization
-      HyperAnalytics.init();
-      expect(HyperAnalytics['didInit']).toBe(true);
+      SudoQuery.init();
+      expect(SudoQuery['didInit']).toBe(true);
 
       // Second initialization (should be idempotent)
-      HyperAnalytics.init();
-      expect(HyperAnalytics['didInit']).toBe(true);
+      SudoQuery.init();
+      expect(SudoQuery['didInit']).toBe(true);
 
       // Should still work
-      HyperAnalytics.track('event_1', { id: 1 });
+      SudoQuery.track('event_1', { id: 1 });
 
       const batch = Batcher.fetchBatchToUpload();
       expect(batch).toHaveLength(1);
@@ -104,19 +104,19 @@ describe('Full Analytics Workflow - End-to-End', () => {
   describe('state persistence across operations', () => {
     it('should maintain state across multiple init-track cycles', async () => {
       // Cycle 1
-      HyperAnalytics.init();
+      SudoQuery.init();
       Configuration.batchSize = 2;
 
-      HyperAnalytics.track('event_1', { id: 1 });
-      HyperAnalytics.track('event_2', { id: 2 });
+      SudoQuery.track('event_1', { id: 1 });
+      SudoQuery.track('event_2', { id: 2 });
 
       let batch = Batcher.fetchBatchToUpload();
       expect(batch).toHaveLength(2);
 
       // Cycle 2
       Batcher.reset();
-      HyperAnalytics.track('event_3', { id: 3 });
-      HyperAnalytics.track('event_4', { id: 4 });
+      SudoQuery.track('event_3', { id: 3 });
+      SudoQuery.track('event_4', { id: 4 });
 
       batch = Batcher.fetchBatchToUpload();
       expect(batch).toHaveLength(2);
@@ -125,21 +125,21 @@ describe('Full Analytics Workflow - End-to-End', () => {
 
   describe('real-world scenarios', () => {
     it('should simulate a typical web application analytics flow', async () => {
-      HyperAnalytics.init();
+      SudoQuery.init();
       Configuration.batchSize = 3;
 
       // User lands on page
-      HyperAnalytics.track('page_view', { page: '/home', referrer: 'google' });
+      SudoQuery.track('page_view', { page: '/home', referrer: 'google' });
 
       // User interacts with page
-      HyperAnalytics.track('click', { element: 'button', action: 'signup' });
+      SudoQuery.track('click', { element: 'button', action: 'signup' });
 
       // User fills form
-      HyperAnalytics.track('form_start', { form: 'signup' });
-      HyperAnalytics.track('form_submit', { form: 'signup', success: true });
+      SudoQuery.track('form_start', { form: 'signup' });
+      SudoQuery.track('form_submit', { form: 'signup', success: true });
 
       // User navigates
-      HyperAnalytics.track('page_view', { page: '/dashboard' });
+      SudoQuery.track('page_view', { page: '/dashboard' });
 
       // Verify batches
       let batch = Batcher.fetchBatchToUpload();

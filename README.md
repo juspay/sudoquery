@@ -1,4 +1,4 @@
-# Hyper-Analytics
+# SudoQuery
 
 A lightweight TypeScript analytics SDK for tracking events in browser and Node.js applications. Collect user behavior data with automatic batching, anonymous user tracking, and reliable delivery.
 
@@ -22,13 +22,13 @@ npm install git+ssh://git@ssh.bitbucket.juspay.net/picaf/hyper-analytics-ts.git#
 ## Quick Start
 
 ```typescript
-import { HyperAnalytics } from 'hyper-analytics';
+import { SudoQuery } from 'sudo-query';
 
 // Initialize the SDK
-HyperAnalytics.init();
+SudoQuery.init();
 
 // Track an event
-HyperAnalytics.track('button_click', {
+SudoQuery.track('button_click', {
   button_id: 'submit',
   page: '/checkout'
 });
@@ -41,9 +41,9 @@ HyperAnalytics.track('button_click', {
 Call `init()` once when your application loads. You can optionally configure:
 
 ```typescript
-import { HyperAnalytics } from 'hyper-analytics';
+import { SudoQuery } from 'sudo-query';
 
-HyperAnalytics.init({
+SudoQuery.init({
   flushInterval: 5000,    // Auto-flush every 5 seconds (optional)
   batchSize: 20,          // Batch 20 events before flushing (default: 10)
   endpoint: 'https://api.example.com/events',  // Custom endpoint (default: http://hyper-analytics-alb-c33157e-1810523293.ap-south-1.elb.amazonaws.com/push_batch)
@@ -63,13 +63,13 @@ Set a user ID to associate events with authenticated users:
 
 ```typescript
 // Set user ID
-HyperAnalytics.setUser('user_123');
+SudoQuery.setUser('user_123');
 
 // Get current user ID
-const userId = HyperAnalytics.getUser();
+const userId = SudoQuery.getUser();
 
 // Clear user ID (on logout)
-HyperAnalytics.removeUser();
+SudoQuery.removeUser();
 ```
 
 ### Tracking Events
@@ -77,12 +77,12 @@ HyperAnalytics.removeUser();
 Track events with custom properties. Properties must be JSON serializable (primitives only - no nested objects):
 
 ```typescript
-HyperAnalytics.track('page_view', {
+SudoQuery.track('page_view', {
   page: '/home',
   referrer: 'https://google.com'
 });
 
-HyperAnalytics.track('purchase', {
+SudoQuery.track('purchase', {
   product_id: 'prod_456',
   price: 29.99,
   quantity: 2
@@ -95,14 +95,14 @@ Attach default properties to every event:
 
 ```typescript
 // Add super properties
-HyperAnalytics.setSuperProperty('app_version', '1.0.0');
-HyperAnalytics.setSuperProperty('environment', 'production');
+SudoQuery.setSuperProperty('app_version', '1.0.0');
+SudoQuery.setSuperProperty('environment', 'production');
 
 // Get all super properties
-const props = HyperAnalytics.getSuperProperties();
+const props = SudoQuery.getSuperProperties();
 
 // Clear all super properties
-HyperAnalytics.clearSuperProperties();
+SudoQuery.clearSuperProperties();
 ```
 
 ### Manual Flush
@@ -110,7 +110,7 @@ HyperAnalytics.clearSuperProperties();
 Force upload of pending events:
 
 ```typescript
-await HyperAnalytics.flush();
+await SudoQuery.flush();
 ```
 
 ## Configuration Options
@@ -128,13 +128,13 @@ All configuration is done through the `init()` method:
 
 **Default configuration:**
 ```typescript
-HyperAnalytics.init();
+SudoQuery.init();
 // Uses: batchSize=10, endpoint="http://hyper-analytics-alb-c33157e-1810523293.ap-south-1.elb.amazonaws.com/push_batch", no periodic flush
 ```
 
 **High-frequency tracking:**
 ```typescript
-HyperAnalytics.init({
+SudoQuery.init({
   flushInterval: 2000,   // Flush every 2 seconds
   batchSize: 50,         // Larger batches
   endpoint: 'https://analytics-api.example.com/batch'
@@ -143,7 +143,7 @@ HyperAnalytics.init({
 
 **Low-latency mode:**
 ```typescript
-HyperAnalytics.init({
+SudoQuery.init({
   flushInterval: 1000,   // Flush every second
   batchSize: 5            // Small batches
 });
@@ -151,9 +151,9 @@ HyperAnalytics.init({
 
 ## API Reference
 
-### HyperAnalytics
+### SudoQuery
 
-All functionality is accessed through the `HyperAnalytics` class.
+All functionality is accessed through the `SudoQuery` class.
 
 | Method | Description |
 |--------|-------------|

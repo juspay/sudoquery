@@ -7,19 +7,19 @@ import { AnonymousId } from "./AnonymousId";
 import { Pusher } from "./Pusher";
 import { Configuration } from "./Configuration";
 
-export interface HyperAnalyticsConfig {
+export interface SudoQueryConfig {
   flushInterval?: number;
   batchSize?: number;
   endpoint?: string;
   token?: string;
 }
 
-class HyperAnalytics {
+class SudoQuery {
     private static didInit = false;
     private static currentUser: string | null = null;
     private static flushTimer: ReturnType<typeof setInterval> | null = null;
 
-    static init(config?: HyperAnalyticsConfig) {
+    static init(config?: SudoQueryConfig) {
       if(this.didInit) return;
       this.didInit = true;
 
@@ -179,4 +179,4 @@ class HyperAnalytics {
     }
 }
 
-export { HyperAnalytics };
+export { SudoQuery };

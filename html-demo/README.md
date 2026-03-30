@@ -1,6 +1,6 @@
-# HyperAnalytics HTML Demo
+# SudoQuery HTML Demo
 
-A complete HTML demo showcasing the HyperAnalytics library using the compiled JavaScript from the `dist/` folder.
+A complete HTML demo showcasing the SudoQuery library using the compiled JavaScript from the `dist/` folder.
 
 ## Features
 
@@ -117,8 +117,8 @@ The status panel shows:
 
 ### How It Works
 
-1. **Initialization**: On page load, `HyperAnalytics.init()` is called
-2. **Event Tracking**: When you click a button, `HyperAnalytics.track()` is called
+1. **Initialization**: On page load, `SudoQuery.init()` is called
+2. **Event Tracking**: When you click a button, `SudoQuery.track()` is called
 3. **Batching**: Events are stored in batches according to the batch size
 4. **Auto-flush**: When batch reaches capacity, events are automatically flushed
 5. **Page Unload**: Events are flushed using beacon API when page is closed
@@ -177,7 +177,7 @@ Add the corresponding JavaScript function:
 
 ```javascript
 function trackCustomEvent() {
-    HyperAnalytics.track('custom_event', {
+    SudoQuery.track('custom_event', {
         customProperty: 'value',
         anotherProperty: 123
     });
@@ -220,4 +220,4 @@ The demo uses a modern gradient design with:
 
 ## License
 
-This demo is part of the HyperAnalytics project.
+This demo is part of the SudoQuery project.

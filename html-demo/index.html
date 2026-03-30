@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HyperAnalytics Demo</title>
+    <title>SudoQuery Demo</title>
     <style>
         * {
             margin: 0;
@@ -223,7 +223,7 @@
 <body>
     <div class="container">
         <div class="header">
-            <h1>🚀 HyperAnalytics Demo</h1>
+            <h1>🚀 SudoQuery Demo</h1>
             <p>Real-time analytics tracking with batching and auto-flush</p>
         </div>
 
@@ -300,13 +300,13 @@
 
     <!-- Load the compiled JavaScript as ES module -->
     <script type="module">
-        import { HyperAnalytics, Configuration, SuperProperties } from './dist/index.mjs';
+        import { SudoQuery, Configuration, SuperProperties } from './dist/index.mjs';
 
         let eventsTracked = 0;
 
         // Initialize analytics on page load
         window.addEventListener('DOMContentLoaded', () => {
-            HyperAnalytics.init('localclient');
+            SudoQuery.init('localclient');
             document.getElementById('initialized').textContent = 'Yes';
             logEvent('System', 'Analytics initialized');
 
@@ -329,14 +329,14 @@
         function setUser() {
             const userId = document.getElementById('userIdInput').value.trim();
             if (userId) {
-                HyperAnalytics.setUser(userId);
+                SudoQuery.setUser(userId);
                 updateStatus();
                 logEvent('User', `User set to: ${userId}`);
             }
         }
 
         function removeUser() {
-            HyperAnalytics.removeUser();
+            SudoQuery.removeUser();
             updateStatus();
             logEvent('User', 'User removed');
         }
@@ -344,23 +344,23 @@
         function setGroup() {
             const groupId = document.getElementById('groupIdInput').value.trim();
             if (groupId) {
-                HyperAnalytics.setGroup(groupId);
+                SudoQuery.setGroup(groupId);
                 updateStatus();
                 logEvent('Group', `Group set to: ${groupId}`);
             }
         }
 
         function removeGroup() {
-            HyperAnalytics.removeGroup();
+            SudoQuery.removeGroup();
             updateStatus();
             logEvent('Group', 'Group removed');
         }
 
         // Event Tracking
         function trackPageView() {
-            HyperAnalytics.track('page_view', {
+            SudoQuery.track('page_view', {
                 page: '/demo',
-                title: 'HyperAnalytics Demo',
+                title: 'SudoQuery Demo',
                 referrer: document.referrer || 'direct'
             });
             incrementEvents();
@@ -368,7 +368,7 @@
         }
 
         function trackButtonClick() {
-            HyperAnalytics.track('button_click', {
+            SudoQuery.track('button_click', {
                 buttonId: 'demo-button',
                 buttonText: 'Track Event',
                 buttonColor: 'purple'
@@ -378,7 +378,7 @@
         }
 
         function trackFormSubmit() {
-            HyperAnalytics.track('form_submit', {
+            SudoQuery.track('form_submit', {
                 formId: 'demo-form',
                 formType: 'contact',
                 success: true,
@@ -389,7 +389,7 @@
         }
 
         function trackPurchase() {
-            HyperAnalytics.track('purchase', {
+            SudoQuery.track('purchase', {
                 productId: 'prod_001',
                 productName: 'Premium Analytics',
                 price: 99.99,
@@ -401,7 +401,7 @@
         }
 
         function trackError() {
-            HyperAnalytics.track('error', {
+            SudoQuery.track('error', {
                 errorType: 'demo_error',
                 errorMessage: 'This is a demo error',
                 errorCode: 'DEMO_001',
@@ -421,8 +421,8 @@
 
         // Utility Functions
         function updateStatus() {
-            const currentUser = HyperAnalytics.getUser();
-            const currentGroup = HyperAnalytics.getGroup();
+            const currentUser = SudoQuery.getUser();
+            const currentGroup = SudoQuery.getGroup();
             const batchSize = Configuration.batchSize;
 
             document.getElementById('currentUser').textContent = currentUser || 'null';
@@ -438,8 +438,8 @@
         function logEvent(eventName, message) {
             const log = document.getElementById('eventLog');
             const timestamp = new Date().toLocaleTimeString();
-            const currentUser = HyperAnalytics.getUser();
-            const currentGroup = HyperAnalytics.getGroup();
+            const currentUser = SudoQuery.getUser();
+            const currentGroup = SudoQuery.getGroup();
 
             const userBadge = currentUser ? `<span class="badge user">👤 ${currentUser}</span>` : '';
             const groupBadge = currentGroup ? `<span class="badge group">👥 ${currentGroup}</span>` : '';
