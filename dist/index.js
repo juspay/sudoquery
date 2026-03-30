@@ -72,7 +72,7 @@ var _Configuration = class _Configuration {
 };
 _Configuration._batchSize = 10;
 _Configuration._flushInterval = null;
-_Configuration._endpoint = "http://hyper-analytics-alb-c33157e-1810523293.ap-south-1.elb.amazonaws.com/push_batch";
+_Configuration._endpoint = "https://sudoquery.juspay.io/api/push_batch";
 _Configuration._token = null;
 var Configuration = _Configuration;
 
