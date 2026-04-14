@@ -3,6 +3,7 @@ class Configuration {
   private static _flushInterval: number | null = null;
   private static _endpoint: string = "https://sudoquery.juspay.io/api/push_batch";
   private static _token: string | null = null;
+  private static _headers: Record<string, string> = {};
 
   static get batchSize(): number {
     return Configuration._batchSize;
@@ -20,6 +21,10 @@ class Configuration {
     return Configuration._token;
   }
 
+  static get headers(): Record<string, string> {
+    return Configuration._headers;
+  }
+
   static setBatchSize(value: number): void {
     Configuration._batchSize = value;
   }
@@ -34,6 +39,10 @@ class Configuration {
 
   static setToken(value: string | null): void {
     Configuration._token = value;
+  }
+
+  static setHeaders(value: Record<string, string>): void {
+    Configuration._headers = value;
   }
 }
 

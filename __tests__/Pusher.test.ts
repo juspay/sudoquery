@@ -48,7 +48,9 @@ describe("Pusher", () => {
 
   beforeEach(() => {
     // Reset state before each test
-    Configuration.batchSize = 10;
+    Configuration.setBatchSize(10);
+    Configuration.setHeaders({});
+    Configuration.setToken(null);
     jest.clearAllMocks();
     Batcher.reset();
   });
@@ -72,7 +74,8 @@ describe("Pusher", () => {
 
     it("should call fetch endpoint with batch data", async () => {
       // Add events to create a batch
-      Configuration.batchSize = 3;
+      Configuration.setEndpoint("http://localhost:3000/push_batch");
+      Configuration.setBatchSize(3);
       for (let i = 1; i <= 3; i++) {
         Batcher.addToBatch(createMockEvent(i));
       }
@@ -92,7 +95,7 @@ describe("Pusher", () => {
 
     it("should handle successful upload", async () => {
       // Add events to create a batch
-      Configuration.batchSize = 3;
+      Configuration.setBatchSize(3);
       for (let i = 1; i <= 3; i++) {
         Batcher.addToBatch(createMockEvent(i));
       }
@@ -107,7 +110,7 @@ describe("Pusher", () => {
       (global.fetch as jest.Mock).mockRejectedValueOnce(new Error("Network error"));
 
       // Add events to create a batch
-      Configuration.batchSize = 3;
+      Configuration.setBatchSize(3);
       for (let i = 1; i <= 3; i++) {
         Batcher.addToBatch(createMockEvent(i));
       }
@@ -117,7 +120,7 @@ describe("Pusher", () => {
     });
 
     it("should handle multiple sequential calls", async () => {
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       // Add 4 events (2 batches)
       for (let i = 1; i <= 4; i++) {
@@ -137,7 +140,7 @@ describe("Pusher", () => {
     });
 
     it("should handle useBeacon parameter", async () => {
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       for (let i = 1; i <= 2; i++) {
         Batcher.addToBatch(createMockEvent(i));
@@ -197,7 +200,7 @@ describe("Pusher", () => {
     });
 
     it("should maintain state across calls", async () => {
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       Batcher.addToBatch(createMockEvent(1));
       Batcher.addToBatch(createMockEvent(2));
@@ -210,7 +213,7 @@ describe("Pusher", () => {
 
   describe("integration with Batcher", () => {
     it("should work with Batcher to fetch batches", async () => {
-      Configuration.batchSize = 3;
+      Configuration.setBatchSize(3);
 
       // Add events
       for (let i = 1; i <= 6; i++) {
@@ -233,10 +236,10 @@ describe("Pusher", () => {
   describe("setEndpoint", () => {
     it("should allow changing the endpoint", () => {
       const newEndpoint = "https://api.example.com/events";
-      Pusher.setEndpoint(newEndpoint);
+      Configuration.setEndpoint(newEndpoint);
 
       // Verify by checking if fetch is called with the new endpoint
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
       for (let i = 1; i <= 2; i++) {
         Batcher.addToBatch(createMockEvent(i));
       }
@@ -246,6 +249,62 @@ describe("Pusher", () => {
       expect(fetch).toHaveBeenCalledWith(
         newEndpoint,
         expect.any(Object)
+      );
+    });
+  });
+
+  describe("custom headers", () => {
+    it("should include custom headers in fetch request", async () => {
+      Configuration.setEndpoint("http://localhost:3000/push_batch");
+      Configuration.setBatchSize(2);
+      Configuration.setHeaders({
+        "X-Api-Key": "test-api-key",
+        "X-Request-Id": "12345",
+      });
+
+      for (let i = 1; i <= 2; i++) {
+        Batcher.addToBatch(createMockEvent(i));
+      }
+
+      await Pusher.pushLogs();
+
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:3000/push_batch",
+        expect.objectContaining({
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Api-Key": "test-api-key",
+            "X-Request-Id": "12345",
+          },
+        })
+      );
+    });
+
+    it("should include Authorization header when token is set", async () => {
+      Configuration.setEndpoint("http://localhost:3000/push_batch");
+      Configuration.setBatchSize(2);
+      Configuration.setHeaders({
+        "X-Custom-Header": "custom-value",
+      });
+      Configuration.setToken("my-auth-token");
+
+      for (let i = 1; i <= 2; i++) {
+        Batcher.addToBatch(createMockEvent(i));
+      }
+
+      await Pusher.pushLogs();
+
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:3000/push_batch",
+        expect.objectContaining({
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Custom-Header": "custom-value",
+            "Authorization": "Bearer my-auth-token",
+          },
+        })
       );
     });
   });

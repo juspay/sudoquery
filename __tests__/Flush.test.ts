@@ -7,7 +7,7 @@ import type { Event } from '../src/types';
 describe('flush', () => {
   beforeEach(() => {
     // Reset state before each test
-    Configuration.batchSize = 10;
+    Configuration.setBatchSize(10);
     Pusher['_isUploadInProgress'] = false;
     Batcher.reset();
     jest.clearAllMocks();
@@ -81,7 +81,7 @@ describe('flush', () => {
   describe('integration with Pusher', () => {
     it('should work with Pusher to upload batches', async () => {
       // Add some batches
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       for (let i = 1; i <= 6; i++) {
         Batcher.addToBatch(createMockEvent(i));

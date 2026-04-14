@@ -16,7 +16,7 @@ jest.mock('../../src/Pusher', () => ({
 describe('Full Analytics Workflow - End-to-End', () => {
   beforeEach(() => {
     // Reset all state before each test
-    Configuration.batchSize = 3;
+    Configuration.setBatchSize(3);
     SudoQuery['didInit'] = false;
     Batcher.reset();
     jest.clearAllMocks();
@@ -62,7 +62,7 @@ describe('Full Analytics Workflow - End-to-End', () => {
       SudoQuery.init();
 
       // Initial configuration
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       SudoQuery.track('event_1', { id: 1 });
       SudoQuery.track('event_2', { id: 2 });
@@ -73,7 +73,7 @@ describe('Full Analytics Workflow - End-to-End', () => {
       Batcher.setMarkLastBatchUploaded();
 
       // Change configuration
-      Configuration.batchSize = 3;
+      Configuration.setBatchSize(3);
 
       SudoQuery.track('event_3', { id: 3 });
       SudoQuery.track('event_4', { id: 4 });
@@ -105,7 +105,7 @@ describe('Full Analytics Workflow - End-to-End', () => {
     it('should maintain state across multiple init-track cycles', async () => {
       // Cycle 1
       SudoQuery.init();
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       SudoQuery.track('event_1', { id: 1 });
       SudoQuery.track('event_2', { id: 2 });
@@ -126,7 +126,7 @@ describe('Full Analytics Workflow - End-to-End', () => {
   describe('real-world scenarios', () => {
     it('should simulate a typical web application analytics flow', async () => {
       SudoQuery.init();
-      Configuration.batchSize = 3;
+      Configuration.setBatchSize(3);
 
       // User lands on page
       SudoQuery.track('page_view', { page: '/home', referrer: 'google' });

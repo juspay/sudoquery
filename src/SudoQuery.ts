@@ -12,6 +12,7 @@ export interface SudoQueryConfig {
   batchSize?: number;
   endpoint?: string;
   token?: string;
+  headers?: Record<string, string>;
 }
 
 class SudoQuery {
@@ -36,6 +37,11 @@ class SudoQuery {
       // Configure token if provided
       if (config?.token !== undefined) {
         Configuration.setToken(config.token);
+      }
+
+      // Configure custom headers if provided
+      if (config?.headers !== undefined) {
+        Configuration.setHeaders(config.headers);
       }
 
       // Start periodic auto-flush if configured

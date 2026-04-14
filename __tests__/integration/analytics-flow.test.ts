@@ -7,7 +7,7 @@ import { Configuration } from '../../src/Configuration';
 describe('Analytics Flow Integration', () => {
   beforeEach(() => {
     // Reset all state before each test
-    Configuration.batchSize = 3;
+    Configuration.setBatchSize(3);
     SudoQuery['didInit'] = false;
     jest.clearAllMocks();
     Batcher.reset();
@@ -33,7 +33,7 @@ describe('Analytics Flow Integration', () => {
     it('should handle multiple batches correctly', () => {
       SudoQuery.init();
 
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       // Track 5 events (should create 3 batches: 2, 2, 1)
       for (let i = 1; i <= 5; i++) {
@@ -74,7 +74,7 @@ describe('Analytics Flow Integration', () => {
     it('should respect batch size configuration', () => {
       SudoQuery.init();
 
-      Configuration.batchSize = 5;
+      Configuration.setBatchSize(5);
 
       for (let i = 1; i <= 12; i++) {
         SudoQuery.track(`event_${i}`, { id: i });
@@ -96,7 +96,7 @@ describe('Analytics Flow Integration', () => {
     it('should dynamically adjust to batch size changes', () => {
       SudoQuery.init();
 
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       SudoQuery.track('event_1', { id: 1 });
       SudoQuery.track('event_2', { id: 2 });
@@ -113,7 +113,7 @@ describe('Analytics Flow Integration', () => {
       Batcher.setMarkLastBatchUploaded();
 
       // Change batch size mid-stream
-      Configuration.batchSize = 5;
+      Configuration.setBatchSize(5);
 
       SudoQuery.track('event_4', { id: 4 });
       SudoQuery.track('event_5', { id: 5 });
@@ -126,7 +126,7 @@ describe('Analytics Flow Integration', () => {
     it('should handle batch size of 1', () => {
       SudoQuery.init();
 
-      Configuration.batchSize = 1;
+      Configuration.setBatchSize(1);
 
       for (let i = 1; i <= 5; i++) {
         SudoQuery.track(`event_${i}`, { id: i });
@@ -146,7 +146,7 @@ describe('Analytics Flow Integration', () => {
       SudoQuery.init();
 
       // First batch
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
       SudoQuery.track('event_1', { id: 1 });
       SudoQuery.track('event_2', { id: 2 });
 
@@ -208,7 +208,7 @@ describe('Analytics Flow Integration', () => {
   describe('performance and scalability', () => {
     it('should handle large volumes of events efficiently', () => {
       SudoQuery.init();
-      Configuration.batchSize = 50;
+      Configuration.setBatchSize(50);
 
       // Track 100 events (reduced from 1000 to avoid memory issues)
       for (let i = 1; i <= 100; i++) {
@@ -225,7 +225,7 @@ describe('Analytics Flow Integration', () => {
 
     it('should handle events with large payloads', () => {
       SudoQuery.init();
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       const largePayload: Record<string, string> = {};
       for (let i = 0; i < 100; i++) {

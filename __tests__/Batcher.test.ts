@@ -10,7 +10,7 @@ jest.mock('../src/Flush', () => ({
 describe('Batcher', () => {
   beforeEach(() => {
     // Reset configuration and batcher state before each test
-    Configuration.batchSize = 10;
+    Configuration.setBatchSize(10);
     Batcher.reset();
   });
 
@@ -51,7 +51,7 @@ describe('Batcher', () => {
     });
 
     it('should create a new batch when current batch reaches batch size', () => {
-      Configuration.batchSize = 3;
+      Configuration.setBatchSize(3);
 
       const event1 = createMockEvent(1);
       const event2 = createMockEvent(2);
@@ -73,7 +73,7 @@ describe('Batcher', () => {
     });
 
     it('should respect custom batch size', () => {
-      Configuration.batchSize = 5;
+      Configuration.setBatchSize(5);
 
       for (let i = 1; i <= 7; i++) {
         Batcher.addToBatch(createMockEvent(i));
@@ -88,7 +88,7 @@ describe('Batcher', () => {
     });
 
     it('should handle batch size of 1', () => {
-      Configuration.batchSize = 1;
+      Configuration.setBatchSize(1);
 
       Batcher.addToBatch(createMockEvent(1));
       Batcher.addToBatch(createMockEvent(2));
@@ -102,7 +102,7 @@ describe('Batcher', () => {
     });
 
     it('should handle large batch sizes', () => {
-      Configuration.batchSize = 100;
+      Configuration.setBatchSize(100);
 
       for (let i = 1; i <= 150; i++) {
         Batcher.addToBatch(createMockEvent(i));
@@ -119,7 +119,7 @@ describe('Batcher', () => {
 
   describe('fetchBatchToUpload', () => {
     it('should return the first batch when called initially', () => {
-      Configuration.batchSize = 3;
+      Configuration.setBatchSize(3);
       for (let i = 1; i <= 5; i++) {
         Batcher.addToBatch(createMockEvent(i));
       }
@@ -135,7 +135,7 @@ describe('Batcher', () => {
     });
 
     it('should return subsequent batches on consecutive calls', () => {
-      Configuration.batchSize = 3;
+      Configuration.setBatchSize(3);
       for (let i = 1; i <= 5; i++) {
         Batcher.addToBatch(createMockEvent(i));
       }
@@ -155,7 +155,7 @@ describe('Batcher', () => {
 
   describe('setMarkLastBatchUploaded', () => {
     it('should allow marking batch as uploaded', () => {
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       Batcher.addToBatch(createMockEvent(1));
       Batcher.addToBatch(createMockEvent(2));
@@ -171,7 +171,7 @@ describe('Batcher', () => {
     });
 
     it('should work correctly with multiple calls', () => {
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       // Add 6 events (3 batches)
       for (let i = 1; i <= 6; i++) {
@@ -198,7 +198,7 @@ describe('Batcher', () => {
 
   describe('integration with Configuration', () => {
     it('should use updated batch size after configuration change', () => {
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       Batcher.addToBatch(createMockEvent(1));
       Batcher.addToBatch(createMockEvent(2));
@@ -215,7 +215,7 @@ describe('Batcher', () => {
       Batcher.setMarkLastBatchUploaded();
 
       // Change batch size
-      Configuration.batchSize = 5;
+      Configuration.setBatchSize(5);
 
       Batcher.addToBatch(createMockEvent(4));
       Batcher.addToBatch(createMockEvent(5));
@@ -254,7 +254,7 @@ describe('Batcher', () => {
 
   describe('edge cases', () => {
     it('should handle events with large payloads', () => {
-      Configuration.batchSize = 2;
+      Configuration.setBatchSize(2);
 
       const largeEvent: Event = {
         eventName: 'large_event',
