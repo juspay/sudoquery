@@ -16,7 +16,7 @@ A lightweight TypeScript analytics SDK for tracking events in browser and Node.j
 ## Installation
 
 ```bash
-npm install git+ssh://git@ssh.bitbucket.juspay.net/picaf/hyper-analytics-ts.git#release
+npm i sudo-query
 ```
 
 ## Quick Start
@@ -46,8 +46,12 @@ import { SudoQuery } from 'sudo-query';
 SudoQuery.init({
   flushInterval: 5000,    // Auto-flush every 5 seconds (optional)
   batchSize: 20,          // Batch 20 events before flushing (default: 10)
-  endpoint: 'https://api.example.com/events',  // Custom endpoint (default: http://hyper-analytics-alb-c33157e-1810523293.ap-south-1.elb.amazonaws.com/push_batch)
-  token: 'YOUR_PROJECT_TOKEN'  // Project token for authentication (required)
+  endpoint: 'https://api.example.com/events',  // Custom endpoint (default: https://sudoquery.juspay.io/push_batch)
+  token: 'YOUR_PROJECT_TOKEN',  // Project token for authentication (required)
+  headers: {              // Custom headers to send with requests (optional)
+    'X-Api-Key': 'your-api-key',
+    'X-Custom-Header': 'custom-value'
+  }
 });
 ```
 
@@ -123,6 +127,7 @@ All configuration is done through the `init()` method:
 | `batchSize` | `number \| undefined` | `10` | Number of events to accumulate before auto-flushing. |
 | `endpoint` | `string \| undefined` | `"http://hyper-analytics-alb-c33157e-1810523293.ap-south-1.elb.amazonaws.com/push_batch"` | URL where events are sent. |
 | `token` | `string \| undefined` | `undefined` | Project token for authentication. Required for sending events. |
+| `headers` | `Record<string, string> \| undefined` | `{}` | Custom headers to include in all requests to the endpoint. |
 
 ### Example Configurations
 
@@ -137,7 +142,7 @@ SudoQuery.init();
 SudoQuery.init({
   flushInterval: 2000,   // Flush every 2 seconds
   batchSize: 50,         // Larger batches
-  endpoint: 'https://analytics-api.example.com/batch'
+  endpoint: 'https://analytics.example.com/batch'
 });
 ```
 
