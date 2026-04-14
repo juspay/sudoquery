@@ -193,10 +193,12 @@ describe("Pusher", () => {
 
   describe("static behavior", () => {
     it("should not require instantiation", () => {
+      jest.useFakeTimers();
       expect(() => {
         Pusher.pushLogs();
         Pusher.startScheduler(1000);
       }).not.toThrow();
+      jest.useRealTimers();
     });
 
     it("should maintain state across calls", async () => {
