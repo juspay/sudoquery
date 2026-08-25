@@ -1,8 +1,7 @@
 import { Batcher } from "./Batcher";
 import { flush } from "./Flush";
-import type { Event, BatchPayload, ClientEvent } from "./types";
-import { getSessionData } from "./Session";
-import { AnonymousId } from "./AnonymousId";
+import type { Event, BatchPayload } from "./types";
+import { getSystemProperties } from "./Session";
 import { Configuration } from "./Configuration";
 
 export class Pusher {
@@ -13,23 +12,12 @@ export class Pusher {
   }
 
   /**
-   * Transform internal Event array to BatchPayload format
+   * Wrap queued collector events in the collector batch format.
    */
   private static transformBatch(batch: Event[]): BatchPayload {
-    const sessionData = getSessionData();
-
-    const clientEvents: ClientEvent[] = batch.map((event) => ({
-      event_id: event.eventId,
-      event_name: event.eventName,
-      event_timestamp: event.at,
-      user_id: event.user,
-      anon_id: event.anon_id,
-      properties: JSON.stringify(event.properties),
-    }));
-
     return {
-      session: sessionData,
-      events: clientEvents,
+      events: batch,
+      system_properties: getSystemProperties(),
     };
   }
 
@@ -50,9 +38,8 @@ export class Pusher {
     }
 
     if (useBeacon) {
-      // Use navigator.sendBeacon() for reliable delivery during page unload
-      // Beacon is fire-and-forget - we don't wait for response
-      this.sendWithBeacon(payload);
+      // Use keepalive fetch during unload so collector-required headers are sent.
+      this.sendWithKeepalive(payload);
       this._isUploadInProgress = false;
       return null; // Don't mark batch as uploaded since we don't know if it succeeded
     } else {
@@ -63,35 +50,37 @@ export class Pusher {
     }
   }
 
-  private static sendWithBeacon(payload: BatchPayload): boolean {
-    // Note: navigator.sendBeacon doesn't support custom headers
-    // For authenticated requests during page unload, consider using fetch with keepalive
-    // or accept that beacon requests won't have authentication
-    if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-      try {
-        const blob = new Blob([JSON.stringify(payload)], {
-          type: "application/json",
-        });
-        return navigator.sendBeacon(this.endpoint, blob);
-      } catch (error) {
-        console.error("Beacon send failed:", error);
-        return false;
-      }
+  private static sendWithKeepalive(payload: BatchPayload): boolean {
+    if (typeof fetch === "undefined") {
+      return false;
     }
-    return false;
+
+    const headers = this.buildHeaders(payload);
+    if (!headers) {
+      return false;
+    }
+
+    try {
+      void fetch(this.endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+        keepalive: true,
+      });
+      return true;
+    } catch (error) {
+      console.error("Keepalive fetch failed:", error);
+      return false;
+    }
   }
 
   private static async sendNormally(payload: BatchPayload): Promise<boolean> {
+    const headers = this.buildHeaders(payload);
+    if (!headers) {
+      return false;
+    }
+
     try {
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        ...Configuration.headers,
-      };
-
-      if (Configuration.token) {
-        headers["Authorization"] = `Bearer ${Configuration.token}`;
-      }
-
       const response = await fetch(this.endpoint, {
         method: "POST",
         headers,
@@ -102,6 +91,32 @@ export class Pusher {
       console.error("Fetch failed:", error);
       return false;
     }
+  }
+
+  private static buildHeaders(payload: BatchPayload): Record<string, string> | null {
+    const tenantId = Configuration.tenantId ?? payload.events[0]?.tenant_id ?? null;
+
+    if (!tenantId) {
+      console.error("Cannot send analytics batch: tenantId is required by the collector.");
+      return null;
+    }
+
+    const workspaceId = Configuration.workspaceId ?? payload.events[0]?.workspace_id ?? null;
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...Configuration.headers,
+      "x-tenant-id": tenantId,
+    };
+
+    if (workspaceId) {
+      headers["x-workspace-id"] = workspaceId;
+    }
+
+    if (Configuration.token) {
+      headers.Authorization  = `Bearer ${Configuration.token}`;
+    }
+
+    return headers;
   }
 
   static async startScheduler(time: number) {

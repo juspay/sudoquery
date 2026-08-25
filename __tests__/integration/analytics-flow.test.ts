@@ -4,10 +4,16 @@ import { Pusher } from '../../src/Pusher';
 import { flush } from '../../src/Flush';
 import { Configuration } from '../../src/Configuration';
 
+jest.mock('../../src/Flush', () => ({
+  flush: jest.fn().mockResolvedValue(undefined),
+}));
+
 describe('Analytics Flow Integration', () => {
   beforeEach(() => {
     // Reset all state before each test
+    Configuration.reset();
     Configuration.setBatchSize(3);
+    Configuration.setTenantId('tenant-1');
     SudoQuery['didInit'] = false;
     jest.clearAllMocks();
     Batcher.reset();
@@ -57,16 +63,16 @@ describe('Analytics Flow Integration', () => {
       expect(batch4).toBeNull();
     });
 
-    it('should reject events with non-primitive properties', () => {
+    it('should accept nested JSON properties', () => {
       SudoQuery.init();
 
       expect(() => {
         SudoQuery.track('event_1', { nested: { value: 'test' } });
-      }).toThrow('only primitives are allowed as properties');
+      }).not.toThrow();
 
-      // Should not be added to batch
       const batch = Batcher.fetchBatchToUpload();
-      expect(batch).toBeNull();
+      expect(batch).toHaveLength(1);
+      expect(batch?.[0].properties).toEqual({ nested: { value: 'test' } });
     });
   });
 
@@ -184,16 +190,15 @@ describe('Analytics Flow Integration', () => {
   });
 
   describe('error handling', () => {
-    it('should handle invalid event properties without crashing', () => {
+    it('should handle nested event properties without crashing', () => {
       SudoQuery.init();
 
       // Valid event
       SudoQuery.track('valid_event', { prop: 'value' });
 
-      // Invalid event - should throw but not crash the system
       expect(() => {
         SudoQuery.track('invalid_event', { nested: {} });
-      }).toThrow();
+      }).not.toThrow();
 
       // System should still work for valid events
       expect(() => {
@@ -201,7 +206,7 @@ describe('Analytics Flow Integration', () => {
       }).not.toThrow();
 
       const batch = Batcher.fetchBatchToUpload();
-      expect(batch).toHaveLength(2);
+      expect(batch).toHaveLength(3);
     });
   });
 

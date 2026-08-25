@@ -3,8 +3,7 @@ import { Configuration } from '../src/Configuration';
 describe('Configuration', () => {
   beforeEach(() => {
     // Reset to default before each test
-    Configuration.setBatchSize(10);
-    Configuration.setHeaders({});
+    Configuration.reset();
   });
 
   describe('batchSize getter', () => {
@@ -90,6 +89,44 @@ describe('Configuration', () => {
       Configuration.setHeaders({ 'X-Api-Key': 'my-key' });
       Configuration.setHeaders({});
       expect(Configuration.headers).toEqual({});
+    });
+  });
+
+  describe('endpoint getter', () => {
+    it('should return the collector batch endpoint by default', () => {
+      expect(Configuration.endpoint).toBe('http://localhost:3000/batch');
+    });
+
+    it('should return the value that was set', () => {
+      Configuration.setEndpoint('https://analytics.example.com/batch');
+      expect(Configuration.endpoint).toBe('https://analytics.example.com/batch');
+    });
+  });
+
+  describe('collector identity config', () => {
+    it('should default tenant and workspace to null', () => {
+      expect(Configuration.tenantId).toBeNull();
+      expect(Configuration.workspaceId).toBeNull();
+    });
+
+    it('should allow setting tenant and workspace IDs', () => {
+      Configuration.setTenantId('tenant-1');
+      Configuration.setWorkspaceId('workspace-1');
+
+      expect(Configuration.tenantId).toBe('tenant-1');
+      expect(Configuration.workspaceId).toBe('workspace-1');
+    });
+
+    it('should default source to typescript', () => {
+      expect(Configuration.source).toBe('typescript');
+    });
+
+    it('should allow overriding source and sessionId', () => {
+      Configuration.setSource('checkout');
+      Configuration.setSessionId('session-1');
+
+      expect(Configuration.source).toBe('checkout');
+      expect(Configuration.sessionId).toBe('session-1');
     });
   });
 });

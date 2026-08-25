@@ -1,10 +1,14 @@
 import { SudoQuery } from '../src/SudoQuery';
+import { Batcher } from '../src/Batcher';
+import { Configuration } from '../src/Configuration';
 
 describe('SudoQuery', () => {
   beforeEach(() => {
-    // Reset initialization state before each test
-    // Note: There's no public method to reset didInit, so we can't fully isolate tests
-    // This is a limitation of the current implementation
+    Configuration.reset();
+    Configuration.setTenantId('tenant-1');
+    Batcher.reset();
+    SudoQuery['didInit'] = false;
+    SudoQuery.removeUser();
   });
 
   describe('init', () => {
@@ -86,26 +90,26 @@ describe('SudoQuery', () => {
       });
     });
 
-    describe('with invalid non-primitive properties', () => {
-      it('should throw with nested object properties', () => {
+    describe('with nested JSON properties', () => {
+      it('should not throw with nested object properties', () => {
         expect(() => {
           SudoQuery.track('event_name', { user: { name: 'test' } });
-        }).toThrow('only primitives are allowed as properties');
+        }).not.toThrow();
       });
 
-      it('should throw with array properties', () => {
+      it('should not throw with array properties', () => {
         expect(() => {
           SudoQuery.track('event_name', { items: [1, 2, 3] });
-        }).toThrow('only primitives are allowed as properties');
+        }).not.toThrow();
       });
 
-      it('should throw with empty array properties', () => {
+      it('should not throw with empty array properties', () => {
         expect(() => {
           SudoQuery.track('event_name', { items: [] });
-        }).toThrow('only primitives are allowed as properties');
+        }).not.toThrow();
       });
 
-      it('should throw with deeply nested object properties', () => {
+      it('should not throw with deeply nested object properties', () => {
         expect(() => {
           SudoQuery.track('event_name', {
             level1: {
@@ -114,30 +118,47 @@ describe('SudoQuery', () => {
               },
             },
           });
-        }).toThrow('only primitives are allowed as properties');
+        }).not.toThrow();
       });
 
-      it('should throw with array of objects', () => {
+      it('should not throw with array of objects', () => {
         expect(() => {
           SudoQuery.track('event_name', {
             users: [{ name: 'a' }, { name: 'b' }],
           });
-        }).toThrow('only primitives are allowed as properties');
+        }).not.toThrow();
       });
 
-      it('should throw with mixed nested structures', () => {
+      it('should not throw with mixed nested structures', () => {
         expect(() => {
           SudoQuery.track('event_name', {
             name: 'test',
             nested: { value: 'inner' },
           });
-        }).toThrow('only primitives are allowed as properties');
+        }).not.toThrow();
       });
 
-      it('should throw an Error object with correct message', () => {
+      it('should keep nested properties in the queued collector event', () => {
+        const properties = { nested: { value: 'inner' } };
+
+        SudoQuery.track('event_name', properties);
+
+        const batch = Batcher.fetchBatchToUpload();
+        expect(batch?.[0]).toEqual(expect.objectContaining({
+          name: 'event_name',
+          tenant_id: 'tenant-1',
+          properties,
+        }));
+      });
+    });
+
+    describe('without required collector configuration', () => {
+      it('should throw when tenantId is missing', () => {
+        Configuration.setTenantId(null);
+
         expect(() => {
-          SudoQuery.track('event_name', { nested: {} });
-        }).toThrow('only primitives are allowed as properties');
+          SudoQuery.track('event_name', {});
+        }).toThrow('tenantId is required before tracking events');
       });
     });
 

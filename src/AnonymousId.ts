@@ -5,17 +5,16 @@
  * - Node.js: IDs persist only for the current application session (in-memory)
  */
 
+import { generateUuid } from "./Uuid";
+
 const STORAGE_KEY = 'hyper_analytics_anon_id';
 
 export class AnonymousId {
   // In-memory storage for Node.js environment
   private static inMemoryAnonId: string | null = null;
 
-  /**
-   * Generates a new UUID v4 using crypto.randomUUID()
-   */
   private static generateId(): string {
-    return crypto.randomUUID();
+    return generateUuid();
   }
 
   /**
@@ -34,14 +33,11 @@ export class AnonymousId {
    */
   public static getOrCreate(): string {
     if (this.isBrowser()) {
-      // Browser: use localStorage
-      let anonId = localStorage.getItem(STORAGE_KEY);
+      const storedAnonId = this.getFromStorage();
+      if (storedAnonId) return storedAnonId;
 
-      if (!anonId) {
-        anonId = this.generateId();
-        localStorage.setItem(STORAGE_KEY, anonId);
-      }
-
+      const anonId = this.generateId();
+      this.setInStorage(anonId);
       return anonId;
     } else {
       // Node.js: use in-memory storage
@@ -61,7 +57,7 @@ export class AnonymousId {
    */
   public static reset(): void {
     if (this.isBrowser()) {
-      localStorage.removeItem(STORAGE_KEY);
+      this.removeFromStorage();
     } else {
       this.inMemoryAnonId = null;
     }
@@ -76,9 +72,34 @@ export class AnonymousId {
    */
   public static get(): string | null {
     if (this.isBrowser()) {
-      return localStorage.getItem(STORAGE_KEY);
+      return this.getFromStorage();
     } else {
       return this.inMemoryAnonId;
     }
+  }
+
+  private static getFromStorage(): string | null {
+    try {
+      return localStorage.getItem(STORAGE_KEY);
+    } catch (_) {
+      return this.inMemoryAnonId;
+    }
+  }
+
+  private static setInStorage(anonId: string): void {
+    try {
+      localStorage.setItem(STORAGE_KEY, anonId);
+    } catch (_) {
+      this.inMemoryAnonId = anonId;
+    }
+  }
+
+  private static removeFromStorage(): void {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (_) {
+      // Storage can be unavailable in sandboxed iframes.
+    }
+    this.inMemoryAnonId = null;
   }
 }

@@ -2,6 +2,7 @@ import { Batcher } from '../../src/Batcher';
 import { Pusher } from '../../src/Pusher';
 import { flush } from '../../src/Flush';
 import { Configuration } from '../../src/Configuration';
+import { createMockEvent } from '../testUtils';
 
 // Mock Pusher
 jest.mock('../../src/Pusher', () => ({
@@ -18,15 +19,6 @@ describe('Batcher and Flush Integration', () => {
     Configuration.setBatchSize(3);
     Batcher.reset();
     jest.clearAllMocks();
-  });
-
-  const createMockEvent = (id: number) => ({
-    eventName: `event_${id}`,
-    eventId: crypto.randomUUID(),
-    properties: { id },
-    user: `user_${id}`,
-    anon_id: crypto.randomUUID(),
-    at: Date.now(),
   });
 
   describe('batch lifecycle', () => {

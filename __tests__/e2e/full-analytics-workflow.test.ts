@@ -16,7 +16,9 @@ jest.mock('../../src/Pusher', () => ({
 describe('Full Analytics Workflow - End-to-End', () => {
   beforeEach(() => {
     // Reset all state before each test
+    Configuration.reset();
     Configuration.setBatchSize(3);
+    Configuration.setTenantId('tenant-1');
     SudoQuery['didInit'] = false;
     Batcher.reset();
     jest.clearAllMocks();
@@ -39,21 +41,21 @@ describe('Full Analytics Workflow - End-to-End', () => {
       expect(batch).toHaveLength(3);
     });
 
-    it('should handle tracking events with invalid properties', () => {
+    it('should handle tracking events with nested properties', () => {
       // Step 1: Initialize
       SudoQuery.init();
 
       // Step 2: Track valid event
       SudoQuery.track('valid_event', { prop: 'value' });
 
-      // Step 3: Attempt to track invalid event (should throw)
+      // Step 3: Track a nested payload accepted by the collector
       expect(() => {
-        SudoQuery.track('invalid_event', { nested: { value: 'test' } });
-      }).toThrow('only primitives are allowed as properties');
+        SudoQuery.track('nested_event', { nested: { value: 'test' } });
+      }).not.toThrow();
 
-      // Step 4: Verify only valid event was batched
+      // Step 4: Verify both events were batched
       const batch = Batcher.fetchBatchToUpload();
-      expect(batch).toHaveLength(1);
+      expect(batch).toHaveLength(2);
     });
   });
 

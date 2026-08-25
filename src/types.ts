@@ -24,47 +24,47 @@ export type JSONSerializable =
   | JSONSerializable[]
   | { [key: string]: JSONSerializable };
 
+export type EnvelopVersion = "1.0";
+
+export type Geo = {
+  country: string | null;
+};
+
+/**
+ * System properties understood by the collector.
+ */
+export type SystemProperties = {
+  geo: Geo | null;
+  timezone: string | null;
+};
+
+/**
+ * Event structure accepted by the collector.
+ *
+ * Field names intentionally match the Rust collector schema, including
+ * `envelop_version` and `occured_at`.
+ */
 export type Event = {
-  eventName: string;
-  properties: JSONSerializable;
-  user: string | null;
-  anon_id: string; // Anonymous ID for session tracking
-  eventId: string; // Unique event ID for deduplication
-  at: number; // Unix timestamp in milliseconds (UTC)
+  envelop_version: EnvelopVersion;
+  id: string;
+  name: string;
+  tenant_id: string;
+  workspace_id: string | null;
+  session_id: string | null;
+  anon_id: string;
+  actor_id: string | null;
+  source: string | null;
+  occured_at: string;
+  properties: JSONSerializable | null;
+  correlation_id: string | null;
+  trace_id: string | null;
+  system_properties: SystemProperties | null;
 };
 
 /**
- * Session data sent with each batch payload to the server.
- * Contains information about the user session and device/browser context.
- */
-export type SessionData = {
-  device_type: string;
-  platform: string;
-  browser: string;
-  country: string;
-  city: string;
-  ip_address: string | null;
-  user_agent: string;
-};
-
-/**
- * Event structure expected by the server API.
- * Properties are JSON-stringified for transmission.
- */
-export type ClientEvent = {
-  event_id: string;
-  event_name: string;
-  event_timestamp: number;
-  user_id: string | null;
-  anon_id: string | null;
-  properties: string;
-};
-
-/**
- * Complete batch payload sent to the server.
- * Wraps session information and array of events.
+ * Complete batch payload sent to the collector.
  */
 export type BatchPayload = {
-  session: SessionData;
-  events: ClientEvent[];
+  events: Event[];
+  system_properties: SystemProperties | null;
 };

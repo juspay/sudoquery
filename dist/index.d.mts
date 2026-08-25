@@ -19,12 +19,57 @@
 type JSONSerializable = string | number | boolean | null | JSONSerializable[] | {
     [key: string]: JSONSerializable;
 };
+type EnvelopVersion = "1.0";
+type Geo = {
+    country: string | null;
+};
+/**
+ * System properties understood by the collector.
+ */
+type SystemProperties = {
+    geo: Geo | null;
+    timezone: string | null;
+};
+/**
+ * Event structure accepted by the collector.
+ *
+ * Field names intentionally match the Rust collector schema, including
+ * `envelop_version` and `occured_at`.
+ */
+type Event = {
+    envelop_version: EnvelopVersion;
+    id: string;
+    name: string;
+    tenant_id: string;
+    workspace_id: string | null;
+    session_id: string | null;
+    anon_id: string;
+    actor_id: string | null;
+    source: string | null;
+    occured_at: string;
+    properties: JSONSerializable | null;
+    correlation_id: string | null;
+    trace_id: string | null;
+    system_properties: SystemProperties | null;
+};
+/**
+ * Complete batch payload sent to the collector.
+ */
+type BatchPayload = {
+    events: Event[];
+    system_properties: SystemProperties | null;
+};
 
 interface SudoQueryConfig {
     flushInterval?: number;
     batchSize?: number;
     endpoint?: string;
     token?: string;
+    headers?: Record<string, string>;
+    tenantId?: string | null;
+    workspaceId?: string | null;
+    source?: string | null;
+    sessionId?: string | null;
 }
 declare class SudoQuery {
     private static didInit;
@@ -59,7 +104,7 @@ declare class SudoQuery {
     static clearSuperProperties(): void;
     /**
      * Flush all pending events to the server
-     * @param useBeacon - Use navigator.sendBeacon for more reliable delivery during page unload
+     * @param useBeacon - Use fetch keepalive for more reliable delivery during page unload
      */
     static flush(useBeacon?: boolean): Promise<void>;
     /**
@@ -79,4 +124,4 @@ declare class SudoQuery {
     static track(eventName: string, properties?: JSONSerializable): void;
 }
 
-export { type JSONSerializable, SudoQuery, type SudoQueryConfig };
+export { type BatchPayload, type EnvelopVersion, type Event, type Geo, type JSONSerializable, SudoQuery, type SudoQueryConfig, type SystemProperties };

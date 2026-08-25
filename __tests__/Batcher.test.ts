@@ -1,6 +1,7 @@
 import { Batcher } from '../src/Batcher';
 import { Configuration } from '../src/Configuration';
 import type { Event } from '../src/types';
+import { createMockEvent } from './testUtils';
 
 // Mock Flush module to prevent auto-flush during tests
 jest.mock('../src/Flush', () => ({
@@ -12,15 +13,6 @@ describe('Batcher', () => {
     // Reset configuration and batcher state before each test
     Configuration.setBatchSize(10);
     Batcher.reset();
-  });
-
-  const createMockEvent = (id: number): Event => ({
-    eventName: `event_${id}`,
-    properties: { id },
-    user: `user_${id}`,
-    eventId: crypto.randomUUID(),
-    anon_id: crypto.randomUUID(),
-    at: Date.now(),
   });
 
   describe('addToBatch', () => {
@@ -256,17 +248,12 @@ describe('Batcher', () => {
     it('should handle events with large payloads', () => {
       Configuration.setBatchSize(2);
 
-      const largeEvent: Event = {
-        eventName: 'large_event',
-        eventId: 'large_event',
+      const largeEvent: Event = createMockEvent(1, {
+        name: 'large_event',
         properties: {
-          // Large object with many primitive properties
           ...Array.from({ length: 100 }, (_, i) => [`key${i}`, `value${i}`]).reduce((acc, [k, v]) => ({ ...acc, [k]: v }), {}),
         },
-        user: 'user_1',
-        anon_id: crypto.randomUUID(),
-        at: Date.now(),
-      };
+      });
 
       Batcher.addToBatch(largeEvent);
       Batcher.addToBatch(largeEvent);

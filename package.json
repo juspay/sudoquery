@@ -6,14 +6,16 @@
   "types": "./dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "require": "./dist/index.js",
-      "import": "./dist/index.mjs",
-      "types": "./dist/index.d.ts"
+      "import": "./dist/index.mjs"
     }
   },
   "scripts": {
-    "build": "tsup src/index.ts --format cjs,esm --dts --clean",
-    "dev": "npm run build -- --watch",
+    "build": "npm run build:package && npm run build:shopify",
+    "build:package": "tsup src/index.ts --format cjs,esm --dts --clean",
+    "build:shopify": "tsup --config tsup.shopify.config.ts",
+    "dev": "npm run build:package -- --watch",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage"

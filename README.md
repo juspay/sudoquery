@@ -8,7 +8,7 @@ A lightweight TypeScript analytics SDK for tracking events in browser and Node.j
 - **Automatic Batching** - Accumulate events locally to reduce network requests
 - **Anonymous Users** - Track unauthenticated users with persistent anonymous IDs
 - **Super Properties** - Attach default properties to all events
-- **Auto-Flush** - Automatically sends events on page unload using `navigator.sendBeacon()`
+- **Auto-Flush** - Automatically sends events on page unload using `fetch` keepalive
 - **Periodic Auto-Flush** - Configurable interval-based automatic event flushing
 - **Cross-Platform** - Works in both browsers and Node.js
 - **TypeScript Support** - Full type definitions included
@@ -25,7 +25,9 @@ npm i sudo-query
 import { SudoQuery } from 'sudo-query';
 
 // Initialize the SDK
-SudoQuery.init();
+SudoQuery.init({
+  tenantId: 'tenant-1'
+});
 
 // Track an event
 SudoQuery.track('button_click', {
@@ -46,8 +48,12 @@ import { SudoQuery } from 'sudo-query';
 SudoQuery.init({
   flushInterval: 5000,    // Auto-flush every 5 seconds (optional)
   batchSize: 20,          // Batch 20 events before flushing (default: 10)
-  endpoint: 'https://api.example.com/events',  // Custom endpoint (default: https://sudoquery.juspay.io/push_batch)
-  token: 'YOUR_PROJECT_TOKEN',  // Project token for authentication (required)
+  endpoint: 'https://api.example.com/batch',  // Custom endpoint (default: http://localhost:3000/batch)
+  tenantId: 'tenant-1',    // Required by the collector
+  workspaceId: 'workspace-1', // Optional collector workspace
+  source: 'checkout-web',  // Optional source label (default: typescript)
+  sessionId: 'session-1',  // Optional session id; generated if omitted
+  token: 'YOUR_PROJECT_TOKEN',  // Optional bearer token for proxies/gateways
   headers: {              // Custom headers to send with requests (optional)
     'X-Api-Key': 'your-api-key',
     'X-Custom-Header': 'custom-value'
@@ -55,7 +61,7 @@ SudoQuery.init({
 });
 ```
 
-**Important:** Configuration can only be set during initialization and cannot be modified afterward.
+**Important:** `tenantId` must be set before tracking events because the collector requires both a `tenant_id` event field and an `x-tenant-id` request header.
 
 This sets up:
 - A page visibility listener to automatically flush events when the user navigates away
@@ -78,7 +84,7 @@ SudoQuery.removeUser();
 
 ### Tracking Events
 
-Track events with custom properties. Properties must be JSON serializable (primitives only - no nested objects):
+Track events with custom properties. Properties must be JSON serializable:
 
 ```typescript
 SudoQuery.track('page_view', {
@@ -89,7 +95,10 @@ SudoQuery.track('page_view', {
 SudoQuery.track('purchase', {
   product_id: 'prod_456',
   price: 29.99,
-  quantity: 2
+  quantity: 2,
+  metadata: {
+    coupon: 'SUMMER'
+  }
 });
 ```
 
@@ -125,21 +134,26 @@ All configuration is done through the `init()` method:
 |--------|------|---------|-------------|
 | `flushInterval` | `number \| undefined` | `undefined` | Interval in milliseconds for periodic auto-flush. If not set, periodic flush is disabled. |
 | `batchSize` | `number \| undefined` | `10` | Number of events to accumulate before auto-flushing. |
-| `endpoint` | `string \| undefined` | `"http://hyper-analytics-alb-c33157e-1810523293.ap-south-1.elb.amazonaws.com/push_batch"` | URL where events are sent. |
-| `token` | `string \| undefined` | `undefined` | Project token for authentication. Required for sending events. |
+| `endpoint` | `string \| undefined` | `"http://localhost:3000/batch"` | URL where events are sent. |
+| `tenantId` | `string \| null \| undefined` | `undefined` | Collector tenant id. Required before tracking events. |
+| `workspaceId` | `string \| null \| undefined` | `undefined` | Optional collector workspace id. Sent as `x-workspace-id` when set. |
+| `source` | `string \| null \| undefined` | `"typescript"` | Optional source value written to each event. |
+| `sessionId` | `string \| null \| undefined` | generated | Optional session id written to each event. |
+| `token` | `string \| undefined` | `undefined` | Optional bearer token for proxies/gateways. |
 | `headers` | `Record<string, string> \| undefined` | `{}` | Custom headers to include in all requests to the endpoint. |
 
 ### Example Configurations
 
 **Default configuration:**
 ```typescript
-SudoQuery.init();
-// Uses: batchSize=10, endpoint="http://hyper-analytics-alb-c33157e-1810523293.ap-south-1.elb.amazonaws.com/push_batch", no periodic flush
+SudoQuery.init({ tenantId: 'tenant-1' });
+// Uses: batchSize=10, endpoint="http://localhost:3000/batch", source="typescript", no periodic flush
 ```
 
 **High-frequency tracking:**
 ```typescript
 SudoQuery.init({
+  tenantId: 'tenant-1',
   flushInterval: 2000,   // Flush every 2 seconds
   batchSize: 50,         // Larger batches
   endpoint: 'https://analytics.example.com/batch'
@@ -149,6 +163,7 @@ SudoQuery.init({
 **Low-latency mode:**
 ```typescript
 SudoQuery.init({
+  tenantId: 'tenant-1',
   flushInterval: 1000,   // Flush every second
   batchSize: 5            // Small batches
 });
@@ -174,6 +189,37 @@ All functionality is accessed through the `SudoQuery` class.
 | `get batchSize(): number` | Get current batch size (read-only) |
 | `get endpoint(): string` | Get current endpoint URL (read-only) |
 
+## Collector Payload
+
+```typescript
+type Event = {
+  envelop_version: '1.0';
+  id: string;
+  name: string;
+  tenant_id: string;
+  workspace_id: string | null;
+  session_id: string | null;
+  anon_id: string;
+  actor_id: string | null;
+  source: string | null;
+  occured_at: string;
+  properties: JSONSerializable | null;
+  correlation_id: string | null;
+  trace_id: string | null;
+  system_properties: SystemProperties | null;
+};
+
+type BatchPayload = {
+  events: Event[];
+  system_properties: SystemProperties | null;
+};
+
+type SystemProperties = {
+  geo: { country: string | null } | null;
+  timezone: string | null;
+};
+```
+
 ## Types
 
 ```typescript
@@ -188,7 +234,7 @@ type JSONSerializable =
 
 ## Browser Support
 
-The SDK uses `localStorage` for persisting anonymous IDs and `navigator.sendBeacon()` for reliable delivery during page unload. Works in all modern browsers.
+The SDK uses `localStorage` for persisting anonymous IDs and `fetch` keepalive for delivery during page unload. Works in all modern browsers.
 
 ## License
 

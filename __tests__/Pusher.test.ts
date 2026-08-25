@@ -1,7 +1,7 @@
 import { Pusher } from "../src/Pusher";
 import { Batcher } from "../src/Batcher";
 import { Configuration } from "../src/Configuration";
-import type { Event } from "../src/types";
+import { createMockEvent } from "./testUtils";
 
 // Mock Flush module
 jest.mock("../src/Flush", () => ({
@@ -10,16 +10,9 @@ jest.mock("../src/Flush", () => ({
 
 // Mock Session module
 jest.mock("../src/Session", () => ({
-  getSessionData: jest.fn(() => ({
-    session_id: "mock-session-id",
-    distinct_id_snapshot: "test-client-id",
-    device_type: "desktop",
-    platform: "Unknown",
-    browser: "Unknown",
-    country: "",
-    city: "",
-    ip_address: null,
-    user_agent: "Unknown",
+  getSystemProperties: jest.fn(() => ({
+    geo: null,
+    timezone: "Asia/Kolkata",
   })),
 }));
 
@@ -31,26 +24,11 @@ global.fetch = jest.fn(() =>
   })
 ) as jest.Mock;
 
-// Mock navigator object for sendWithBeacon
-(global as any).navigator = {
-  sendBeacon: jest.fn(() => true),
-};
-
 describe("Pusher", () => {
-  const createMockEvent = (id: number): Event => ({
-    eventName: `event_${id}`,
-    eventId: crypto.randomUUID(),
-    properties: { id },
-    user: `user_${id}`,
-    anon_id: crypto.randomUUID(),
-    at: Date.now(),
-  });
-
   beforeEach(() => {
     // Reset state before each test
-    Configuration.setBatchSize(10);
-    Configuration.setHeaders({});
-    Configuration.setToken(null);
+    Configuration.reset();
+    Configuration.setTenantId("tenant-1");
     jest.clearAllMocks();
     Batcher.reset();
   });
@@ -74,7 +52,7 @@ describe("Pusher", () => {
 
     it("should call fetch endpoint with batch data", async () => {
       // Add events to create a batch
-      Configuration.setEndpoint("http://localhost:3000/push_batch");
+      Configuration.setEndpoint("http://localhost:3000/batch");
       Configuration.setBatchSize(3);
       for (let i = 1; i <= 3; i++) {
         Batcher.addToBatch(createMockEvent(i));
@@ -83,14 +61,33 @@ describe("Pusher", () => {
       await Pusher.pushLogs();
 
       expect(fetch).toHaveBeenCalledWith(
-        "http://localhost:3000/push_batch",
+        "http://localhost:3000/batch",
         expect.objectContaining({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            "x-tenant-id": "tenant-1",
           },
         })
       );
+
+      const [, request] = (fetch as jest.Mock).mock.calls[0];
+      const payload = JSON.parse(request.body);
+      expect(payload).toEqual({
+        events: expect.arrayContaining([
+          expect.objectContaining({
+            envelop_version: "1.0",
+            name: "event_1",
+            tenant_id: "tenant-1",
+            actor_id: "user_1",
+            properties: { id: 1 },
+          }),
+        ]),
+        system_properties: {
+          geo: null,
+          timezone: "Asia/Kolkata",
+        },
+      });
     });
 
     it("should handle successful upload", async () => {
@@ -107,6 +104,7 @@ describe("Pusher", () => {
 
     it("should handle failed upload", async () => {
       // Mock fetch failure
+      const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
       (global.fetch as jest.Mock).mockRejectedValueOnce(new Error("Network error"));
 
       // Add events to create a batch
@@ -117,6 +115,7 @@ describe("Pusher", () => {
 
       const result = await Pusher.pushLogs();
       expect(result).toBeNull();
+      consoleErrorSpy.mockRestore();
     });
 
     it("should handle multiple sequential calls", async () => {
@@ -148,9 +147,17 @@ describe("Pusher", () => {
 
       const result = await Pusher.pushLogs(true);
 
-      // Beacon doesn't return the batch
+      // Keepalive requests are fire-and-forget during unload.
       expect(result).toBeNull();
-      expect(navigator.sendBeacon).toHaveBeenCalled();
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:3000/batch",
+        expect.objectContaining({
+          keepalive: true,
+          headers: expect.objectContaining({
+            "x-tenant-id": "tenant-1",
+          }),
+        })
+      );
     });
 
     it("should be async and return Promise", async () => {
@@ -257,7 +264,7 @@ describe("Pusher", () => {
 
   describe("custom headers", () => {
     it("should include custom headers in fetch request", async () => {
-      Configuration.setEndpoint("http://localhost:3000/push_batch");
+      Configuration.setEndpoint("http://localhost:3000/batch");
       Configuration.setBatchSize(2);
       Configuration.setHeaders({
         "X-Api-Key": "test-api-key",
@@ -271,20 +278,21 @@ describe("Pusher", () => {
       await Pusher.pushLogs();
 
       expect(fetch).toHaveBeenCalledWith(
-        "http://localhost:3000/push_batch",
+        "http://localhost:3000/batch",
         expect.objectContaining({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-Api-Key": "test-api-key",
             "X-Request-Id": "12345",
+            "x-tenant-id": "tenant-1",
           },
         })
       );
     });
 
     it("should include Authorization header when token is set", async () => {
-      Configuration.setEndpoint("http://localhost:3000/push_batch");
+      Configuration.setEndpoint("http://localhost:3000/batch");
       Configuration.setBatchSize(2);
       Configuration.setHeaders({
         "X-Custom-Header": "custom-value",
@@ -298,14 +306,36 @@ describe("Pusher", () => {
       await Pusher.pushLogs();
 
       expect(fetch).toHaveBeenCalledWith(
-        "http://localhost:3000/push_batch",
+        "http://localhost:3000/batch",
         expect.objectContaining({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "X-Custom-Header": "custom-value",
+            "x-tenant-id": "tenant-1",
             "Authorization": "Bearer my-auth-token",
           },
+        })
+      );
+    });
+
+    it("should include workspace header when workspaceId is set", async () => {
+      Configuration.setBatchSize(2);
+      Configuration.setWorkspaceId("workspace-1");
+
+      for (let i = 1; i <= 2; i++) {
+        Batcher.addToBatch(createMockEvent(i, { workspace_id: "workspace-1" }));
+      }
+
+      await Pusher.pushLogs();
+
+      expect(fetch).toHaveBeenCalledWith(
+        "http://localhost:3000/batch",
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            "x-tenant-id": "tenant-1",
+            "x-workspace-id": "workspace-1",
+          }),
         })
       );
     });
@@ -316,6 +346,18 @@ describe("Pusher", () => {
       // Empty batches return null from fetchBatchToUpload
       const result = await Pusher.pushLogs();
       expect(result).toBeNull();
+    });
+
+    it("should not upload without tenantId", async () => {
+      const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+      Configuration.setTenantId(null);
+      Batcher.addToBatch(createMockEvent(1, { tenant_id: "" }));
+
+      const result = await Pusher.pushLogs();
+
+      expect(result).toBeNull();
+      expect(fetch).not.toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
     });
   });
 });

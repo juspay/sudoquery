@@ -183,10 +183,6 @@
             color: #569cd6;
         }
 
-        .event-log .group {
-            color: #ce9178;
-        }
-
         .badge {
             display: inline-block;
             padding: 4px 8px;
@@ -199,11 +195,6 @@
         .badge.user {
             background: #e3f2fd;
             color: #1976d2;
-        }
-
-        .badge.group {
-            background: #f3e5f5;
-            color: #7b1fa2;
         }
 
         .info-box {
@@ -240,11 +231,6 @@
                     <button id="setUserBtn">Set User</button>
                     <button class="danger" id="removeUserBtn">Remove User</button>
                 </div>
-                <div class="input-group">
-                    <input type="text" id="groupIdInput" placeholder="Enter group ID (e.g., premium_users)">
-                    <button class="success" id="setGroupBtn">Set Group</button>
-                    <button class="warning" id="removeGroupBtn">Remove Group</button>
-                </div>
             </div>
 
             <div class="section">
@@ -259,15 +245,6 @@
             </div>
 
             <div class="section">
-                <h2>🎛️ Configuration</h2>
-                <div class="controls">
-                    <button class="warning" id="batchSize2Btn">Batch Size: 2</button>
-                    <button class="warning" id="batchSize5Btn">Batch Size: 5</button>
-                    <button class="warning" id="batchSize10Btn">Batch Size: 10</button>
-                </div>
-            </div>
-
-            <div class="section">
                 <h2>📈 Current Status</h2>
                 <div class="status">
                     <h3>Analytics State</h3>
@@ -276,9 +253,6 @@
                     </div>
                     <div class="status-item">
                         <strong>Current User:</strong> <span id="currentUser">null</span>
-                    </div>
-                    <div class="status-item">
-                        <strong>Current Group:</strong> <span id="currentGroup">null</span>
                     </div>
                     <div class="status-item">
                         <strong>Batch Size:</strong> <span id="currentBatchSize">3</span>
@@ -300,29 +274,28 @@
 
     <!-- Load the compiled JavaScript as ES module -->
     <script type="module">
-        import { SudoQuery, Configuration, SuperProperties } from './dist/index.mjs';
+        import { SudoQuery } from './dist/index.mjs';
 
         let eventsTracked = 0;
 
         // Initialize analytics on page load
         window.addEventListener('DOMContentLoaded', () => {
-            SudoQuery.init('localclient');
+            SudoQuery.init({
+                tenantId: 'localclient',
+                batchSize: 3,
+                endpoint: 'https://73g8lnmf-3000.inc1.devtunnels.ms/batch'
+            });
             document.getElementById('initialized').textContent = 'Yes';
             logEvent('System', 'Analytics initialized');
 
             // Attach event listeners to buttons
             document.getElementById('setUserBtn').addEventListener('click', setUser);
             document.getElementById('removeUserBtn').addEventListener('click', removeUser);
-            document.getElementById('setGroupBtn').addEventListener('click', setGroup);
-            document.getElementById('removeGroupBtn').addEventListener('click', removeGroup);
             document.getElementById('trackPageViewBtn').addEventListener('click', trackPageView);
             document.getElementById('trackButtonClickBtn').addEventListener('click', trackButtonClick);
             document.getElementById('trackFormSubmitBtn').addEventListener('click', trackFormSubmit);
             document.getElementById('trackPurchaseBtn').addEventListener('click', trackPurchase);
             document.getElementById('trackErrorBtn').addEventListener('click', trackError);
-            document.getElementById('batchSize2Btn').addEventListener('click', () => changeBatchSize(2));
-            document.getElementById('batchSize5Btn').addEventListener('click', () => changeBatchSize(5));
-            document.getElementById('batchSize10Btn').addEventListener('click', () => changeBatchSize(10));
         });
 
         // User Management
@@ -339,21 +312,6 @@
             SudoQuery.removeUser();
             updateStatus();
             logEvent('User', 'User removed');
-        }
-
-        function setGroup() {
-            const groupId = document.getElementById('groupIdInput').value.trim();
-            if (groupId) {
-                SudoQuery.setGroup(groupId);
-                updateStatus();
-                logEvent('Group', `Group set to: ${groupId}`);
-            }
-        }
-
-        function removeGroup() {
-            SudoQuery.removeGroup();
-            updateStatus();
-            logEvent('Group', 'Group removed');
         }
 
         // Event Tracking
@@ -394,7 +352,10 @@
                 productName: 'Premium Analytics',
                 price: 99.99,
                 quantity: 1,
-                currency: 'USD'
+                currency: 'USD',
+                metadata: {
+                    coupon: 'DEMO'
+                }
             });
             incrementEvents();
             logEvent('purchase', 'Purchase completed: $99.99');
@@ -411,22 +372,12 @@
             logEvent('error', 'Error occurred: DEMO_001');
         }
 
-        // Configuration
-        function changeBatchSize(size) {
-            Configuration.batchSize = size;
-            document.getElementById('batchSize').textContent = size;
-            updateStatus();
-            logEvent('Config', `Batch size changed to: ${size}`);
-        }
-
         // Utility Functions
         function updateStatus() {
             const currentUser = SudoQuery.getUser();
-            const currentGroup = SudoQuery.getGroup();
-            const batchSize = Configuration.batchSize;
+            const batchSize = SudoQuery.batchSize;
 
             document.getElementById('currentUser').textContent = currentUser || 'null';
-            document.getElementById('currentGroup').textContent = currentGroup || 'null';
             document.getElementById('currentBatchSize').textContent = batchSize;
         }
 
@@ -439,10 +390,8 @@
             const log = document.getElementById('eventLog');
             const timestamp = new Date().toLocaleTimeString();
             const currentUser = SudoQuery.getUser();
-            const currentGroup = SudoQuery.getGroup();
 
             const userBadge = currentUser ? `<span class="badge user">👤 ${currentUser}</span>` : '';
-            const groupBadge = currentGroup ? `<span class="badge group">👥 ${currentGroup}</span>` : '';
 
             const entry = document.createElement('div');
             entry.className = 'log-entry';
@@ -450,7 +399,7 @@
                 <span class="timestamp">[${timestamp}]</span>
                 <span class="event-name">${eventName}:</span>
                 ${message}
-                ${userBadge}${groupBadge}
+                ${userBadge}
             `;
 
             // Remove "Waiting for events..." message if it exists

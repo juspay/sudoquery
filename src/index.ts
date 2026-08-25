@@ -1,3 +1,10 @@
 // src/index.ts
 export { SudoQuery, type SudoQueryConfig } from './SudoQuery';
-export type { JSONSerializable } from './types';
+export type {
+  BatchPayload,
+  EnvelopVersion,
+  Event,
+  Geo,
+  JSONSerializable,
+  SystemProperties,
+} from './types';

@@ -115,7 +115,7 @@ The test suite provides **high coverage (80%+)** across all modules:
    - Tests complete user journey:
      1. Initialize analytics
      2. Track multiple events with valid properties
-     3. Track event with invalid properties (expect error)
+     3. Track event with nested JSON properties
      4. Wait for batch to fill
      5. Trigger flush
      6. Verify upload behavior
@@ -152,11 +152,11 @@ The following bugs are documented in the test suite (tests will fail on these bu
 **Impact**: Runtime error when accessing empty array
 **Test**: `Batcher.test.ts` - "BUG: .at(-1) may fail if batches array is empty"
 
-### 4. SudoQuery.ts:12 - Throws String Instead of Error
-**Location**: `src/SudoQuery.ts:12`
-**Issue**: Throws string `"only primitives are allowed as properties"` instead of Error object
-**Impact**: Poor error handling practices, inconsistent with JavaScript/TypeScript conventions
-**Test**: `SudoQuery.test.ts` - "BUG: should throw a string error message (BUG: should throw Error object)"
+### 4. SudoQuery.ts - Collector Tenant Configuration
+**Location**: `src/SudoQuery.ts`
+**Issue**: Collector uploads require a tenant id in both the event payload and request headers
+**Impact**: Tracking fails early when `tenantId` is not configured
+**Test**: `SudoQuery.test.ts` - "should throw when tenantId is missing"
 
 ### 5. Pusher.ts:15 - Network Call Not Implemented
 **Location**: `src/Pusher.ts:15`

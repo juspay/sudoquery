@@ -3,6 +3,7 @@ import { Pusher } from '../src/Pusher';
 import { Batcher } from '../src/Batcher';
 import { Configuration } from '../src/Configuration';
 import type { Event } from '../src/types';
+import { createMockEvent } from './testUtils';
 
 describe('flush', () => {
   beforeEach(() => {
@@ -11,15 +12,6 @@ describe('flush', () => {
     Pusher['_isUploadInProgress'] = false;
     Batcher.reset();
     jest.clearAllMocks();
-  });
-
-  const createMockEvent = (id: number): Event => ({
-    eventName: `event_${id}`,
-    eventId: crypto.randomUUID(),
-    properties: { id },
-    user: `user_${id}`,
-    anon_id: crypto.randomUUID(),
-    at: Date.now(),
   });
 
   describe('basic functionality', () => {
@@ -80,13 +72,6 @@ describe('flush', () => {
 
   describe('integration with Pusher', () => {
     it('should work with Pusher to upload batches', async () => {
-      // Add some batches
-      Configuration.setBatchSize(2);
-
-      for (let i = 1; i <= 6; i++) {
-        Batcher.addToBatch(createMockEvent(i));
-      }
-
       // Mock pushLogs to return batches and then null
       const pushLogsSpy = jest.spyOn(Pusher, 'pushLogs');
       pushLogsSpy

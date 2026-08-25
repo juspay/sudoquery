@@ -1,22 +1,3 @@
-// src/TypeValidator.ts
-function containsNonPrimitives(obj) {
-  if (obj === null || typeof obj !== "object") {
-    return false;
-  }
-  if (Array.isArray(obj)) {
-    return false;
-  }
-  for (const key in obj) {
-    if (Object.prototype.hasOwnProperty.call(obj, key)) {
-      const value = obj[key];
-      if (typeof value === "object" && value !== null) {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
 // src/Configuration.ts
 var _Configuration = class _Configuration {
   static get batchSize() {
@@ -31,6 +12,21 @@ var _Configuration = class _Configuration {
   static get token() {
     return _Configuration._token;
   }
+  static get headers() {
+    return _Configuration._headers;
+  }
+  static get tenantId() {
+    return _Configuration._tenantId;
+  }
+  static get workspaceId() {
+    return _Configuration._workspaceId;
+  }
+  static get source() {
+    return _Configuration._source;
+  }
+  static get sessionId() {
+    return _Configuration._sessionId;
+  }
   static setBatchSize(value) {
     _Configuration._batchSize = value;
   }
@@ -43,56 +39,91 @@ var _Configuration = class _Configuration {
   static setToken(value) {
     _Configuration._token = value;
   }
+  static setHeaders(value) {
+    _Configuration._headers = value;
+  }
+  static setTenantId(value) {
+    _Configuration._tenantId = value;
+  }
+  static setWorkspaceId(value) {
+    _Configuration._workspaceId = value;
+  }
+  static setSource(value) {
+    _Configuration._source = value;
+  }
+  static setSessionId(value) {
+    _Configuration._sessionId = value;
+  }
+  static reset() {
+    _Configuration._batchSize = 10;
+    _Configuration._flushInterval = null;
+    _Configuration._endpoint = _Configuration.DEFAULT_ENDPOINT;
+    _Configuration._token = null;
+    _Configuration._headers = {};
+    _Configuration._tenantId = null;
+    _Configuration._workspaceId = null;
+    _Configuration._source = _Configuration.DEFAULT_SOURCE;
+    _Configuration._sessionId = null;
+  }
 };
+_Configuration.DEFAULT_ENDPOINT = "http://localhost:3000/batch";
+_Configuration.DEFAULT_SOURCE = "typescript";
 _Configuration._batchSize = 10;
 _Configuration._flushInterval = null;
-_Configuration._endpoint = "https://sudoquery.juspay.io/api/push_batch";
+_Configuration._endpoint = _Configuration.DEFAULT_ENDPOINT;
 _Configuration._token = null;
+_Configuration._headers = {};
+_Configuration._tenantId = null;
+_Configuration._workspaceId = null;
+_Configuration._source = _Configuration.DEFAULT_SOURCE;
+_Configuration._sessionId = null;
 var Configuration = _Configuration;
 
+// src/Uuid.ts
+function generateUuid() {
+  const runtimeCrypto = getRuntimeCrypto();
+  if (runtimeCrypto && typeof runtimeCrypto.randomUUID === "function") {
+    return runtimeCrypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  if (runtimeCrypto && typeof runtimeCrypto.getRandomValues === "function") {
+    runtimeCrypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  bytes[6] = bytes[6] & 15 | 64;
+  bytes[8] = bytes[8] & 63 | 128;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
+}
+function getRuntimeCrypto() {
+  return typeof globalThis !== "undefined" && "crypto" in globalThis ? globalThis.crypto : null;
+}
+
 // src/Session.ts
-function getSessionData() {
-  const userAgent = typeof navigator !== "undefined" ? navigator.userAgent : "Unknown";
+var currentSessionId = null;
+function getSessionId() {
+  if (!currentSessionId) {
+    currentSessionId = generateId();
+  }
+  return currentSessionId;
+}
+function getSystemProperties() {
   return {
-    device_type: detectDeviceType(userAgent),
-    platform: detectPlatform(userAgent),
-    browser: detectBrowser(userAgent),
-    country: "",
-    city: "",
-    ip_address: null,
-    user_agent: userAgent
+    geo: null,
+    timezone: getTimezone()
   };
 }
-function detectDeviceType(userAgent) {
-  const ua = userAgent.toLowerCase();
-  if (/ipad|android(?!.*mobile)|tablet|kindle|silk/i.test(ua)) {
-    return "tablet";
+function getTimezone() {
+  if (typeof Intl === "undefined") {
+    return null;
   }
-  if (/mobile|android|iphone|ipod|blackberry|opera mini|iemobile|wpdesktop/i.test(ua)) {
-    return "mobile";
-  }
-  return "desktop";
+  return Intl.DateTimeFormat().resolvedOptions().timeZone ?? null;
 }
-function detectPlatform(userAgent) {
-  const ua = userAgent.toLowerCase();
-  if (ua.includes("windows")) return "Windows";
-  if (ua.includes("mac os x") || ua.includes("macintosh")) return "macOS";
-  if (ua.includes("linux")) return "Linux";
-  if (ua.includes("android")) return "Android";
-  if (ua.includes("ios") || ua.includes("iphone") || ua.includes("ipad") || ua.includes("ipod")) return "iOS";
-  return "Unknown";
-}
-function detectBrowser(userAgent) {
-  const ua = userAgent.toLowerCase();
-  if (ua.includes("firefox") && !ua.includes("seamonkey")) return "Firefox";
-  if (ua.includes("seamonkey")) return "SeaMonkey";
-  if (ua.includes("chrome") && !ua.includes("chromium") && !ua.includes("edge") && !ua.includes("opr")) return "Chrome";
-  if (ua.includes("chromium")) return "Chromium";
-  if (ua.includes("safari") && !ua.includes("chrome") && !ua.includes("chromium")) return "Safari";
-  if (ua.includes("opr") || ua.includes("opera")) return "Opera";
-  if (ua.includes("edge") || ua.includes("edg")) return "Edge";
-  if (ua.includes("trident") || ua.includes("msie")) return "Internet Explorer";
-  return "Unknown";
+function generateId() {
+  return generateUuid();
 }
 
 // src/Pusher.ts
@@ -101,21 +132,12 @@ var Pusher = class {
     return Configuration.endpoint;
   }
   /**
-   * Transform internal Event array to BatchPayload format
+   * Wrap queued collector events in the collector batch format.
    */
   static transformBatch(batch) {
-    const sessionData = getSessionData();
-    const clientEvents = batch.map((event) => ({
-      event_id: event.eventId,
-      event_name: event.eventName,
-      event_timestamp: event.at,
-      user_id: event.user,
-      anon_id: event.anon_id,
-      properties: JSON.stringify(event.properties)
-    }));
     return {
-      session: sessionData,
-      events: clientEvents
+      events: batch,
+      system_properties: getSystemProperties()
     };
   }
   static async pushLogs(useBeacon = false) {
@@ -132,7 +154,7 @@ var Pusher = class {
       return null;
     }
     if (useBeacon) {
-      this.sendWithBeacon(payload);
+      this.sendWithKeepalive(payload);
       this._isUploadInProgress = false;
       return null;
     } else {
@@ -141,28 +163,33 @@ var Pusher = class {
       return success ? batch : null;
     }
   }
-  static sendWithBeacon(payload) {
-    if (typeof navigator !== "undefined" && navigator.sendBeacon) {
-      try {
-        const blob = new Blob([JSON.stringify(payload)], {
-          type: "application/json"
-        });
-        return navigator.sendBeacon(this.endpoint, blob);
-      } catch (error) {
-        console.error("Beacon send failed:", error);
-        return false;
-      }
+  static sendWithKeepalive(payload) {
+    if (typeof fetch === "undefined") {
+      return false;
     }
-    return false;
+    const headers = this.buildHeaders(payload);
+    if (!headers) {
+      return false;
+    }
+    try {
+      void fetch(this.endpoint, {
+        method: "POST",
+        headers,
+        body: JSON.stringify(payload),
+        keepalive: true
+      });
+      return true;
+    } catch (error) {
+      console.error("Keepalive fetch failed:", error);
+      return false;
+    }
   }
   static async sendNormally(payload) {
+    const headers = this.buildHeaders(payload);
+    if (!headers) {
+      return false;
+    }
     try {
-      const headers = {
-        "Content-Type": "application/json"
-      };
-      if (Configuration.token) {
-        headers["Authorization"] = `Bearer ${Configuration.token}`;
-      }
       const response = await fetch(this.endpoint, {
         method: "POST",
         headers,
@@ -173,6 +200,26 @@ var Pusher = class {
       console.error("Fetch failed:", error);
       return false;
     }
+  }
+  static buildHeaders(payload) {
+    const tenantId = Configuration.tenantId ?? payload.events[0]?.tenant_id ?? null;
+    if (!tenantId) {
+      console.error("Cannot send analytics batch: tenantId is required by the collector.");
+      return null;
+    }
+    const workspaceId = Configuration.workspaceId ?? payload.events[0]?.workspace_id ?? null;
+    const headers = {
+      "Content-Type": "application/json",
+      ...Configuration.headers,
+      "x-tenant-id": tenantId
+    };
+    if (workspaceId) {
+      headers["x-workspace-id"] = workspaceId;
+    }
+    if (Configuration.token) {
+      headers.Authorization = `Bearer ${Configuration.token}`;
+    }
+    return headers;
   }
   static async startScheduler(time) {
     setInterval(() => {
@@ -251,11 +298,8 @@ SuperProperties.properties = {};
 // src/AnonymousId.ts
 var STORAGE_KEY = "hyper_analytics_anon_id";
 var AnonymousId = class {
-  /**
-   * Generates a new UUID v4 using crypto.randomUUID()
-   */
   static generateId() {
-    return crypto.randomUUID();
+    return generateUuid();
   }
   /**
    * Checks if running in browser environment
@@ -272,11 +316,10 @@ var AnonymousId = class {
    */
   static getOrCreate() {
     if (this.isBrowser()) {
-      let anonId = localStorage.getItem(STORAGE_KEY);
-      if (!anonId) {
-        anonId = this.generateId();
-        localStorage.setItem(STORAGE_KEY, anonId);
-      }
+      const storedAnonId = this.getFromStorage();
+      if (storedAnonId) return storedAnonId;
+      const anonId = this.generateId();
+      this.setInStorage(anonId);
       return anonId;
     } else {
       if (!this.inMemoryAnonId) {
@@ -293,7 +336,7 @@ var AnonymousId = class {
    */
   static reset() {
     if (this.isBrowser()) {
-      localStorage.removeItem(STORAGE_KEY);
+      this.removeFromStorage();
     } else {
       this.inMemoryAnonId = null;
     }
@@ -307,10 +350,31 @@ var AnonymousId = class {
    */
   static get() {
     if (this.isBrowser()) {
-      return localStorage.getItem(STORAGE_KEY);
+      return this.getFromStorage();
     } else {
       return this.inMemoryAnonId;
     }
+  }
+  static getFromStorage() {
+    try {
+      return localStorage.getItem(STORAGE_KEY);
+    } catch (_) {
+      return this.inMemoryAnonId;
+    }
+  }
+  static setInStorage(anonId) {
+    try {
+      localStorage.setItem(STORAGE_KEY, anonId);
+    } catch (_) {
+      this.inMemoryAnonId = anonId;
+    }
+  }
+  static removeFromStorage() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (_) {
+    }
+    this.inMemoryAnonId = null;
   }
 };
 // In-memory storage for Node.js environment
@@ -329,6 +393,21 @@ var SudoQuery = class {
     }
     if (config?.token !== void 0) {
       Configuration.setToken(config.token);
+    }
+    if (config?.headers !== void 0) {
+      Configuration.setHeaders(config.headers);
+    }
+    if (config?.tenantId !== void 0) {
+      Configuration.setTenantId(config.tenantId);
+    }
+    if (config?.workspaceId !== void 0) {
+      Configuration.setWorkspaceId(config.workspaceId);
+    }
+    if (config?.source !== void 0) {
+      Configuration.setSource(config.source);
+    }
+    if (config?.sessionId !== void 0) {
+      Configuration.setSessionId(config.sessionId);
     }
     if (config?.flushInterval !== void 0 && config.flushInterval > 0) {
       Configuration.setFlushInterval(config.flushInterval);
@@ -393,7 +472,7 @@ var SudoQuery = class {
   }
   /**
    * Flush all pending events to the server
-   * @param useBeacon - Use navigator.sendBeacon for more reliable delivery during page unload
+   * @param useBeacon - Use fetch keepalive for more reliable delivery during page unload
    */
   static async flush(useBeacon = false) {
     await flush(useBeacon);
@@ -420,21 +499,27 @@ var SudoQuery = class {
   }
   static track(eventName, properties) {
     const props = properties ?? {};
-    if (containsNonPrimitives(props)) throw new Error("only primitives are allowed as properties");
-    const sessionDetails = {};
+    const tenantId = Configuration.tenantId;
+    if (!tenantId || tenantId.trim().length === 0) {
+      throw new Error("tenantId is required before tracking events");
+    }
     const superProperties = SuperProperties.getSuperProperties();
-    const mergedProperties = {
-      ...superProperties,
-      ...typeof props === "object" && props !== null && !Array.isArray(props) ? props : {},
-      ...sessionDetails
-    };
+    const mergedProperties = mergeProperties(props, superProperties);
     const event = {
-      eventName: eventName.toString(),
-      properties: mergedProperties,
-      user: this.currentUser,
+      envelop_version: "1.0",
+      id: generateUuid(),
+      name: eventName.toString(),
+      tenant_id: tenantId,
+      workspace_id: Configuration.workspaceId,
+      session_id: Configuration.sessionId ?? getSessionId(),
       anon_id: AnonymousId.getOrCreate(),
-      eventId: crypto.randomUUID(),
-      at: Date.now()
+      actor_id: this.currentUser,
+      source: Configuration.source,
+      occured_at: (/* @__PURE__ */ new Date()).toISOString(),
+      properties: mergedProperties,
+      correlation_id: null,
+      trace_id: null,
+      system_properties: null
     };
     Batcher.addToBatch(event);
   }
@@ -442,6 +527,18 @@ var SudoQuery = class {
 SudoQuery.didInit = false;
 SudoQuery.currentUser = null;
 SudoQuery.flushTimer = null;
+function mergeProperties(properties, defaults) {
+  if (isJsonRecord(properties)) {
+    return {
+      ...defaults,
+      ...properties
+    };
+  }
+  return properties;
+}
+function isJsonRecord(value) {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 export {
   SudoQuery
 };
