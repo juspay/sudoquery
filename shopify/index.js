@@ -90,8 +90,6 @@ try {
       shopify_event_name: event.name,
       shopify_timestamp: event.timestamp,
       shopify_client_id: event.clientId,
-      context: buildContext(event),
-      identifiers: buildIdentifiers(event),
     };
 
     const checkout = event.data && event.data.checkout;
@@ -143,30 +141,16 @@ try {
     };
   }
 
-  function setActor(event) {
-    const checkout = event.data && event.data.checkout;
-    const initCustomer = typeof init !== "undefined" ? init?.data?.customer : undefined;
-    const actorId =
-      checkout?.order?.customer?.id ||
-      initCustomer?.id ||
-      checkout?.email ||
-      initCustomer?.email ||
-      null;
-
-    if (actorId) {
-      SudoQuery.setUser(String(actorId));
-    } else {
-      SudoQuery.removeUser();
-    }
-  }
-
   function send(event) {
     const collectorName = SHOPIFY_TO_COLLECTOR_EVENT_NAME[event.name];
     if (!collectorName) return; // not mapped — drop rather than send an unknown event name
 
     try {
-      setActor(event);
-      SudoQuery.track(collectorName, buildProperties(event));
+      SudoQuery.setSuperProperty("identifiers", buildIdentifiers(event));
+      SudoQuery.track(collectorName, {
+        context: buildContext(event),
+        properties: buildProperties(event),
+      });
     } catch (_) {
       // Best-effort analytics: never let a delivery failure surface in the storefront.
     }

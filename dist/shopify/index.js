@@ -576,9 +576,7 @@ var ShopifySudoQueryPixel = (() => {
         shopify_event_id: event.id,
         shopify_event_name: event.name,
         shopify_timestamp: event.timestamp,
-        shopify_client_id: event.clientId,
-        context: buildContext(event),
-        identifiers: buildIdentifiers(event)
+        shopify_client_id: event.clientId
       };
       const checkout = event.data && event.data.checkout;
       if (checkout) {
@@ -621,25 +619,19 @@ var ShopifySudoQueryPixel = (() => {
         user_agent: nav?.userAgent,
         locale: nav?.language
       };
-    }, setActor = function(event) {
-      const checkout = event.data && event.data.checkout;
-      const initCustomer = typeof init !== "undefined" ? init?.data?.customer : void 0;
-      const actorId = checkout?.order?.customer?.id || initCustomer?.id || checkout?.email || initCustomer?.email || null;
-      if (actorId) {
-        SudoQuery.setUser(String(actorId));
-      } else {
-        SudoQuery.removeUser();
-      }
     }, send = function(event) {
       const collectorName = SHOPIFY_TO_COLLECTOR_EVENT_NAME[event.name];
       if (!collectorName) return;
       try {
-        setActor(event);
-        SudoQuery.track(collectorName, buildProperties(event));
+        SudoQuery.setSuperProperty("identifiers", buildIdentifiers(event));
+        SudoQuery.track(collectorName, {
+          context: buildContext(event),
+          properties: buildProperties(event)
+        });
       } catch (_) {
       }
     };
-    addIdentifier2 = addIdentifier, buildIdentifiers2 = buildIdentifiers, buildProperties2 = buildProperties, buildContext2 = buildContext, setActor2 = setActor, send2 = send;
+    addIdentifier2 = addIdentifier, buildIdentifiers2 = buildIdentifiers, buildProperties2 = buildProperties, buildContext2 = buildContext, send2 = send;
     const pixelSettings = typeof settings !== "undefined" ? settings : {};
     const COLLECTOR_ENDPOINT = pixelSettings.collectorEndpoint || "https://73g8lnmf-3000.inc1.devtunnels.ms/batch";
     const TENANT_ID = pixelSettings.tenantId || "breeze";
@@ -678,6 +670,5 @@ var ShopifySudoQueryPixel = (() => {
   var buildIdentifiers2;
   var buildProperties2;
   var buildContext2;
-  var setActor2;
   var send2;
 })();
