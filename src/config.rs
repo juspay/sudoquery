@@ -131,7 +131,7 @@ mod tests {
                 .kafka_connector
                 .client_config
                 .get("bootstrap.servers"),
-            Some(&"localhost:19092".to_string())
+            Some(&"host.docker.internal:19092".to_string())
         );
         assert!(config.allowed_events.is_none());
     }
@@ -144,5 +144,18 @@ mod tests {
         assert_eq!(config.server_config.addr, "0.0.0.0:3000");
         assert!(config.server_config.accept_cors);
         assert!(config.allowed_events.is_none());
+        assert!(
+            config
+                .enrichment
+                .as_ref()
+                .and_then(|enrichment| enrichment.ip_address.as_ref())
+                .is_some()
+        );
+        assert!(
+            config
+                .enrichment
+                .as_ref()
+                .is_some_and(|enrichment| enrichment.received_at.enabled)
+        );
     }
 }

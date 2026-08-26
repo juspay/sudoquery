@@ -1,9 +1,10 @@
 use crate::collector_event::{self, Batch, CollectorEvent, EnvelopVersion, Geo};
 use crate::config::Config;
 use crate::enrichment::{CountryResolution, EnrichmentConfig};
-use serde::Serialize;
-use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
+use chrono::SecondsFormat;
+use serde::{Serialize, Serializer};
 use serde_with::skip_serializing_none;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 #[skip_serializing_none]
 #[derive(Serialize)]
@@ -13,6 +14,11 @@ pub struct CanonicalEvent {
     name: String,
     occured_at: chrono::DateTime<chrono::Utc>,
     pub arrived_at: Option<chrono::DateTime<chrono::Utc>>,
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_optional_utc_datetime_nanos"
+    )]
+    pub received_at: Option<chrono::DateTime<chrono::Utc>>,
     pub tenant_id: String,
     pub workspace_id: Option<String>,
     pub session_id: Option<String>,
@@ -82,6 +88,7 @@ impl CanonicalEvent {
             system_properties,
         } = collector_event;
         let system_properties = system_properties_override.unwrap_or(system_properties);
+        let system_properties = system_properties.map(SystemProperties::from);
 
         let mut canonical_event = CanonicalEvent {
             envelop_version,
@@ -89,6 +96,7 @@ impl CanonicalEvent {
             name,
             occured_at,
             arrived_at: None,
+            received_at: None,
             tenant_id,
             workspace_id,
             session_id,
@@ -98,7 +106,7 @@ impl CanonicalEvent {
             correlation_id,
             trace_id,
             properties,
-            system_properties: system_properties.map(SystemProperties::from),
+            system_properties,
         };
 
         canonical_event.enrich(enrichment_config, ip_address);
@@ -163,7 +171,39 @@ impl CanonicalEvent {
             if let Some(arrived_at_config) = &enrichment_config.arrived_at {
                 if arrived_at_config.override_existing || self.arrived_at.is_none() {}
             }
+
+            if let Some(ip_address_config) = &enrichment_config.ip_address {
+                let existing = self
+                    .system_properties
+                    .as_ref()
+                    .and_then(|sp| sp.ip_address.as_ref());
+
+                if ip_address_config.override_existing || existing.is_none() {
+                    if let Some(ip_address) = ip_address {
+                        self.system_properties
+                            .get_or_insert_with(SystemProperties::default)
+                            .ip_address = Some(ip_address.to_string());
+                    }
+                }
+            }
+
+            if enrichment_config.received_at.enabled {
+                self.received_at = Some(chrono::Utc::now());
+            }
         }
+    }
+}
+
+fn serialize_optional_utc_datetime_nanos<S>(
+    value: &Option<chrono::DateTime<chrono::Utc>>,
+    serializer: S,
+) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    match value {
+        Some(value) => serializer.serialize_str(&value.to_rfc3339_opts(SecondsFormat::Nanos, true)),
+        None => serializer.serialize_none(),
     }
 }
 
@@ -216,6 +256,7 @@ fn is_documentation_ipv6(addr: &Ipv6Addr) -> bool {
 pub struct SystemProperties {
     pub geo: Option<Geo>,
     pub timezone: Option<String>,
+    pub ip_address: Option<String>,
 }
 
 impl SystemProperties {
@@ -229,6 +270,7 @@ impl From<collector_event::SystemProperties> for SystemProperties {
         SystemProperties {
             geo: props.geo,
             timezone: props.timezone,
+            ip_address: props.ip_address,
         }
     }
 }
@@ -237,6 +279,7 @@ impl From<collector_event::SystemProperties> for SystemProperties {
 pub struct SystemPropertiesBuilder {
     geo: Option<Geo>,
     timezone: Option<String>,
+    ip_address: Option<String>,
 }
 
 impl SystemPropertiesBuilder {
@@ -250,10 +293,16 @@ impl SystemPropertiesBuilder {
         self
     }
 
+    pub fn ip_address(mut self, ip_address: Option<String>) -> Self {
+        self.ip_address = ip_address;
+        self
+    }
+
     pub fn build(self) -> SystemProperties {
         SystemProperties {
             geo: self.geo,
             timezone: self.timezone,
+            ip_address: self.ip_address,
         }
     }
 }
@@ -261,11 +310,17 @@ impl SystemPropertiesBuilder {
 #[derive(Default)]
 pub struct CanonicalEventBuilder {
     system_properties: Option<SystemProperties>,
+    received_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl CanonicalEventBuilder {
     pub fn system_properties(mut self, system_properties: Option<SystemProperties>) -> Self {
         self.system_properties = system_properties;
+        self
+    }
+
+    pub fn received_at(mut self, received_at: Option<chrono::DateTime<chrono::Utc>>) -> Self {
+        self.received_at = received_at;
         self
     }
 
@@ -276,6 +331,7 @@ impl CanonicalEventBuilder {
             name: String::new(),
             occured_at: chrono::Utc::now(),
             arrived_at: None,
+            received_at: self.received_at,
             tenant_id: String::new(),
             workspace_id: None,
             session_id: None,
@@ -293,7 +349,7 @@ impl CanonicalEventBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enrichment::{CountryConfig, EnrichmentConfig};
+    use crate::enrichment::{CountryConfig, EnrichmentConfig, IpAddressConfig, ReceivedAtConfig};
 
     fn collector_event(
         system_properties: Option<collector_event::SystemProperties>,
@@ -321,6 +377,7 @@ mod tests {
         let event = collector_event(Some(collector_event::SystemProperties {
             geo: None,
             timezone: Some("Asia/Kolkata".to_string()),
+            ip_address: None,
         }));
 
         let canonical_event = CanonicalEvent::from_collector_event(event, None, None).unwrap();
@@ -347,6 +404,7 @@ mod tests {
             collector_event(Some(collector_event::SystemProperties {
                 geo: None,
                 timezone: None,
+                ip_address: None,
             })),
             Some(&enrichment_config),
             Some("14.143.32.203"),
@@ -375,6 +433,7 @@ mod tests {
             collector_event(Some(collector_event::SystemProperties {
                 geo: None,
                 timezone: None,
+                ip_address: None,
             })),
             Some(&enrichment_config),
             Some("127.0.0.1"),
@@ -386,6 +445,168 @@ mod tests {
                 .and_then(|props| props.geo)
                 .and_then(|geo| geo.country),
             None
+        );
+    }
+
+    #[test]
+    fn does_not_add_request_ip_address_without_enrichment_config() {
+        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+            collector_event(Some(collector_event::SystemProperties {
+                geo: None,
+                timezone: Some("Asia/Kolkata".to_string()),
+                ip_address: None,
+            })),
+            None,
+            Some("203.0.113.10"),
+        );
+
+        let system_properties = canonical_event.system_properties.unwrap();
+
+        assert_eq!(system_properties.ip_address, None);
+        assert_eq!(system_properties.timezone, Some("Asia/Kolkata".to_string()));
+    }
+
+    #[test]
+    fn enriches_request_ip_address_to_system_properties() {
+        let enrichment_config = EnrichmentConfig::builder()
+            .ip_address(IpAddressConfig::builder().build())
+            .build();
+
+        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+            collector_event(None),
+            Some(&enrichment_config),
+            Some("203.0.113.10"),
+        );
+
+        assert_eq!(
+            canonical_event
+                .system_properties
+                .and_then(|props| props.ip_address),
+            Some("203.0.113.10".to_string())
+        );
+    }
+
+    #[test]
+    fn preserves_existing_ip_address_when_enrichment_does_not_override() {
+        let enrichment_config = EnrichmentConfig::builder()
+            .ip_address(IpAddressConfig::builder().build())
+            .build();
+
+        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+            collector_event(Some(collector_event::SystemProperties {
+                geo: None,
+                timezone: None,
+                ip_address: Some("198.51.100.10".to_string()),
+            })),
+            Some(&enrichment_config),
+            Some("203.0.113.10"),
+        );
+
+        assert_eq!(
+            canonical_event
+                .system_properties
+                .and_then(|props| props.ip_address),
+            Some("198.51.100.10".to_string())
+        );
+    }
+
+    #[test]
+    fn overrides_existing_ip_address_when_enrichment_is_configured_to_override() {
+        let enrichment_config = EnrichmentConfig::builder()
+            .ip_address(IpAddressConfig::builder().override_existing(true).build())
+            .build();
+
+        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+            collector_event(Some(collector_event::SystemProperties {
+                geo: None,
+                timezone: None,
+                ip_address: Some("198.51.100.10".to_string()),
+            })),
+            Some(&enrichment_config),
+            Some("203.0.113.10"),
+        );
+
+        assert_eq!(
+            canonical_event
+                .system_properties
+                .and_then(|props| props.ip_address),
+            Some("203.0.113.10".to_string())
+        );
+    }
+
+    #[test]
+    fn serializes_ip_address_as_snake_case_system_property() {
+        let enrichment_config = EnrichmentConfig::builder()
+            .ip_address(IpAddressConfig::builder().build())
+            .build();
+        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+            collector_event(None),
+            Some(&enrichment_config),
+            Some("203.0.113.10"),
+        );
+        let payload = serde_json::to_value(canonical_event).unwrap();
+        let system_properties = payload
+            .get("system_properties")
+            .and_then(serde_json::Value::as_object)
+            .unwrap();
+
+        assert_eq!(
+            system_properties
+                .get("ip_address")
+                .and_then(serde_json::Value::as_str),
+            Some("203.0.113.10")
+        );
+        assert!(!system_properties.contains_key("ipAddress"));
+    }
+
+    #[test]
+    fn enriches_received_at_by_default() {
+        let enrichment_config = EnrichmentConfig::builder().build();
+        let before = chrono::Utc::now();
+
+        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+            collector_event(None),
+            Some(&enrichment_config),
+            None,
+        );
+
+        let after = chrono::Utc::now();
+        let received_at = canonical_event.received_at.unwrap();
+
+        assert!(received_at >= before);
+        assert!(received_at <= after);
+    }
+
+    #[test]
+    fn does_not_enrich_received_at_when_disabled() {
+        let enrichment_config = EnrichmentConfig::builder()
+            .received_at(ReceivedAtConfig::builder().enabled(false).build())
+            .build();
+
+        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+            collector_event(None),
+            Some(&enrichment_config),
+            None,
+        );
+
+        assert_eq!(canonical_event.received_at, None);
+    }
+
+    #[test]
+    fn serializes_received_at_as_utc_nanosecond_precision() {
+        let received_at = chrono::DateTime::parse_from_rfc3339("2026-08-26T10:11:12.123Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let canonical_event = CanonicalEvent::builder()
+            .received_at(Some(received_at))
+            .build();
+        let payload = serde_json::to_value(canonical_event).unwrap();
+
+        assert_eq!(
+            payload
+                .get("received_at")
+                .and_then(serde_json::Value::as_str),
+            Some("2026-08-26T10:11:12.123000000Z")
         );
     }
 }

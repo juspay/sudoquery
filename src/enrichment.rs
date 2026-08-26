@@ -6,6 +6,9 @@ use serde::Deserialize;
 pub struct EnrichmentConfig {
     pub country: Option<CountryConfig>,
     pub arrived_at: Option<ArrivedAtConfig>,
+    pub ip_address: Option<IpAddressConfig>,
+    #[serde(default)]
+    pub received_at: ReceivedAtConfig,
 }
 
 impl EnrichmentConfig {
@@ -18,6 +21,8 @@ impl EnrichmentConfig {
 pub struct EnrichmentConfigBuilder {
     country: Option<CountryConfig>,
     arrived_at: Option<ArrivedAtConfig>,
+    ip_address: Option<IpAddressConfig>,
+    received_at: Option<ReceivedAtConfig>,
 }
 
 impl EnrichmentConfigBuilder {
@@ -31,10 +36,22 @@ impl EnrichmentConfigBuilder {
         self
     }
 
+    pub fn ip_address(mut self, config: IpAddressConfig) -> Self {
+        self.ip_address = Some(config);
+        self
+    }
+
+    pub fn received_at(mut self, config: ReceivedAtConfig) -> Self {
+        self.received_at = Some(config);
+        self
+    }
+
     pub fn build(self) -> EnrichmentConfig {
         EnrichmentConfig {
             country: self.country,
             arrived_at: self.arrived_at,
+            ip_address: self.ip_address,
+            received_at: self.received_at.unwrap_or_default(),
         }
     }
 }
@@ -114,6 +131,75 @@ impl ArrivedAtConfigBuilder {
             override_existing: self.override_existing,
         }
     }
+}
+
+#[derive(Default, Deserialize)]
+pub struct IpAddressConfig {
+    pub override_existing: bool,
+}
+
+impl IpAddressConfig {
+    pub fn builder() -> IpAddressConfigBuilder {
+        IpAddressConfigBuilder::default()
+    }
+}
+
+#[derive(Default)]
+pub struct IpAddressConfigBuilder {
+    override_existing: bool,
+}
+
+impl IpAddressConfigBuilder {
+    pub fn override_existing(mut self, override_existing: bool) -> Self {
+        self.override_existing = override_existing;
+        self
+    }
+
+    pub fn build(self) -> IpAddressConfig {
+        IpAddressConfig {
+            override_existing: self.override_existing,
+        }
+    }
+}
+
+#[derive(Deserialize)]
+pub struct ReceivedAtConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+}
+
+impl Default for ReceivedAtConfig {
+    fn default() -> Self {
+        Self { enabled: true }
+    }
+}
+
+impl ReceivedAtConfig {
+    pub fn builder() -> ReceivedAtConfigBuilder {
+        ReceivedAtConfigBuilder::default()
+    }
+}
+
+#[derive(Default)]
+pub struct ReceivedAtConfigBuilder {
+    enabled: Option<bool>,
+}
+
+impl ReceivedAtConfigBuilder {
+    pub fn enabled(mut self, enabled: bool) -> Self {
+        self.enabled = Some(enabled);
+        self
+    }
+
+    pub fn build(self) -> ReceivedAtConfig {
+        ReceivedAtConfig {
+            enabled: self.enabled.unwrap_or(true),
+        }
+    }
+}
+
+fn default_true() -> bool {
+    true
 }
 
 pub fn enrich_event(

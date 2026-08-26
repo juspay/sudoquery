@@ -1,7 +1,7 @@
 [default-configs]
 server_config = { value = { addr = "0.0.0.0:3000", accept_cors = true }, schema = { type = "object" } }
-kafka_connector = { value = { topic = "events", client_config = { "bootstrap.servers" = "localhost:19092", "message.timeout.ms" = "5000", "socket.timeout.ms" = "5000" } }, schema = { type = "object" } }
-enrichment = { value = { country = { override_existing = false, resolution = "IpAddress" }, arrived_at = { override_existing = false } }, schema = { type = "object" } }
+kafka_connector = { value = { topic = "events", client_config = { "bootstrap.servers" = "host.docker.internal:19092", "message.timeout.ms" = "5000", "socket.timeout.ms" = "5000" } }, schema = { type = "object" } }
+enrichment = { value = { country = { override_existing = false, resolution = "IpAddress" }, arrived_at = { override_existing = false }, ip_address = { override_existing = false }, received_at = { enabled = true } }, schema = { type = "object" } }
 
 [dimensions]
 tenant_id = { position = 1, schema = { type = "string" } }

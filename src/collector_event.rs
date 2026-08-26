@@ -16,6 +16,7 @@ pub enum EnvelopVersion {
 pub struct SystemProperties {
     pub geo: Option<Geo>,
     pub timezone: Option<String>,
+    pub ip_address: Option<String>,
 }
 
 #[derive(Clone, Deserialize)]
