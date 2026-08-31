@@ -13,12 +13,11 @@ pub struct CanonicalEvent {
     id: uuid::Uuid,
     name: String,
     occured_at: chrono::DateTime<chrono::Utc>,
-    pub arrived_at: Option<chrono::DateTime<chrono::Utc>>,
     #[serde(
         skip_serializing_if = "Option::is_none",
         serialize_with = "serialize_optional_utc_datetime_nanos"
     )]
-    pub received_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub arrived_at: Option<chrono::DateTime<chrono::Utc>>,
     pub tenant_id: String,
     pub workspace_id: Option<String>,
     pub session_id: Option<String>,
@@ -96,7 +95,6 @@ impl CanonicalEvent {
             name,
             occured_at,
             arrived_at: None,
-            received_at: None,
             tenant_id,
             workspace_id,
             session_id,
@@ -168,8 +166,10 @@ impl CanonicalEvent {
                 }
             }
 
-            if let Some(arrived_at_config) = &enrichment_config.arrived_at {
-                if arrived_at_config.override_existing || self.arrived_at.is_none() {}
+            if enrichment_config.arrived_at.enabled
+                && (enrichment_config.arrived_at.override_existing || self.arrived_at.is_none())
+            {
+                self.arrived_at = Some(chrono::Utc::now());
             }
 
             if let Some(ip_address_config) = &enrichment_config.ip_address {
@@ -185,10 +185,6 @@ impl CanonicalEvent {
                             .ip_address = Some(ip_address.to_string());
                     }
                 }
-            }
-
-            if enrichment_config.received_at.enabled {
-                self.received_at = Some(chrono::Utc::now());
             }
         }
     }
@@ -310,7 +306,7 @@ impl SystemPropertiesBuilder {
 #[derive(Default)]
 pub struct CanonicalEventBuilder {
     system_properties: Option<SystemProperties>,
-    received_at: Option<chrono::DateTime<chrono::Utc>>,
+    arrived_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
 impl CanonicalEventBuilder {
@@ -319,8 +315,8 @@ impl CanonicalEventBuilder {
         self
     }
 
-    pub fn received_at(mut self, received_at: Option<chrono::DateTime<chrono::Utc>>) -> Self {
-        self.received_at = received_at;
+    pub fn arrived_at(mut self, arrived_at: Option<chrono::DateTime<chrono::Utc>>) -> Self {
+        self.arrived_at = arrived_at;
         self
     }
 
@@ -330,8 +326,7 @@ impl CanonicalEventBuilder {
             id: uuid::Uuid::new_v4(),
             name: String::new(),
             occured_at: chrono::Utc::now(),
-            arrived_at: None,
-            received_at: self.received_at,
+            arrived_at: self.arrived_at,
             tenant_id: String::new(),
             workspace_id: None,
             session_id: None,
@@ -349,7 +344,7 @@ impl CanonicalEventBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::enrichment::{CountryConfig, EnrichmentConfig, IpAddressConfig, ReceivedAtConfig};
+    use crate::enrichment::{ArrivedAtConfig, CountryConfig, EnrichmentConfig, IpAddressConfig};
 
     fn collector_event(
         system_properties: Option<collector_event::SystemProperties>,
@@ -560,7 +555,7 @@ mod tests {
     }
 
     #[test]
-    fn enriches_received_at_by_default() {
+    fn enriches_arrived_at_by_default() {
         let enrichment_config = EnrichmentConfig::builder().build();
         let before = chrono::Utc::now();
 
@@ -571,16 +566,16 @@ mod tests {
         );
 
         let after = chrono::Utc::now();
-        let received_at = canonical_event.received_at.unwrap();
+        let arrived_at = canonical_event.arrived_at.unwrap();
 
-        assert!(received_at >= before);
-        assert!(received_at <= after);
+        assert!(arrived_at >= before);
+        assert!(arrived_at <= after);
     }
 
     #[test]
-    fn does_not_enrich_received_at_when_disabled() {
+    fn does_not_enrich_arrived_at_when_disabled() {
         let enrichment_config = EnrichmentConfig::builder()
-            .received_at(ReceivedAtConfig::builder().enabled(false).build())
+            .arrived_at(ArrivedAtConfig::builder().enabled(false).build())
             .build();
 
         let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
@@ -589,22 +584,22 @@ mod tests {
             None,
         );
 
-        assert_eq!(canonical_event.received_at, None);
+        assert_eq!(canonical_event.arrived_at, None);
     }
 
     #[test]
-    fn serializes_received_at_as_utc_nanosecond_precision() {
-        let received_at = chrono::DateTime::parse_from_rfc3339("2026-08-26T10:11:12.123Z")
+    fn serializes_arrived_at_as_utc_nanosecond_precision() {
+        let arrived_at = chrono::DateTime::parse_from_rfc3339("2026-08-26T10:11:12.123Z")
             .unwrap()
             .with_timezone(&chrono::Utc);
         let canonical_event = CanonicalEvent::builder()
-            .received_at(Some(received_at))
+            .arrived_at(Some(arrived_at))
             .build();
         let payload = serde_json::to_value(canonical_event).unwrap();
 
         assert_eq!(
             payload
-                .get("received_at")
+                .get("arrived_at")
                 .and_then(serde_json::Value::as_str),
             Some("2026-08-26T10:11:12.123000000Z")
         );

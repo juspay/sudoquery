@@ -155,7 +155,7 @@ mod tests {
             config
                 .enrichment
                 .as_ref()
-                .is_some_and(|enrichment| enrichment.received_at.enabled)
+                .is_some_and(|enrichment| enrichment.arrived_at.enabled)
         );
     }
 }
