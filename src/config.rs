@@ -206,13 +206,13 @@ mod tests {
             .await
             .unwrap();
 
-        assert_eq!(config.kafka_connector.topic, "events");
+        assert_eq!(config.kafka_connector.topic, "events.generic");
         assert_eq!(
             config
                 .kafka_connector
                 .client_config
                 .get("bootstrap.servers"),
-            Some(&"host.docker.internal:19092".to_string())
+            Some(&"10.2.155.50:9092".to_string())
         );
         assert!(config.allowed_events.is_none());
     }
@@ -221,7 +221,7 @@ mod tests {
     async fn loads_default_config_from_cac_toml() {
         let config = get_default_config_from_local_file().await.unwrap();
 
-        assert_eq!(config.kafka_connector.topic, "events");
+        assert_eq!(config.kafka_connector.topic, "events.generic");
         assert_eq!(config.server_config.addr, "0.0.0.0:3000");
         assert!(config.server_config.accept_cors);
         assert!(config.allowed_events.is_none());

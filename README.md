@@ -93,12 +93,12 @@ Config is resolved per request. `x-tenant-id` / `x-workspace-id` are used as CAC
 | `x-workspace-id` | no | Workspace context for config resolution |
 | `x-forwarded-for` / `x-real-ip` | no | Client IP for enrichment; falls back to peer address |
 
-### `POST /events`
+### `POST /cdp/events`
 
 Body is newline-delimited JSON (one event object per line):
 
 ```bash
-curl -X POST http://localhost:3000/events \
+curl -X POST http://localhost:3000/cdp/events \
   -H "x-tenant-id: merchant-1" \
   -H "content-type: application/json" \
   --data-binary '{"envelop_version":"1.0","id":"0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c","name":"payment_initiated","tenant_id":"merchant-1","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z","properties":{"amount":100,"currency":"INR"}}
@@ -119,12 +119,12 @@ Event fields:
 | `properties` | no | Arbitrary JSON |
 | `system_properties` | no | `{ geo: { country }, timezone, ip_address }` |
 
-### `POST /batch`
+### `POST /cdp/batch`
 
 Body is a single JSON object with an events array and optional batch-level system properties:
 
 ```bash
-curl -X POST http://localhost:3000/batch \
+curl -X POST http://localhost:3000/cdp/batch \
   -H "x-tenant-id: merchant-1" \
   -H "content-type: application/json" \
   -d '{"events":[{"envelop_version":"1.0","id":"0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c","name":"payment_initiated","tenant_id":"merchant-1","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z"}],"system_properties":{"timezone":"Asia/Kolkata"}}'
@@ -140,7 +140,7 @@ Both ingest endpoints return the collection status:
 
 `filtered` counts events rejected by `allowed_events`; `collected` counts events published to Kafka.
 
-### `GET /health`
+### `GET /cdp/health`
 
 Returns `200 {"status":"ok"}` when Kafka metadata is reachable, `503` otherwise. Suitable for load balancer health checks.
 
