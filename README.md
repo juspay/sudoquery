@@ -21,6 +21,24 @@ aws ecr get-login-password --region ap-south-1 | \
 docker pull 223655089699.dkr.ecr.ap-south-1.amazonaws.com/cdp:event-collector-<short-commit-sha>
 ```
 
+### Versioning
+
+Releases are derived from [conventional commit](https://www.conventionalcommits.org) messages. Every commit publishes an `event-collector-<sha>` image; commits containing at least one releasable change additionally publish `event-collector-<version>` and create the git tag `event-collector-v<version>`:
+
+| Commit message | Bump |
+|---|---|
+| `feat!:` / any `type!:` / `BREAKING CHANGE:` footer | major |
+| `feat:` | minor |
+| `fix:` | patch |
+| `chore:`, `docs:`, anything else | no release |
+
+Rules:
+
+- Only commits since the previous `event-collector-v*` tag are considered
+- With no previous tag the base is `0.0.0`, so the first `feat:` ships `0.1.0`
+- The version git tag is only created after the image push succeeds, so a tag always corresponds to a published image
+- Re-running the pipeline on an already-tagged commit produces no new version
+
 ## Run
 
 ```bash
