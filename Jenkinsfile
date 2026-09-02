@@ -2,6 +2,8 @@ def SERVICES = [
     'event-collector',
 ]
 
+def REPO_SSH = 'ssh://git@ssh.bitbucket.juspay.net/picaf/events-collector.git'
+
 pipeline {
     agent any
 
@@ -27,7 +29,8 @@ pipeline {
         stage('Version') {
             steps {
                 script {
-                    sh 'git fetch --tags'
+                    sh "git remote set-url origin ${REPO_SSH}"
+                    sh 'git fetch --unshallow --tags || git fetch --tags'
                     env.NEXT_VERSION = sh(
                         script: 'bash scripts/next-version.sh',
                         returnStdout: true,
