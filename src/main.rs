@@ -19,7 +19,7 @@ const TENANT_ID_HEADER: &str = "x-tenant-id";
 const WORKSPACE_ID_HEADER: &str = "x-workspace-id";
 const FORWARDED_FOR_HEADER: &str = "x-forwarded-for";
 const REAL_IP_HEADER: &str = "x-real-ip";
-const ROUTE_PREFIX: &str = "/cdp";
+const ROUTE_PREFIX: &str = "/cdp/collect";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
