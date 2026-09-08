@@ -26,6 +26,7 @@ pub struct CanonicalEvent {
     pub source: Option<String>,
     pub correlation_id: Option<String>,
     pub trace_id: Option<String>,
+    pub authenticated: Option<bool>,
     pub properties: Option<serde_json::Value>,
     pub system_properties: Option<SystemProperties>,
 }
@@ -40,12 +41,30 @@ impl CanonicalEvent {
         config: Option<&Config>,
         ip_address: Option<&str>,
     ) -> Option<Self> {
+        Self::from_collector_event_authenticated(collector_event, false, config, ip_address)
+    }
+
+    pub fn from_authenticated_collector_event(
+        collector_event: CollectorEvent,
+        config: Option<&Config>,
+        ip_address: Option<&str>,
+    ) -> Option<Self> {
+        Self::from_collector_event_authenticated(collector_event, true, config, ip_address)
+    }
+
+    fn from_collector_event_authenticated(
+        collector_event: CollectorEvent,
+        authenticated: bool,
+        config: Option<&Config>,
+        ip_address: Option<&str>,
+    ) -> Option<Self> {
         if config.is_some_and(|config| !config.is_event_allowed(&collector_event)) {
             return None;
         }
 
         Some(Self::from_collector_event_with_enrichment(
             collector_event,
+            authenticated,
             config.and_then(|config| config.enrichment.as_ref()),
             ip_address,
         ))
@@ -53,11 +72,13 @@ impl CanonicalEvent {
 
     pub(crate) fn from_collector_event_with_enrichment(
         collector_event: CollectorEvent,
+        authenticated: bool,
         enrichment_config: Option<&EnrichmentConfig>,
         ip_address: Option<&str>,
     ) -> Self {
         Self::from_collector_event_with_system_properties(
             collector_event,
+            authenticated,
             None,
             enrichment_config,
             ip_address,
@@ -66,6 +87,7 @@ impl CanonicalEvent {
 
     fn from_collector_event_with_system_properties(
         collector_event: CollectorEvent,
+        authenticated: bool,
         system_properties_override: Option<Option<collector_event::SystemProperties>>,
         enrichment_config: Option<&EnrichmentConfig>,
         ip_address: Option<&str>,
@@ -85,6 +107,7 @@ impl CanonicalEvent {
             correlation_id,
             trace_id,
             system_properties,
+            ..
         } = collector_event;
         let system_properties = system_properties_override.unwrap_or(system_properties);
         let system_properties = system_properties.map(SystemProperties::from);
@@ -103,6 +126,7 @@ impl CanonicalEvent {
             source,
             correlation_id,
             trace_id,
+            authenticated: Some(authenticated),
             properties,
             system_properties,
         };
@@ -128,6 +152,7 @@ impl CanonicalEvent {
 
                 Some(Self::from_collector_event_with_system_properties(
                     collector_event,
+                    false,
                     Some(batch_system_properties.clone()),
                     config.and_then(|config| config.enrichment.as_ref()),
                     ip_address,
@@ -335,6 +360,7 @@ impl CanonicalEventBuilder {
             source: None,
             correlation_id: None,
             trace_id: None,
+            authenticated: None,
             properties: None,
             system_properties: self.system_properties,
         }
@@ -401,6 +427,7 @@ mod tests {
                 timezone: None,
                 ip_address: None,
             })),
+            false,
             Some(&enrichment_config),
             Some("14.143.32.203"),
         );
@@ -430,6 +457,7 @@ mod tests {
                 timezone: None,
                 ip_address: None,
             })),
+            false,
             Some(&enrichment_config),
             Some("127.0.0.1"),
         );
@@ -451,6 +479,7 @@ mod tests {
                 timezone: Some("Asia/Kolkata".to_string()),
                 ip_address: None,
             })),
+            false,
             None,
             Some("203.0.113.10"),
         );
@@ -469,6 +498,7 @@ mod tests {
 
         let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
             collector_event(None),
+            false,
             Some(&enrichment_config),
             Some("203.0.113.10"),
         );
@@ -493,6 +523,7 @@ mod tests {
                 timezone: None,
                 ip_address: Some("198.51.100.10".to_string()),
             })),
+            false,
             Some(&enrichment_config),
             Some("203.0.113.10"),
         );
@@ -517,6 +548,7 @@ mod tests {
                 timezone: None,
                 ip_address: Some("198.51.100.10".to_string()),
             })),
+            false,
             Some(&enrichment_config),
             Some("203.0.113.10"),
         );
@@ -536,6 +568,7 @@ mod tests {
             .build();
         let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
             collector_event(None),
+            false,
             Some(&enrichment_config),
             Some("203.0.113.10"),
         );
@@ -561,6 +594,7 @@ mod tests {
 
         let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
             collector_event(None),
+            false,
             Some(&enrichment_config),
             None,
         );
@@ -580,6 +614,7 @@ mod tests {
 
         let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
             collector_event(None),
+            false,
             Some(&enrichment_config),
             None,
         );

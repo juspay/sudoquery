@@ -275,15 +275,24 @@ mod tests {
 
         assert_eq!(config.kafka_connector.topic, "env-topic");
         assert_eq!(
-            config.kafka_connector.client_config.get("bootstrap.servers"),
+            config
+                .kafka_connector
+                .client_config
+                .get("bootstrap.servers"),
             Some(&"env-bootstrap:9092".to_owned())
         );
         assert_eq!(
-            config.kafka_connector.client_config.get("message.timeout.ms"),
+            config
+                .kafka_connector
+                .client_config
+                .get("message.timeout.ms"),
             Some(&"9000".to_owned())
         );
         assert_eq!(
-            config.kafka_connector.client_config.get("socket.timeout.ms"),
+            config
+                .kafka_connector
+                .client_config
+                .get("socket.timeout.ms"),
             Some(&"4000".to_owned())
         );
     }
@@ -294,11 +303,17 @@ mod tests {
 
         assert_eq!(config.kafka_connector.topic, "cac-topic");
         assert_eq!(
-            config.kafka_connector.client_config.get("bootstrap.servers"),
+            config
+                .kafka_connector
+                .client_config
+                .get("bootstrap.servers"),
             Some(&"cac-broker:9092".to_owned())
         );
         assert_eq!(
-            config.kafka_connector.client_config.get("message.timeout.ms"),
+            config
+                .kafka_connector
+                .client_config
+                .get("message.timeout.ms"),
             Some(&"5000".to_owned())
         );
     }
@@ -315,7 +330,10 @@ mod tests {
 
         assert_eq!(config.kafka_connector.topic, "env-topic");
         assert_eq!(
-            config.kafka_connector.client_config.get("bootstrap.servers"),
+            config
+                .kafka_connector
+                .client_config
+                .get("bootstrap.servers"),
             Some(&"cac-broker:9092".to_owned())
         );
     }

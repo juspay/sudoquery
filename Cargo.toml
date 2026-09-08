@@ -18,5 +18,11 @@ uuid = { version = "1", features = ["serde", "v4"] }
 futures = "0.3.34"
 superposition_provider = "0.117.1"
 serde_with = "3.22.0"
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-kms = "1"
+base64 = "0.22"
+subtle = "2"
+google-cloud-kms = "0.6"
+google-cloud-googleapis = { version = "0.16", features = ["kms"] }
 
 [dev-dependencies]

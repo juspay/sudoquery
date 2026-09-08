@@ -181,5 +181,5 @@ pub fn enrich_event(
     config: Option<&EnrichmentConfig>,
     ip_address: Option<&str>,
 ) -> CanonicalEvent {
-    CanonicalEvent::from_collector_event_with_enrichment(event.clone(), config, ip_address)
+    CanonicalEvent::from_collector_event_with_enrichment(event.clone(), false, config, ip_address)
 }

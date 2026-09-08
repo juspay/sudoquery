@@ -83,6 +83,41 @@ docker run -d -p 3000:3000 \
 
 Config is resolved per request. `x-tenant-id` / `x-workspace-id` are used as CAC dimension context, so per-tenant overrides in `cac.toml` apply automatically.
 
+### Authentication
+
+The authenticated events endpoint (`POST /cdp/collect/events/authenticated`) validates a bearer token against a secret decrypted from a cloud KMS. The token is decrypted once and cached for the lifetime of the process; rotating it requires a restart.
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `TOKEN_PROVIDER` | yes | `aws` or `gcp` (case-insensitive) |
+
+#### AWS
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `KMS_CIPHERTEXT` | yes | Base64 KMS ciphertext of the token |
+| `KMS_ENCRYPTION_CONTEXT` | no | JSON object; must match the context used at encrypt time, e.g. `'{"app":"my-app"}'` |
+
+Standard AWS SDK credentials are used (`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`, or an instance role). Generate the ciphertext with:
+
+```bash
+aws kms encrypt \
+  --key-id alias/my-key \
+  --plaintext "my-secret-token" \
+  --encryption-context '{"app":"my-app"}' \
+  --query CiphertextBlob --output text
+```
+
+#### GCP
+
+| Variable | Required | Purpose |
+|---|---|---|
+| `GCP_KMS_KEY` | yes | Full CryptoKeyVersion name: `projects/P/locations/L/keyRings/R/cryptoKeys/K/cryptoKeyVersions/V` |
+| `GCP_KMS_CIPHERTEXT` | yes | Base64 KMS ciphertext of the token |
+| `GCP_KMS_AAD` | no | Additional authenticated data; must match the AAD used at encrypt time |
+
+Credentials are resolved via Application Default Credentials (`GOOGLE_APPLICATION_CREDENTIALS` or the metadata server).
+
 ## API
 
 ### Headers
@@ -92,13 +127,14 @@ Config is resolved per request. `x-tenant-id` / `x-workspace-id` are used as CAC
 | `x-tenant-id` | yes | Tenant context for config resolution |
 | `x-workspace-id` | no | Workspace context for config resolution |
 | `x-forwarded-for` / `x-real-ip` | no | Client IP for enrichment; falls back to peer address |
+| `authorization` | only for `/events/authenticated` | `Bearer <token>`; see [Authentication](#authentication) |
 
-### `POST /cdp/events`
+### `POST /cdp/collect/events`
 
 Body is newline-delimited JSON (one event object per line):
 
 ```bash
-curl -X POST http://localhost:3000/cdp/events \
+curl -X POST http://localhost:3000/cdp/collect/events \
   -H "x-tenant-id: merchant-1" \
   -H "content-type: application/json" \
   --data-binary '{"envelop_version":"1.0","id":"0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c","name":"payment_initiated","tenant_id":"merchant-1","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z","properties":{"amount":100,"currency":"INR"}}
@@ -119,12 +155,26 @@ Event fields:
 | `properties` | no | Arbitrary JSON |
 | `system_properties` | no | `{ geo: { country }, timezone, ip_address }` |
 
-### `POST /cdp/batch`
+### `POST /cdp/collect/events/authenticated`
+
+Same body format as `POST /cdp/collect/events`, but requires a bearer token (see [Authentication](#authentication)). Events collected here carry `"authenticated": true` in the canonical event; events from the other endpoints carry `"authenticated": false`:
+
+```bash
+curl -X POST http://localhost:3000/cdp/collect/events/authenticated \
+  -H "x-tenant-id: merchant-1" \
+  -H "authorization: Bearer my-secret-token" \
+  -H "content-type: application/json" \
+  --data-binary '{"envelop_version":"1.0","id":"0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c","name":"payment_initiated","tenant_id":"merchant-1","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z","properties":{"amount":100,"currency":"INR"}}'
+```
+
+Requests with a missing or invalid token return `401` with a `WWW-Authenticate: Bearer` header.
+
+### `POST /cdp/collect/batch`
 
 Body is a single JSON object with an events array and optional batch-level system properties:
 
 ```bash
-curl -X POST http://localhost:3000/cdp/batch \
+curl -X POST http://localhost:3000/cdp/collect/batch \
   -H "x-tenant-id: merchant-1" \
   -H "content-type: application/json" \
   -d '{"events":[{"envelop_version":"1.0","id":"0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c","name":"payment_initiated","tenant_id":"merchant-1","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z"}],"system_properties":{"timezone":"Asia/Kolkata"}}'
@@ -132,7 +182,7 @@ curl -X POST http://localhost:3000/cdp/batch \
 
 ### Response
 
-Both ingest endpoints return the collection status:
+All ingest endpoints return the collection status:
 
 ```json
 {"filtered": 0, "collected": 2, "total": 2}
@@ -140,7 +190,7 @@ Both ingest endpoints return the collection status:
 
 `filtered` counts events rejected by `allowed_events`; `collected` counts events published to Kafka.
 
-### `GET /cdp/health`
+### `GET /cdp/collect/health`
 
 Returns `200 {"status":"ok"}` when Kafka metadata is reachable, `503` otherwise. Suitable for load balancer health checks.
 
@@ -149,6 +199,7 @@ Returns `200 {"status":"ok"}` when Kafka metadata is reachable, `503` otherwise.
 | Code | Meaning |
 |---|---|
 | 400 | Invalid JSON, missing `x-tenant-id`, or non-UTF-8 body |
+| 401 | Missing or invalid bearer token on `/events/authenticated` |
 | 502 | Kafka delivery failure |
 | 500 | Other server-side errors |
 | 503 | Health check could not reach Kafka |

@@ -16,6 +16,12 @@ pub enum AppError {
 
     #[error("Superposition provider error: {0}")]
     Superposition(#[from] superposition_provider::SuperpositionError),
+
+    #[error("Missing or malformed authorization credentials")]
+    MissingCredentials,
+
+    #[error("Invalid bearer token")]
+    InvalidToken,
 }
 
 // 2. Define your clean Result alias

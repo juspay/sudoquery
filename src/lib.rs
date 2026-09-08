@@ -6,6 +6,7 @@ use crate::collector_event::{Batch, CollectorEvent};
 use crate::config::Config;
 use crate::kafka_connector::push_events_to_kafka;
 
+pub mod auth;
 pub mod canonical_event;
 pub mod collector_event;
 pub mod config;
@@ -45,6 +46,23 @@ pub async fn collect_events(
     config: &Config,
     ip_address: Option<&str>,
 ) -> result::Result<CollectionStatus> {
+    collect_events_with_auth(events, config, ip_address, false).await
+}
+
+pub async fn collect_events_authenticated(
+    events: &str,
+    config: &Config,
+    ip_address: Option<&str>,
+) -> result::Result<CollectionStatus> {
+    collect_events_with_auth(events, config, ip_address, true).await
+}
+
+async fn collect_events_with_auth(
+    events: &str,
+    config: &Config,
+    ip_address: Option<&str>,
+    authenticated: bool,
+) -> result::Result<CollectionStatus> {
     // deserialize the events and collect them
     let stream = Deserializer::from_slice(events.as_bytes()).into_iter::<CollectorEvent>();
 
@@ -52,10 +70,15 @@ pub async fn collect_events(
         stream.collect::<std::result::Result<Vec<_>, _>>()?;
 
     let total = collector_events.len();
-    let canonical_events: Vec<CanonicalEvent> = collector_events
-        .into_iter()
-        .filter_map(|event| CanonicalEvent::from_collector_event(event, Some(config), ip_address))
-        .collect();
+    let convert = |event: CollectorEvent| {
+        if authenticated {
+            CanonicalEvent::from_authenticated_collector_event(event, Some(config), ip_address)
+        } else {
+            CanonicalEvent::from_collector_event(event, Some(config), ip_address)
+        }
+    };
+    let canonical_events: Vec<CanonicalEvent> =
+        collector_events.into_iter().filter_map(convert).collect();
 
     push_events_to_kafka(&canonical_events, config).await?;
 

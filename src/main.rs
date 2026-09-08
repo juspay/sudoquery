@@ -3,14 +3,17 @@ use std::str;
 
 use axum::body::Bytes;
 use axum::extract::ConnectInfo;
-use axum::http::{HeaderMap, StatusCode};
+use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use event_collector::auth;
 use event_collector::config::{get_config_from_local_file, get_default_config_from_local_file};
 use event_collector::kafka_connector::test_connection;
 use event_collector::result::AppError;
-use event_collector::{CollectionStatus, collect_events, collect_events_batch};
+use event_collector::{
+    CollectionStatus, collect_events, collect_events_authenticated, collect_events_batch,
+};
 use serde::Serialize;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
@@ -41,7 +44,8 @@ fn app(accept_cors: bool) -> Router {
     let routes = Router::new()
         .route("/health", get(health))
         .route("/batch", post(push_batch))
-        .route("/events", post(push_events));
+        .route("/events", post(push_events))
+        .route("/events/authenticated", post(push_events_authenticated));
 
     let router = Router::new().nest(ROUTE_PREFIX, routes);
 
@@ -90,6 +94,20 @@ async fn push_events(
     let config = get_config_from_local_file(context.tenant_id, context.workspace_id).await?;
     let body = request_body_as_str(&body)?;
     let status = collect_events(body, &config, context.ip_address.as_deref()).await?;
+
+    Ok(Json(status))
+}
+
+async fn push_events_authenticated(
+    ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
+    body: Bytes,
+) -> Result<Json<CollectionStatus>, ApiError> {
+    auth::validate_bearer_token(&headers).await?;
+    let context = RequestContext::from_headers(&headers, Some(peer_addr))?;
+    let config = get_config_from_local_file(context.tenant_id, context.workspace_id).await?;
+    let body = request_body_as_str(&body)?;
+    let status = collect_events_authenticated(body, &config, context.ip_address.as_deref()).await?;
 
     Ok(Json(status))
 }
@@ -185,15 +203,33 @@ impl From<AppError> for ApiError {
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let (status, error) = match self {
-            Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message),
-            Self::ServiceUnavailable(message) => (StatusCode::SERVICE_UNAVAILABLE, message),
-            Self::App(AppError::Json(error)) => (StatusCode::BAD_REQUEST, error.to_string()),
-            Self::App(AppError::Kafka(error)) => (StatusCode::BAD_GATEWAY, error.to_string()),
-            Self::App(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string()),
+        let (status, error, www_authenticate) = match self {
+            Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message, false),
+            Self::ServiceUnavailable(message) => (StatusCode::SERVICE_UNAVAILABLE, message, false),
+            Self::App(AppError::Json(error)) => (StatusCode::BAD_REQUEST, error.to_string(), false),
+            Self::App(AppError::Kafka(error)) => {
+                (StatusCode::BAD_GATEWAY, error.to_string(), false)
+            }
+            Self::App(AppError::InvalidToken) => (
+                StatusCode::UNAUTHORIZED,
+                "invalid bearer token".to_string(),
+                true,
+            ),
+            Self::App(AppError::MissingCredentials) => (
+                StatusCode::UNAUTHORIZED,
+                "missing bearer token".to_string(),
+                true,
+            ),
+            Self::App(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string(), false),
         };
 
-        (status, Json(ErrorResponse { error })).into_response()
+        let mut response = (status, Json(ErrorResponse { error })).into_response();
+        if www_authenticate {
+            response
+                .headers_mut()
+                .insert("WWW-Authenticate", HeaderValue::from_static("Bearer"));
+        }
+        response
     }
 }
 
