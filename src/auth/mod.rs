@@ -42,6 +42,20 @@ pub async fn validate_bearer_token(headers: &axum::http::HeaderMap) -> result::R
     }
 }
 
+/// Resolves the expected bearer token for health reporting on the authenticated
+/// endpoint: `Ok(())` when the token source is configured and the ciphertext
+/// decrypts, or the configuration/decryption error otherwise.
+///
+/// This warms the same cache used by `validate_bearer_token`, so a successful
+/// check makes the next authenticated request skip the KMS call. No request
+/// credentials are compared.
+pub async fn health_check() -> result::Result<()> {
+    TOKEN
+        .get_or_try_init(fetch_expected_token)
+        .await
+        .map(|_| ())
+}
+
 /// Compares two byte slices in constant time using the `subtle` crate, so that
 /// response timing does not reveal anything about the token or its length.
 fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {

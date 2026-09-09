@@ -47,3 +47,10 @@ services:
     depends_on:
       - redpanda
 
+  localstack:
+    image: localstack/localstack:4.14.0
+    container_name: localstack
+    restart: always
+    ports:
+      - "4566:4566"
+

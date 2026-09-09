@@ -69,7 +69,15 @@ async fn health() -> Result<Json<HealthResponse>, ApiError> {
             ApiError::service_unavailable(format!("kafka connection check failed: {}", error))
         })?;
 
-    Ok(Json(HealthResponse { status: "ok" }))
+    let authenticated_endpoint = match auth::health_check().await {
+        Ok(()) => "ok".to_string(),
+        Err(error) => error.to_string(),
+    };
+
+    Ok(Json(HealthResponse {
+        status: "ok",
+        authenticated_endpoint,
+    }))
 }
 
 async fn push_batch(
@@ -171,6 +179,7 @@ fn forwarded_ip(headers: &HeaderMap) -> Result<Option<String>, ApiError> {
 #[derive(Serialize)]
 struct HealthResponse {
     status: &'static str,
+    authenticated_endpoint: String,
 }
 
 #[derive(Serialize)]
@@ -274,5 +283,25 @@ mod tests {
             RequestContext::from_headers(&headers, None),
             Err(ApiError::BadRequest(_))
         ));
+    }
+
+    #[test]
+    fn health_response_includes_authenticated_endpoint_status() {
+        let payload = serde_json::to_value(HealthResponse {
+            status: "ok",
+            authenticated_endpoint: "ok".to_string(),
+        })
+        .unwrap();
+
+        assert_eq!(
+            payload.get("status").and_then(serde_json::Value::as_str),
+            Some("ok")
+        );
+        assert_eq!(
+            payload
+                .get("authenticated_endpoint")
+                .and_then(serde_json::Value::as_str),
+            Some("ok")
+        );
     }
 }
