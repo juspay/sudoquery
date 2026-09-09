@@ -22,7 +22,7 @@ const TENANT_ID_HEADER: &str = "x-tenant-id";
 const WORKSPACE_ID_HEADER: &str = "x-workspace-id";
 const FORWARDED_FOR_HEADER: &str = "x-forwarded-for";
 const REAL_IP_HEADER: &str = "x-real-ip";
-const ROUTE_PREFIX: &str = "/cdp/collect";
+const ROUTE_PREFIX: &str = "/v1";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
@@ -43,7 +43,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 fn app(accept_cors: bool) -> Router {
     let routes = Router::new()
         .route("/health", get(health))
-        .route("/batch", post(push_batch))
+        .route("/events/batch", post(push_batch))
         .route("/events", post(push_events))
         .route("/events/authenticated", post(push_events_authenticated));
 
