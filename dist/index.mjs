@@ -416,7 +416,6 @@ var SudoQuery = class {
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") {
-          this.stopPeriodicFlush();
           this.flush(true).catch((err) => console.error("Flush on pagehide error:", err));
         }
       });
@@ -427,12 +426,6 @@ var SudoQuery = class {
     this.flushTimer = setInterval(() => {
       this.flush(false).catch((err) => console.error("Periodic flush error:", err));
     }, intervalMs);
-  }
-  static stopPeriodicFlush() {
-    if (this.flushTimer !== null) {
-      clearInterval(this.flushTimer);
-      this.flushTimer = null;
-    }
   }
   /**
    * Check if the SDK has been initialized

@@ -2,7 +2,7 @@ import { SudoQuery } from "../src/index";
 
 // Shopify "Customer events" custom pixel -> SudoQuery collector SDK.
 //
-// Build this source with `npm run build`, then paste shopify/dist/index.js into:
+// Build this source with `npm run build`, then paste dist/shopify/index.js into:
 // Shopify Admin -> Settings -> Customer events -> Add custom pixel -> Edit code.
 // Runs in Shopify's sandboxed pixel context,
 // which exposes `analytics`, `browser`, `init`, `settings` as globals.

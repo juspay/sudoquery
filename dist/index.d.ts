@@ -77,7 +77,6 @@ declare class SudoQuery {
     private static flushTimer;
     static init(config?: SudoQueryConfig): void;
     private static startPeriodicFlush;
-    private static stopPeriodicFlush;
     /**
      * Check if the SDK has been initialized
      */
