@@ -1,4 +1,5 @@
 use std::collections::{HashMap, HashSet};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 
 use serde::Deserialize;
@@ -92,33 +93,71 @@ fn apply_kafka_overrides(mut config: Config, overrides: KafkaEnvOverrides) -> Co
 
 #[derive(Deserialize)]
 pub struct Config {
-    #[serde(default)]
-    pub server_config: ServerConfig,
     pub kafka_connector: KafkaConnectorConfig,
     #[serde(default)]
     allowed_events: Option<HashSet<String>>,
     pub enrichment: Option<EnrichmentConfig>,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug)]
 pub struct ServerConfig {
     pub addr: String,
     pub accept_cors: bool,
 }
 
-impl Default for ServerConfig {
-    fn default() -> Self {
-        Self {
-            addr: "0.0.0.0:3000".to_string(),
-            accept_cors: false,
-        }
+const SERVER_ADDR_ENV: &str = "SERVER_ADDR";
+const SERVER_ACCEPT_CORS_ENV: &str = "SERVER_ACCEPT_CORS";
+const DEFAULT_SERVER_ADDR: &str = "0.0.0.0:3000";
+
+impl ServerConfig {
+    /// Server settings are read from environment variables instead of `cac.toml`:
+    ///
+    /// - `SERVER_ADDR`: socket address to listen on; defaults to `0.0.0.0:3000`
+    /// - `SERVER_ACCEPT_CORS`: `true` or `false` (case-insensitive), enabling
+    ///   permissive CORS; defaults to `false`
+    ///
+    /// Empty or whitespace-only values are treated as unset.
+    pub fn from_env() -> result::Result<Self> {
+        Ok(Self {
+            addr: server_addr_from(non_empty_env(SERVER_ADDR_ENV).as_deref())?,
+            accept_cors: accept_cors_from(non_empty_env(SERVER_ACCEPT_CORS_ENV).as_deref())?,
+        })
+    }
+}
+
+fn server_addr_from(raw: Option<&str>) -> result::Result<String> {
+    let Some(raw) = raw else {
+        return Ok(DEFAULT_SERVER_ADDR.to_string());
+    };
+
+    raw.parse::<SocketAddr>()
+        .map(|_| raw.to_string())
+        .map_err(|_| {
+            result::AppError::Config(format!(
+                "`{}` must be a valid socket address (e.g. `0.0.0.0:3000`), got `{}`",
+                SERVER_ADDR_ENV, raw
+            ))
+        })
+}
+
+fn accept_cors_from(raw: Option<&str>) -> result::Result<bool> {
+    let Some(raw) = raw else {
+        return Ok(false);
+    };
+
+    match raw.to_ascii_lowercase().as_str() {
+        "true" => Ok(true),
+        "false" => Ok(false),
+        _ => Err(result::AppError::Config(format!(
+            "`{}` must be `true` or `false`, got `{}`",
+            SERVER_ACCEPT_CORS_ENV, raw
+        ))),
     }
 }
 
 impl Config {
     pub fn new(kafka_connector: KafkaConnectorConfig) -> Self {
         Config {
-            server_config: ServerConfig::default(),
             kafka_connector,
             allowed_events: None,
             enrichment: None,
@@ -134,18 +173,12 @@ impl Config {
 }
 
 pub struct ConfigBuilder {
-    server_config: Option<ServerConfig>,
     kafka_connector: KafkaConnectorConfig,
     allowed_events: Option<HashSet<String>>,
     enrichment: Option<EnrichmentConfig>,
 }
 
 impl ConfigBuilder {
-    pub fn server_config(mut self, server_config: ServerConfig) -> Self {
-        self.server_config = Some(server_config);
-        self
-    }
-
     pub fn allowed_events(mut self, events: HashSet<String>) -> Self {
         self.allowed_events = Some(events);
         self
@@ -153,7 +186,6 @@ impl ConfigBuilder {
 
     pub fn build(self) -> Config {
         Config {
-            server_config: self.server_config.unwrap_or_default(),
             kafka_connector: self.kafka_connector,
             allowed_events: self.allowed_events,
             enrichment: self.enrichment,
@@ -212,7 +244,7 @@ mod tests {
                 .kafka_connector
                 .client_config
                 .get("bootstrap.servers"),
-            Some(&"10.2.155.50:9092".to_string())
+            Some(&"breeze-c2-kafka-brokers.kafka-cluster-v2:9092".to_string())
         );
         assert!(config.allowed_events.is_none());
     }
@@ -222,8 +254,6 @@ mod tests {
         let config = get_default_config_from_local_file().await.unwrap();
 
         assert_eq!(config.kafka_connector.topic, "events.generic");
-        assert_eq!(config.server_config.addr, "0.0.0.0:3000");
-        assert!(config.server_config.accept_cors);
         assert!(config.allowed_events.is_none());
         assert!(
             config
@@ -238,6 +268,49 @@ mod tests {
                 .as_ref()
                 .is_some_and(|enrichment| enrichment.arrived_at.enabled)
         );
+    }
+
+    #[test]
+    fn server_addr_defaults_when_env_missing() {
+        assert_eq!(server_addr_from(None).unwrap(), "0.0.0.0:3000");
+    }
+
+    #[test]
+    fn server_addr_accepts_valid_socket_addr() {
+        assert_eq!(
+            server_addr_from(Some("127.0.0.1:8080")).unwrap(),
+            "127.0.0.1:8080"
+        );
+        assert_eq!(server_addr_from(Some("[::]:3000")).unwrap(), "[::]:3000");
+    }
+
+    #[test]
+    fn invalid_server_addr_is_error() {
+        assert!(matches!(
+            server_addr_from(Some("not-an-addr")),
+            Err(result::AppError::Config(_))
+        ));
+    }
+
+    #[test]
+    fn accept_cors_defaults_false_when_env_missing() {
+        assert!(!accept_cors_from(None).unwrap());
+    }
+
+    #[test]
+    fn accept_cors_parses_true_and_false_case_insensitively() {
+        assert!(accept_cors_from(Some("true")).unwrap());
+        assert!(accept_cors_from(Some("TRUE")).unwrap());
+        assert!(!accept_cors_from(Some("false")).unwrap());
+        assert!(!accept_cors_from(Some("False")).unwrap());
+    }
+
+    #[test]
+    fn invalid_accept_cors_is_error() {
+        assert!(matches!(
+            accept_cors_from(Some("yes")),
+            Err(result::AppError::Config(_))
+        ));
     }
 
     fn cac_config() -> Config {

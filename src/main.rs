@@ -8,7 +8,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use event_collector::auth;
-use event_collector::config::{get_config_from_local_file, get_default_config_from_local_file};
+use event_collector::config::{
+    ServerConfig, get_config_from_local_file, get_default_config_from_local_file,
+};
 use event_collector::kafka_connector::test_connection;
 use event_collector::result::AppError;
 use event_collector::{
@@ -26,8 +28,7 @@ const ROUTE_PREFIX: &str = "/v1";
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    let config = get_default_config_from_local_file().await?;
-    let server_config = config.server_config;
+    let server_config = ServerConfig::from_env()?;
     let addr = server_config.addr;
     let listener = TcpListener::bind(&addr).await?;
 

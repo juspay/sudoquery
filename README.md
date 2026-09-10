@@ -55,6 +55,13 @@ The container listens on `0.0.0.0:3000`.
 
 ### Environment variables
 
+Server settings come from the environment (never from `cac.toml`):
+
+| Variable | Default | Effect |
+|---|---|---|
+| `SERVER_ADDR` | `0.0.0.0:3000` | Socket address to listen on |
+| `SERVER_ACCEPT_CORS` | `false` | `true`/`false` (case-insensitive); enables permissive CORS |
+
 Kafka settings from the environment take priority over the bundled `cac.toml`:
 
 | Variable | Effect |
@@ -65,7 +72,7 @@ Kafka settings from the environment take priority over the bundled `cac.toml`:
 
 Precedence for `bootstrap.servers`: `KAFKA_BOOTSTRAP_SERVERS` > `KAFKA_CLIENT_CONFIG` > `cac.toml`. Empty or whitespace-only values are treated as unset. Invalid JSON in `KAFKA_CLIENT_CONFIG` fails requests with a 500 naming the variable.
 
-Only Kafka settings are env-overridable. To change anything else (server address, CORS, enrichment, allowed events), mount a custom config:
+Only server and Kafka settings are env-driven. To change anything else (enrichment, allowed events), mount a custom config:
 
 ```bash
 docker run -d -p 3000:3000 \
@@ -76,7 +83,6 @@ docker run -d -p 3000:3000 \
 
 `cac.toml` sections:
 
-- `server_config` — `addr` (default `0.0.0.0:3000`), `accept_cors` (enables permissive CORS when true)
 - `kafka_connector` — `topic` and `client_config` (librdkafka properties: `bootstrap.servers`, `message.timeout.ms`, `socket.timeout.ms`, ...)
 - `enrichment` — `arrived_at` (`enabled` default true, `override_existing`), `ip_address` (`override_existing`), `country` (`override_existing`, resolved from IP)
 - `allowed_events` — allowlist of event names; absent means all events are accepted
