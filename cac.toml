@@ -1,5 +1,5 @@
 [default-configs]
-kafka_connector = { value = { topic = "events.generic", client_config = { "bootstrap.servers" = "breeze-c2-kafka-brokers.kafka-cluster-v2:9092", "message.timeout.ms" = "5000", "socket.timeout.ms" = "5000" } }, schema = { type = "object" } }
+kafka_connector = { value = { topic = "events.generic", client_config = { "bootstrap.servers" = "b-1.cdploadtest.voagco.c3.kafka.ap-south-1.amazonaws.com:9092,b-3.cdploadtest.voagco.c3.kafka.ap-south-1.amazonaws.com:9092,b-2.cdploadtest.voagco.c3.kafka.ap-south-1.amazonaws.com:9092", "message.timeout.ms" = "5000", "socket.timeout.ms" = "5000" } }, schema = { type = "object" } }
 enrichment = { value = { country = { override_existing = false, resolution = "IpAddress" }, arrived_at = { enabled = true, override_existing = false }, ip_address = { override_existing = false } }, schema = { type = "object" } }
 
 [dimensions]
