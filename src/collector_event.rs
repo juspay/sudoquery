@@ -1,16 +1,5 @@
-use serde::{Deserialize, Serialize};
-
-#[derive(Clone, Default, Deserialize, Serialize)]
-pub struct Geo {
-    pub country: Option<String>,
-}
-
-#[derive(Clone, Copy, Default, Deserialize, Serialize)]
-pub enum EnvelopVersion {
-    #[default]
-    #[serde(rename = "1.0")]
-    V1,
-}
+pub use canonical_event::{EnvelopVersion, Geo};
+use serde::Deserialize;
 
 #[derive(Clone, Deserialize)]
 pub struct SystemProperties {

@@ -839,6 +839,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "canonical-event"
+version = "0.1.0"
+dependencies = [
+ "chrono",
+ "serde",
+ "serde_json",
+ "serde_with",
+ "uuid",
+]
+
+[[package]]
 name = "cargo-platform"
 version = "0.1.9"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1284,6 +1295,7 @@ dependencies = [
  "aws-sdk-kms",
  "axum",
  "base64 0.22.1",
+ "canonical-event",
  "chrono",
  "futures",
  "google-cloud-googleapis",

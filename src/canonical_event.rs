@@ -1,230 +1,199 @@
-use crate::collector_event::{self, Batch, CollectorEvent, EnvelopVersion, Geo};
+pub use canonical_event::{
+    CanonicalEvent, CanonicalEventBuilder, SystemProperties, SystemPropertiesBuilder,
+};
+
+use crate::collector_event::{self, Batch, CollectorEvent, Geo};
 use crate::config::Config;
 use crate::enrichment::{CountryResolution, EnrichmentConfig};
-use chrono::SecondsFormat;
-use serde::{Serialize, Serializer};
-use serde_with::skip_serializing_none;
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
-#[skip_serializing_none]
-#[derive(Serialize)]
-pub struct CanonicalEvent {
-    envelop_version: EnvelopVersion,
-    id: uuid::Uuid,
-    name: String,
-    occured_at: chrono::DateTime<chrono::Utc>,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_optional_utc_datetime_nanos"
-    )]
-    pub arrived_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub tenant_id: String,
-    pub workspace_id: Option<String>,
-    pub session_id: Option<String>,
-    pub anon_id: String,
-    pub actor_id: Option<String>,
-    pub source: Option<String>,
-    pub correlation_id: Option<String>,
-    pub trace_id: Option<String>,
-    pub authenticated: Option<bool>,
-    pub properties: Option<serde_json::Value>,
-    pub system_properties: Option<SystemProperties>,
+pub fn from_collector_event(
+    collector_event: CollectorEvent,
+    config: Option<&Config>,
+    ip_address: Option<&str>,
+) -> Option<CanonicalEvent> {
+    from_collector_event_authenticated(collector_event, false, config, ip_address)
 }
 
-impl CanonicalEvent {
-    pub fn builder() -> CanonicalEventBuilder {
-        CanonicalEventBuilder::default()
+pub fn from_authenticated_collector_event(
+    collector_event: CollectorEvent,
+    config: Option<&Config>,
+    ip_address: Option<&str>,
+) -> Option<CanonicalEvent> {
+    from_collector_event_authenticated(collector_event, true, config, ip_address)
+}
+
+fn from_collector_event_authenticated(
+    collector_event: CollectorEvent,
+    authenticated: bool,
+    config: Option<&Config>,
+    ip_address: Option<&str>,
+) -> Option<CanonicalEvent> {
+    if config.is_some_and(|config| !config.is_event_allowed(&collector_event)) {
+        return None;
     }
 
-    pub fn from_collector_event(
-        collector_event: CollectorEvent,
-        config: Option<&Config>,
-        ip_address: Option<&str>,
-    ) -> Option<Self> {
-        Self::from_collector_event_authenticated(collector_event, false, config, ip_address)
-    }
+    Some(from_collector_event_with_enrichment(
+        collector_event,
+        authenticated,
+        config.and_then(|config| config.enrichment.as_ref()),
+        ip_address,
+    ))
+}
 
-    pub fn from_authenticated_collector_event(
-        collector_event: CollectorEvent,
-        config: Option<&Config>,
-        ip_address: Option<&str>,
-    ) -> Option<Self> {
-        Self::from_collector_event_authenticated(collector_event, true, config, ip_address)
-    }
+pub(crate) fn from_collector_event_with_enrichment(
+    collector_event: CollectorEvent,
+    authenticated: bool,
+    enrichment_config: Option<&EnrichmentConfig>,
+    ip_address: Option<&str>,
+) -> CanonicalEvent {
+    from_collector_event_with_system_properties(
+        collector_event,
+        authenticated,
+        None,
+        enrichment_config,
+        ip_address,
+    )
+}
 
-    fn from_collector_event_authenticated(
-        collector_event: CollectorEvent,
-        authenticated: bool,
-        config: Option<&Config>,
-        ip_address: Option<&str>,
-    ) -> Option<Self> {
-        if config.is_some_and(|config| !config.is_event_allowed(&collector_event)) {
-            return None;
+fn from_collector_event_with_system_properties(
+    collector_event: CollectorEvent,
+    authenticated: bool,
+    system_properties_override: Option<Option<collector_event::SystemProperties>>,
+    enrichment_config: Option<&EnrichmentConfig>,
+    ip_address: Option<&str>,
+) -> CanonicalEvent {
+    let CollectorEvent {
+        envelop_version,
+        id,
+        name,
+        tenant_id,
+        workspace_id,
+        session_id,
+        anon_id,
+        actor_id,
+        source,
+        occured_at,
+        properties,
+        correlation_id,
+        trace_id,
+        system_properties,
+        ..
+    } = collector_event;
+    let system_properties = system_properties_override.unwrap_or(system_properties);
+    let system_properties = system_properties.map(SystemProperties::from);
+
+    let mut canonical_event = CanonicalEvent::builder()
+        .envelop_version(envelop_version)
+        .id(id)
+        .name(name)
+        .occured_at(occured_at)
+        .arrived_at(None)
+        .tenant_id(tenant_id)
+        .workspace_id(workspace_id)
+        .session_id(session_id)
+        .anon_id(anon_id)
+        .actor_id(actor_id)
+        .source(source)
+        .correlation_id(correlation_id)
+        .trace_id(trace_id)
+        .authenticated(Some(authenticated))
+        .properties(properties)
+        .system_properties(system_properties)
+        .build();
+
+    enrich(&mut canonical_event, enrichment_config, ip_address);
+    canonical_event
+}
+
+pub fn from_collector_events_batch(
+    batch: Batch,
+    config: Option<&Config>,
+    ip_address: Option<&str>,
+) -> Vec<CanonicalEvent> {
+    let batch_system_properties = batch.system_properties;
+
+    batch
+        .events
+        .into_iter()
+        .filter_map(|collector_event| {
+            if config.is_some_and(|config| !config.is_event_allowed(&collector_event)) {
+                return None;
+            }
+
+            Some(from_collector_event_with_system_properties(
+                collector_event,
+                false,
+                Some(batch_system_properties.clone()),
+                config.and_then(|config| config.enrichment.as_ref()),
+                ip_address,
+            ))
+        })
+        .collect()
+}
+
+impl From<collector_event::SystemProperties> for SystemProperties {
+    fn from(props: collector_event::SystemProperties) -> Self {
+        SystemProperties {
+            geo: props.geo,
+            timezone: props.timezone,
+            ip_address: props.ip_address,
         }
-
-        Some(Self::from_collector_event_with_enrichment(
-            collector_event,
-            authenticated,
-            config.and_then(|config| config.enrichment.as_ref()),
-            ip_address,
-        ))
     }
+}
 
-    pub(crate) fn from_collector_event_with_enrichment(
-        collector_event: CollectorEvent,
-        authenticated: bool,
-        enrichment_config: Option<&EnrichmentConfig>,
-        ip_address: Option<&str>,
-    ) -> Self {
-        Self::from_collector_event_with_system_properties(
-            collector_event,
-            authenticated,
-            None,
-            enrichment_config,
-            ip_address,
-        )
-    }
+fn enrich(event: &mut CanonicalEvent, config: Option<&EnrichmentConfig>, ip_address: Option<&str>) {
+    if let Some(enrichment_config) = config {
+        if let Some(country_config) = &enrichment_config.country {
+            match &country_config.resolution {
+                CountryResolution::IpAddress => {
+                    let existing = event
+                        .system_properties
+                        .as_ref()
+                        .and_then(|sp| sp.geo.as_ref())
+                        .and_then(|geo| geo.country.as_ref());
 
-    fn from_collector_event_with_system_properties(
-        collector_event: CollectorEvent,
-        authenticated: bool,
-        system_properties_override: Option<Option<collector_event::SystemProperties>>,
-        enrichment_config: Option<&EnrichmentConfig>,
-        ip_address: Option<&str>,
-    ) -> Self {
-        let CollectorEvent {
-            envelop_version,
-            id,
-            name,
-            tenant_id,
-            workspace_id,
-            session_id,
-            anon_id,
-            actor_id,
-            source,
-            occured_at,
-            properties,
-            correlation_id,
-            trace_id,
-            system_properties,
-            ..
-        } = collector_event;
-        let system_properties = system_properties_override.unwrap_or(system_properties);
-        let system_properties = system_properties.map(SystemProperties::from);
-
-        let mut canonical_event = CanonicalEvent {
-            envelop_version,
-            id,
-            name,
-            occured_at,
-            arrived_at: None,
-            tenant_id,
-            workspace_id,
-            session_id,
-            anon_id,
-            actor_id,
-            source,
-            correlation_id,
-            trace_id,
-            authenticated: Some(authenticated),
-            properties,
-            system_properties,
-        };
-
-        canonical_event.enrich(enrichment_config, ip_address);
-        canonical_event
-    }
-
-    pub fn from_collector_events_batch(
-        batch: Batch,
-        config: Option<&Config>,
-        ip_address: Option<&str>,
-    ) -> Vec<Self> {
-        let batch_system_properties = batch.system_properties;
-
-        batch
-            .events
-            .into_iter()
-            .filter_map(|collector_event| {
-                if config.is_some_and(|config| !config.is_event_allowed(&collector_event)) {
-                    return None;
-                }
-
-                Some(Self::from_collector_event_with_system_properties(
-                    collector_event,
-                    false,
-                    Some(batch_system_properties.clone()),
-                    config.and_then(|config| config.enrichment.as_ref()),
-                    ip_address,
-                ))
-            })
-            .collect()
-    }
-
-    fn enrich(&mut self, config: Option<&EnrichmentConfig>, ip_address: Option<&str>) {
-        if let Some(enrichment_config) = config {
-            if let Some(country_config) = &enrichment_config.country {
-                match &country_config.resolution {
-                    CountryResolution::IpAddress => {
-                        let existing = self
-                            .system_properties
-                            .as_ref()
-                            .and_then(|sp| sp.geo.as_ref())
-                            .and_then(|geo| geo.country.as_ref());
-
-                        if country_config.override_existing || existing.is_none() {
-                            if let Some(ip_address) = ip_address {
-                                if let Ok(addr) = ip_address.parse::<IpAddr>() {
-                                    if is_geolocatable_ip(&addr)
-                                        && let Some(result) = ip2geo::search(&addr)
-                                    {
-                                        self.system_properties
-                                            .get_or_insert_with(SystemProperties::default)
-                                            .geo
-                                            .get_or_insert_with(Geo::default)
-                                            .country = Some(result.country);
-                                    }
+                    if country_config.override_existing || existing.is_none() {
+                        if let Some(ip_address) = ip_address {
+                            if let Ok(addr) = ip_address.parse::<IpAddr>() {
+                                if is_geolocatable_ip(&addr)
+                                    && let Some(result) = ip2geo::search(&addr)
+                                {
+                                    event
+                                        .system_properties
+                                        .get_or_insert_with(SystemProperties::default)
+                                        .geo
+                                        .get_or_insert_with(Geo::default)
+                                        .country = Some(result.country);
                                 }
                             }
                         }
                     }
                 }
             }
+        }
 
-            if enrichment_config.arrived_at.enabled
-                && (enrichment_config.arrived_at.override_existing || self.arrived_at.is_none())
-            {
-                self.arrived_at = Some(chrono::Utc::now());
-            }
+        if enrichment_config.arrived_at.enabled
+            && (enrichment_config.arrived_at.override_existing || event.arrived_at.is_none())
+        {
+            event.arrived_at = Some(chrono::Utc::now());
+        }
 
-            if let Some(ip_address_config) = &enrichment_config.ip_address {
-                let existing = self
-                    .system_properties
-                    .as_ref()
-                    .and_then(|sp| sp.ip_address.as_ref());
+        if let Some(ip_address_config) = &enrichment_config.ip_address {
+            let existing = event
+                .system_properties
+                .as_ref()
+                .and_then(|sp| sp.ip_address.as_ref());
 
-                if ip_address_config.override_existing || existing.is_none() {
-                    if let Some(ip_address) = ip_address {
-                        self.system_properties
-                            .get_or_insert_with(SystemProperties::default)
-                            .ip_address = Some(ip_address.to_string());
-                    }
+            if ip_address_config.override_existing || existing.is_none() {
+                if let Some(ip_address) = ip_address {
+                    event
+                        .system_properties
+                        .get_or_insert_with(SystemProperties::default)
+                        .ip_address = Some(ip_address.to_string());
                 }
             }
         }
-    }
-}
-
-fn serialize_optional_utc_datetime_nanos<S>(
-    value: &Option<chrono::DateTime<chrono::Utc>>,
-    serializer: S,
-) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    match value {
-        Some(value) => serializer.serialize_str(&value.to_rfc3339_opts(SecondsFormat::Nanos, true)),
-        None => serializer.serialize_none(),
     }
 }
 
@@ -272,104 +241,10 @@ fn is_documentation_ipv6(addr: &Ipv6Addr) -> bool {
     segments[0] == 0x2001 && segments[1] == 0x0db8
 }
 
-#[skip_serializing_none]
-#[derive(Default, Serialize)]
-pub struct SystemProperties {
-    pub geo: Option<Geo>,
-    pub timezone: Option<String>,
-    pub ip_address: Option<String>,
-}
-
-impl SystemProperties {
-    pub fn builder() -> SystemPropertiesBuilder {
-        SystemPropertiesBuilder::default()
-    }
-}
-
-impl From<collector_event::SystemProperties> for SystemProperties {
-    fn from(props: collector_event::SystemProperties) -> Self {
-        SystemProperties {
-            geo: props.geo,
-            timezone: props.timezone,
-            ip_address: props.ip_address,
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct SystemPropertiesBuilder {
-    geo: Option<Geo>,
-    timezone: Option<String>,
-    ip_address: Option<String>,
-}
-
-impl SystemPropertiesBuilder {
-    pub fn geo(mut self, geo: Option<Geo>) -> Self {
-        self.geo = geo;
-        self
-    }
-
-    pub fn timezone(mut self, timezone: Option<String>) -> Self {
-        self.timezone = timezone;
-        self
-    }
-
-    pub fn ip_address(mut self, ip_address: Option<String>) -> Self {
-        self.ip_address = ip_address;
-        self
-    }
-
-    pub fn build(self) -> SystemProperties {
-        SystemProperties {
-            geo: self.geo,
-            timezone: self.timezone,
-            ip_address: self.ip_address,
-        }
-    }
-}
-
-#[derive(Default)]
-pub struct CanonicalEventBuilder {
-    system_properties: Option<SystemProperties>,
-    arrived_at: Option<chrono::DateTime<chrono::Utc>>,
-}
-
-impl CanonicalEventBuilder {
-    pub fn system_properties(mut self, system_properties: Option<SystemProperties>) -> Self {
-        self.system_properties = system_properties;
-        self
-    }
-
-    pub fn arrived_at(mut self, arrived_at: Option<chrono::DateTime<chrono::Utc>>) -> Self {
-        self.arrived_at = arrived_at;
-        self
-    }
-
-    pub fn build(self) -> CanonicalEvent {
-        CanonicalEvent {
-            envelop_version: EnvelopVersion::V1,
-            id: uuid::Uuid::new_v4(),
-            name: String::new(),
-            occured_at: chrono::Utc::now(),
-            arrived_at: self.arrived_at,
-            tenant_id: String::new(),
-            workspace_id: None,
-            session_id: None,
-            anon_id: String::new(),
-            actor_id: None,
-            source: None,
-            correlation_id: None,
-            trace_id: None,
-            authenticated: None,
-            properties: None,
-            system_properties: self.system_properties,
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::collector_event::EnvelopVersion;
     use crate::enrichment::{ArrivedAtConfig, CountryConfig, EnrichmentConfig, IpAddressConfig};
 
     fn collector_event(
@@ -401,7 +276,7 @@ mod tests {
             ip_address: None,
         }));
 
-        let canonical_event = CanonicalEvent::from_collector_event(event, None, None).unwrap();
+        let canonical_event = from_collector_event(event, None, None).unwrap();
 
         assert_eq!(
             canonical_event
@@ -421,7 +296,7 @@ mod tests {
             )
             .build();
 
-        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+        let canonical_event = from_collector_event_with_enrichment(
             collector_event(Some(collector_event::SystemProperties {
                 geo: None,
                 timezone: None,
@@ -451,7 +326,7 @@ mod tests {
             )
             .build();
 
-        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+        let canonical_event = from_collector_event_with_enrichment(
             collector_event(Some(collector_event::SystemProperties {
                 geo: None,
                 timezone: None,
@@ -473,7 +348,7 @@ mod tests {
 
     #[test]
     fn does_not_add_request_ip_address_without_enrichment_config() {
-        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+        let canonical_event = from_collector_event_with_enrichment(
             collector_event(Some(collector_event::SystemProperties {
                 geo: None,
                 timezone: Some("Asia/Kolkata".to_string()),
@@ -496,7 +371,7 @@ mod tests {
             .ip_address(IpAddressConfig::builder().build())
             .build();
 
-        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+        let canonical_event = from_collector_event_with_enrichment(
             collector_event(None),
             false,
             Some(&enrichment_config),
@@ -517,7 +392,7 @@ mod tests {
             .ip_address(IpAddressConfig::builder().build())
             .build();
 
-        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+        let canonical_event = from_collector_event_with_enrichment(
             collector_event(Some(collector_event::SystemProperties {
                 geo: None,
                 timezone: None,
@@ -542,7 +417,7 @@ mod tests {
             .ip_address(IpAddressConfig::builder().override_existing(true).build())
             .build();
 
-        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+        let canonical_event = from_collector_event_with_enrichment(
             collector_event(Some(collector_event::SystemProperties {
                 geo: None,
                 timezone: None,
@@ -562,37 +437,11 @@ mod tests {
     }
 
     #[test]
-    fn serializes_ip_address_as_snake_case_system_property() {
-        let enrichment_config = EnrichmentConfig::builder()
-            .ip_address(IpAddressConfig::builder().build())
-            .build();
-        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
-            collector_event(None),
-            false,
-            Some(&enrichment_config),
-            Some("203.0.113.10"),
-        );
-        let payload = serde_json::to_value(canonical_event).unwrap();
-        let system_properties = payload
-            .get("system_properties")
-            .and_then(serde_json::Value::as_object)
-            .unwrap();
-
-        assert_eq!(
-            system_properties
-                .get("ip_address")
-                .and_then(serde_json::Value::as_str),
-            Some("203.0.113.10")
-        );
-        assert!(!system_properties.contains_key("ipAddress"));
-    }
-
-    #[test]
     fn enriches_arrived_at_by_default() {
         let enrichment_config = EnrichmentConfig::builder().build();
         let before = chrono::Utc::now();
 
-        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+        let canonical_event = from_collector_event_with_enrichment(
             collector_event(None),
             false,
             Some(&enrichment_config),
@@ -612,7 +461,7 @@ mod tests {
             .arrived_at(ArrivedAtConfig::builder().enabled(false).build())
             .build();
 
-        let canonical_event = CanonicalEvent::from_collector_event_with_enrichment(
+        let canonical_event = from_collector_event_with_enrichment(
             collector_event(None),
             false,
             Some(&enrichment_config),
@@ -620,23 +469,5 @@ mod tests {
         );
 
         assert_eq!(canonical_event.arrived_at, None);
-    }
-
-    #[test]
-    fn serializes_arrived_at_as_utc_nanosecond_precision() {
-        let arrived_at = chrono::DateTime::parse_from_rfc3339("2026-08-26T10:11:12.123Z")
-            .unwrap()
-            .with_timezone(&chrono::Utc);
-        let canonical_event = CanonicalEvent::builder()
-            .arrived_at(Some(arrived_at))
-            .build();
-        let payload = serde_json::to_value(canonical_event).unwrap();
-
-        assert_eq!(
-            payload
-                .get("arrived_at")
-                .and_then(serde_json::Value::as_str),
-            Some("2026-08-26T10:11:12.123000000Z")
-        );
     }
 }

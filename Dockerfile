@@ -16,6 +16,7 @@ RUN apt-get update \
 
 COPY Cargo.toml Cargo.lock ./
 COPY src ./src
+COPY crates ./crates
 
 RUN cargo build --release --locked
 

@@ -30,7 +30,7 @@ pub async fn collect_events_batch(
     let total = batch.events.len();
 
     let canonical_events =
-        CanonicalEvent::from_collector_events_batch(batch, Some(config), ip_address);
+        canonical_event::from_collector_events_batch(batch, Some(config), ip_address);
 
     push_events_to_kafka(&canonical_events, config).await?;
 
@@ -72,9 +72,9 @@ async fn collect_events_with_auth(
     let total = collector_events.len();
     let convert = |event: CollectorEvent| {
         if authenticated {
-            CanonicalEvent::from_authenticated_collector_event(event, Some(config), ip_address)
+            canonical_event::from_authenticated_collector_event(event, Some(config), ip_address)
         } else {
-            CanonicalEvent::from_collector_event(event, Some(config), ip_address)
+            canonical_event::from_collector_event(event, Some(config), ip_address)
         }
     };
     let canonical_events: Vec<CanonicalEvent> =
