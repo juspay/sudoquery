@@ -17,7 +17,7 @@ RUN apt-get update \
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 
-RUN cargo build --release --locked
+RUN cargo build --release --locked -p kafka-to-s3
 
 FROM debian:bookworm-slim AS runtime
 
@@ -31,9 +31,6 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/event-collector /usr/local/bin/event-collector
-COPY cac.toml ./cac.toml
+COPY --from=builder /app/target/release/kafka-to-s3 /usr/local/bin/kafka-to-s3
 
-EXPOSE 3000
-
-CMD ["event-collector"]
+CMD ["kafka-to-s3"]

@@ -232,8 +232,19 @@ async fn get_config_from_local_file_for_context(
 mod tests {
     use super::*;
 
+    /// Test binaries run with the package root as their working directory,
+    /// but `cac.toml` is resolved from the current directory, as at runtime
+    /// (repo root locally, `/app` in the container). Point the working
+    /// directory at the workspace root so the bundled `cac.toml` is found.
+    fn chdir_to_workspace_root() {
+        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        std::env::set_current_dir(&workspace_root).expect("failed to chdir to workspace root");
+    }
+
     #[tokio::test]
     async fn loads_config_from_cac_toml() {
+        chdir_to_workspace_root();
+
         let config = get_config_from_local_file("tenant-1".to_string(), None)
             .await
             .unwrap();
@@ -251,6 +262,8 @@ mod tests {
 
     #[tokio::test]
     async fn loads_default_config_from_cac_toml() {
+        chdir_to_workspace_root();
+
         let config = get_default_config_from_local_file().await.unwrap();
 
         assert_eq!(config.kafka_connector.topic, "events.generic");

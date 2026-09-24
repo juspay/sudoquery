@@ -140,7 +140,7 @@ Credentials are resolved via Application Default Credentials (`GOOGLE_APPLICATIO
 Body is newline-delimited JSON (one event object per line):
 
 ```bash
-curl -X POST http://localhost:3000/cdp/collect/events \
+curl -X POST http://localhost:3000/v1/events \
   -H "x-tenant-id: merchant-1" \
   -H "content-type: application/json" \
   --data-binary '{"envelop_version":"1.0","id":"0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c","name":"payment_initiated","tenant_id":"merchant-1","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z","properties":{"amount":100,"currency":"INR"}}
@@ -180,7 +180,7 @@ Requests with a missing or invalid token return `401` with a `WWW-Authenticate: 
 Body is a single JSON object with an events array and optional batch-level system properties:
 
 ```bash
-curl -X POST http://localhost:3000/cdp/collect/batch \
+curl -X POST http://localhost:3000/v1/events/batch \
   -H "x-tenant-id: merchant-1" \
   -H "content-type: application/json" \
   -d '{"events":[{"envelop_version":"1.0","id":"0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c","name":"payment_initiated","tenant_id":"merchant-1","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z"}],"system_properties":{"timezone":"Asia/Kolkata"}}'

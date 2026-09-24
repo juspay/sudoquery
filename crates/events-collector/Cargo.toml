@@ -1,0 +1,29 @@
+[package]
+name = "event-collector"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = "0.8"
+canonical-event = { path = "../canonical-event" }
+chrono = { workspace = true }
+ip2geo = "0.1.0"
+rdkafka = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = "2"
+tokio = { workspace = true }
+tower-http = { version = "0.6", features = ["cors"] }
+tracing = "0.1"
+uuid = { workspace = true }
+futures = "0.3.34"
+superposition_provider = "0.117.1"
+serde_with = { workspace = true }
+aws-config = { version = "1", features = ["behavior-version-latest"] }
+aws-sdk-kms = "1"
+base64 = "0.22"
+subtle = "2"
+google-cloud-kms = "0.6"
+google-cloud-googleapis = { version = "0.16", features = ["kms"] }
+
+[dev-dependencies]

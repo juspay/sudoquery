@@ -1,0 +1,18 @@
+[package]
+name = "kafka-to-s3-tests"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+canonical-event = { path = "../canonical-event" }
+rdkafka = { workspace = true }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+aws-sdk-s3 = "1"
+zstd = "0.13"
+futures = "0.3"
+sha2 = "0.10"
+hex = "0.4"
