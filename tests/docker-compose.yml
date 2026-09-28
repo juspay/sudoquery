@@ -17,7 +17,7 @@ services:
       - --advertise-kafka-addr
       - internal://redpanda:9092,external://${REDPANDA_ADVERTISE_HOST:-localhost}:${REDPANDA_ADVERTISE_PORT:-19092}
     volumes:
-      - /home/sridatta/rp_data:/var/lib/redpanda
+      - redpanda-data:/var/lib/redpanda/data
     ports:
       - "19092:19092"
 
@@ -70,3 +70,19 @@ services:
     ports:
       - "4566:4566"
 
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    container_name: opensearch
+    restart: always
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      # A nearly full Docker disk would otherwise block index creation and writes.
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+    ports:
+      - "9200:9200"
+
+volumes:
+  redpanda-data:

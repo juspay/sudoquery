@@ -15,7 +15,7 @@ pub enum EnvelopVersion {
 }
 
 #[skip_serializing_none]
-#[derive(Serialize)]
+#[derive(Deserialize, Serialize)]
 pub struct CanonicalEvent {
     envelop_version: EnvelopVersion,
     id: uuid::Uuid,
@@ -43,6 +43,10 @@ impl CanonicalEvent {
     pub fn builder() -> CanonicalEventBuilder {
         CanonicalEventBuilder::default()
     }
+
+    pub fn id(&self) -> uuid::Uuid {
+        self.id
+    }
 }
 
 fn serialize_optional_utc_datetime_nanos<S>(
@@ -59,7 +63,7 @@ where
 }
 
 #[skip_serializing_none]
-#[derive(Default, Serialize)]
+#[derive(Default, Deserialize, Serialize)]
 pub struct SystemProperties {
     pub geo: Option<Geo>,
     pub timezone: Option<String>,
@@ -271,5 +275,47 @@ mod tests {
             Some("203.0.113.10")
         );
         assert!(!system_properties.contains_key("ipAddress"));
+    }
+
+    #[test]
+    fn round_trips_through_json() {
+        let arrived_at = chrono::DateTime::parse_from_rfc3339("2026-08-26T10:11:12.123456789Z")
+            .unwrap()
+            .with_timezone(&chrono::Utc);
+        let canonical_event = CanonicalEvent::builder()
+            .name("payment_initiated".into())
+            .tenant_id("merchant-1".into())
+            .anon_id("anon-42".into())
+            .arrived_at(Some(arrived_at))
+            .properties(Some(serde_json::json!({ "amount": 100 })))
+            .system_properties(Some(
+                SystemProperties::builder()
+                    .geo(Some(Geo {
+                        country: Some("IN".into()),
+                    }))
+                    .build(),
+            ))
+            .build();
+        let payload = serde_json::to_vec(&canonical_event).unwrap();
+
+        let decoded: CanonicalEvent = serde_json::from_slice(&payload).unwrap();
+
+        assert_eq!(decoded.id(), canonical_event.id());
+        assert_eq!(decoded.arrived_at, Some(arrived_at));
+        assert_eq!(serde_json::to_vec(&decoded).unwrap(), payload);
+    }
+
+    #[test]
+    fn deserializes_without_optional_fields() {
+        let decoded: CanonicalEvent = serde_json::from_str(
+            r#"{"envelop_version":"1.0","id":"0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c","name":"checkout_viewed","tenant_id":"merchant-1","anon_id":"anon-42","occured_at":"2026-09-02T10:29:00Z"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            decoded.id().to_string(),
+            "0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c"
+        );
+        assert!(decoded.arrived_at.is_none());
     }
 }
