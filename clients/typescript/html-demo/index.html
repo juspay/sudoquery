@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SudoQuery Demo</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+            overflow: hidden;
+        }
+
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+
+        .content {
+            padding: 30px;
+        }
+
+        .section {
+            margin-bottom: 40px;
+        }
+
+        .section h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .controls {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 1em;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            font-weight: 600;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.secondary {
+            background: #6c757d;
+        }
+
+        button.success {
+            background: #28a745;
+        }
+
+        button.warning {
+            background: #ffc107;
+            color: #333;
+        }
+
+        button.danger {
+            background: #dc3545;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+
+        input {
+            flex: 1;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .status {
+            background: #f8f9fa;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 4px;
+        }
+
+        .status h3 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+
+        .status-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .status-item:last-child {
+            border-bottom: none;
+        }
+
+        .status-item strong {
+            color: #667eea;
+        }
+
+        .event-log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 8px;
+            max-height: 300px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            margin-top: 20px;
+        }
+
+        .event-log .log-entry {
+            padding: 5px 0;
+            border-bottom: 1px solid #333;
+        }
+
+        .event-log .log-entry:last-child {
+            border-bottom: none;
+        }
+
+        .event-log .timestamp {
+            color: #4ec9b0;
+        }
+
+        .event-log .event-name {
+            color: #dcdcaa;
+        }
+
+        .event-log .user {
+            color: #569cd6;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.8em;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+
+        .badge.user {
+            background: #e3f2fd;
+            color: #1976d2;
+        }
+
+        .info-box {
+            background: #e7f3ff;
+            border-left: 4px solid #2196f3;
+            padding: 15px;
+            border-radius: 4px;
+            margin-bottom: 20px;
+        }
+
+        .info-box p {
+            margin: 5px 0;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 SudoQuery Demo</h1>
+            <p>Real-time analytics tracking with batching and auto-flush</p>
+        </div>
+
+        <div class="content">
+            <div class="info-box">
+                <p><strong>ℹ️ Info:</strong> This demo uses the compiled JavaScript from the <code>dist/</code> folder. Events are batched and automatically flushed when the batch size is reached.</p>
+                <p><strong>Batch Size:</strong> <span id="batchSize">3</span> events</p>
+            </div>
+
+            <div class="section">
+                <h2>👤 User Management</h2>
+                <div class="input-group">
+                    <input type="text" id="userIdInput" placeholder="Enter user ID (e.g., user_123)">
+                    <button id="setUserBtn">Set User</button>
+                    <button class="danger" id="removeUserBtn">Remove User</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>📊 Track Events</h2>
+                <div class="controls">
+                    <button id="trackPageViewBtn">📄 Page View</button>
+                    <button id="trackButtonClickBtn">🖱️ Button Click</button>
+                    <button id="trackFormSubmitBtn">📝 Form Submit</button>
+                    <button id="trackPurchaseBtn">💳 Purchase</button>
+                    <button class="secondary" id="trackErrorBtn">❌ Error</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>📈 Current Status</h2>
+                <div class="status">
+                    <h3>Analytics State</h3>
+                    <div class="status-item">
+                        <strong>Initialized:</strong> <span id="initialized">No</span>
+                    </div>
+                    <div class="status-item">
+                        <strong>Current User:</strong> <span id="currentUser">null</span>
+                    </div>
+                    <div class="status-item">
+                        <strong>Batch Size:</strong> <span id="currentBatchSize">3</span>
+                    </div>
+                    <div class="status-item">
+                        <strong>Events Tracked:</strong> <span id="eventsTracked">0</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>📋 Event Log</h2>
+                <div class="event-log" id="eventLog">
+                    <div class="log-entry">Waiting for events...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load the compiled JavaScript as ES module -->
+    <script type="module">
+        import { SudoQuery } from './dist/index.mjs';
+
+        let eventsTracked = 0;
+
+        // Initialize analytics on page load
+        window.addEventListener('DOMContentLoaded', () => {
+            SudoQuery.init({
+                tenantId: 'localclient',
+                batchSize: 3,
+                endpoint: 'https://73g8lnmf-3000.inc1.devtunnels.ms/batch'
+            });
+            document.getElementById('initialized').textContent = 'Yes';
+            logEvent('System', 'Analytics initialized');
+
+            // Attach event listeners to buttons
+            document.getElementById('setUserBtn').addEventListener('click', setUser);
+            document.getElementById('removeUserBtn').addEventListener('click', removeUser);
+            document.getElementById('trackPageViewBtn').addEventListener('click', trackPageView);
+            document.getElementById('trackButtonClickBtn').addEventListener('click', trackButtonClick);
+            document.getElementById('trackFormSubmitBtn').addEventListener('click', trackFormSubmit);
+            document.getElementById('trackPurchaseBtn').addEventListener('click', trackPurchase);
+            document.getElementById('trackErrorBtn').addEventListener('click', trackError);
+        });
+
+        // User Management
+        function setUser() {
+            const userId = document.getElementById('userIdInput').value.trim();
+            if (userId) {
+                SudoQuery.setUser(userId);
+                updateStatus();
+                logEvent('User', `User set to: ${userId}`);
+            }
+        }
+
+        function removeUser() {
+            SudoQuery.removeUser();
+            updateStatus();
+            logEvent('User', 'User removed');
+        }
+
+        // Event Tracking
+        function trackPageView() {
+            SudoQuery.track('page_view', {
+                page: '/demo',
+                title: 'SudoQuery Demo',
+                referrer: document.referrer || 'direct'
+            });
+            incrementEvents();
+            logEvent('page_view', 'Page viewed: /demo');
+        }
+
+        function trackButtonClick() {
+            SudoQuery.track('button_click', {
+                buttonId: 'demo-button',
+                buttonText: 'Track Event',
+                buttonColor: 'purple'
+            });
+            incrementEvents();
+            logEvent('button_click', 'Button clicked');
+        }
+
+        function trackFormSubmit() {
+            SudoQuery.track('form_submit', {
+                formId: 'demo-form',
+                formType: 'contact',
+                success: true,
+                fieldsFilled: 3
+            });
+            incrementEvents();
+            logEvent('form_submit', 'Form submitted successfully');
+        }
+
+        function trackPurchase() {
+            SudoQuery.track('purchase', {
+                productId: 'prod_001',
+                productName: 'Premium Analytics',
+                price: 99.99,
+                quantity: 1,
+                currency: 'USD',
+                metadata: {
+                    coupon: 'DEMO'
+                }
+            });
+            incrementEvents();
+            logEvent('purchase', 'Purchase completed: $99.99');
+        }
+
+        function trackError() {
+            SudoQuery.track('error', {
+                errorType: 'demo_error',
+                errorMessage: 'This is a demo error',
+                errorCode: 'DEMO_001',
+                page: '/demo'
+            });
+            incrementEvents();
+            logEvent('error', 'Error occurred: DEMO_001');
+        }
+
+        // Utility Functions
+        function updateStatus() {
+            const currentUser = SudoQuery.getUser();
+            const batchSize = SudoQuery.batchSize;
+
+            document.getElementById('currentUser').textContent = currentUser || 'null';
+            document.getElementById('currentBatchSize').textContent = batchSize;
+        }
+
+        function incrementEvents() {
+            eventsTracked++;
+            document.getElementById('eventsTracked').textContent = eventsTracked;
+        }
+
+        function logEvent(eventName, message) {
+            const log = document.getElementById('eventLog');
+            const timestamp = new Date().toLocaleTimeString();
+            const currentUser = SudoQuery.getUser();
+
+            const userBadge = currentUser ? `<span class="badge user">👤 ${currentUser}</span>` : '';
+
+            const entry = document.createElement('div');
+            entry.className = 'log-entry';
+            entry.innerHTML = `
+                <span class="timestamp">[${timestamp}]</span>
+                <span class="event-name">${eventName}:</span>
+                ${message}
+                ${userBadge}
+            `;
+
+            // Remove "Waiting for events..." message if it exists
+            if (log.querySelector('.log-entry').textContent === 'Waiting for events...') {
+                log.innerHTML = '';
+            }
+
+            log.appendChild(entry);
+            log.scrollTop = log.scrollHeight;
+        }
+
+        // Update status on load
+        updateStatus();
+    </script>
+</body>
+</html>
