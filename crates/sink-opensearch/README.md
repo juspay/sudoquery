@@ -24,7 +24,7 @@ Web UIs:
 - **OpenSearch Dashboards:** http://localhost:5601. Discover opens on the `events-*` index pattern, timed by `@timestamp` (`occured_at`), over the last 7 days. Widen the time range for older events.
 - **Redpanda Console:** http://localhost:8081, for topics, the DLQ and consumer groups.
 
-To see events flow end to end, run the collector alongside it (`KAFKA_BOOTSTRAP_SERVERS=localhost:19092 cargo run`), post the sample events from the root README, then:
+To see events flow end to end, run the collector alongside it (`KAFKA_BOOTSTRAP_SERVERS=localhost:19092 cargo run -p event-collector`), post the sample events from the root README, then:
 
 ```bash
 curl 'localhost:9200/events-merchant-1/_search?pretty'
@@ -169,7 +169,7 @@ Each test makes its own topics, index and consumer group; the template test inst
 
 ### Load test
 
-[`loadtest.py`](../../scripts/loadtest.py) runs real sink processes against the local stack while they rebalance:
+[`scripts/loadtest-opensearch-sink.py`](../../scripts/loadtest-opensearch-sink.py) runs real sink processes against the local stack while they rebalance:
 
 1. It sends about 100,000 events over about 40 seconds. 5% of them are sent twice, like client retries, and 0.1% have an invalid tenant.
 2. Meanwhile four sink instances join, one is killed with `kill -9`, and one is stopped gracefully.
@@ -185,7 +185,7 @@ It prints a rebalance timeline and counts re-reads and writes OpenSearch already
 
 ```bash
 cargo build --release -p sink-opensearch
-python3 crates/sink-opensearch/loadtest.py                    # --events 300000 --partitions 12 --pace 10
+python3 scripts/loadtest-opensearch-sink.py                   # --events 300000 --partitions 12 --pace 10
 ```
 
 It uses its own topics, consumer group and `events-lt-<run>-*` indexes, and keeps them so you can explore the data in Dashboards and the Console. It prints the commands to delete them, or pass `--clean-up` to delete them at the end. It never touches anything it didn't create. Sink logs are kept in `target/loadtest/<run>/`. The consumer session timeout is lowered to 10 seconds so a crashed instance leaves the group quickly.

@@ -11,7 +11,7 @@ Needs the local stack and a release build:
 
     docker compose -f tests/docker-compose.yml up -d redpanda opensearch opensearch-init
     cargo build --release -p sink-opensearch
-    python3 crates/sink-opensearch/loadtest.py            # e.g. --events 300000 --partitions 12
+    python3 scripts/loadtest-opensearch-sink.py           # e.g. --events 300000 --partitions 12
 
 It uses its own topics, consumer group and `events-lt-<run>-*` indexes, and
 keeps them afterwards so you can look at the data; --clean-up deletes them.
@@ -34,7 +34,7 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
+ROOT = Path(__file__).resolve().parents[1]
 KAFKA = "localhost:19092"
 OPENSEARCH = "http://localhost:9200"
 TENANTS = [f"tenant-{i:02d}" for i in range(20)]
