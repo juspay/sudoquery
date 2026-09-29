@@ -16,6 +16,9 @@ pub enum RequestClass {
 #[derive(Debug, PartialEq, Eq)]
 pub enum ItemClass {
     Done,
+    /// 409 on `create`: a replay or a resent event found the document already
+    /// written.
+    AlreadyWritten,
     Retry {
         alert: bool,
     },
@@ -33,8 +36,8 @@ pub fn classify_request(status: u16) -> RequestClass {
 
 pub fn classify_item(status: u16) -> ItemClass {
     match status {
-        // 409 on `create`: a replay found the document already written.
-        200 | 201 | 409 => ItemClass::Done,
+        200 | 201 => ItemClass::Done,
+        409 => ItemClass::AlreadyWritten,
         429 | 500..=599 => ItemClass::Retry { alert: false },
         // Mapping and parse errors: only this document is at fault.
         400 => ItemClass::Reject,
@@ -77,7 +80,7 @@ mod tests {
         let cases = [
             (200, ItemClass::Done),
             (201, ItemClass::Done),
-            (409, ItemClass::Done),
+            (409, ItemClass::AlreadyWritten),
             (429, ItemClass::Retry { alert: false }),
             (500, ItemClass::Retry { alert: false }),
             (503, ItemClass::Retry { alert: false }),

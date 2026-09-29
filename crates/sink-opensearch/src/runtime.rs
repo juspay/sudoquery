@@ -70,6 +70,9 @@ impl Rejection {
 #[derive(Debug)]
 pub enum ItemOutcome {
     Done,
+    /// The destination already had it, e.g. a replay after a crash or an
+    /// event the client sent twice. Counts as written.
+    AlreadyWritten,
     /// Temporary failure; the document is written again after a backoff.
     /// `alert` marks failures that need an operator, such as a missing index.
     Retry {

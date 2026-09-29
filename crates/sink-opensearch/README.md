@@ -11,12 +11,18 @@ Design and delivery semantics are in [SPEC.md](SPEC.md).
 ## Run locally
 
 ```bash
-docker compose -f tests/docker-compose.yml up -d redpanda opensearch opensearch-init
+docker compose -f tests/docker-compose.yml up -d redpanda opensearch opensearch-init \
+  opensearch-dashboards opensearch-dashboards-init console
+docker exec redpanda rpk cluster health --watch --exit-when-healthy
 docker exec redpanda rpk topic create events.generic events.generic.dlq -p 3
 
 SINK_CONFIG=crates/sink-opensearch/cac.toml LOG_FORMAT=pretty \
   cargo run -p sink-opensearch
 ```
+
+Web UIs:
+- **OpenSearch Dashboards:** http://localhost:5601. Discover opens on the `events-*` index pattern, timed by `@timestamp` (`occured_at`), over the last 7 days. Widen the time range for older events.
+- **Redpanda Console:** http://localhost:8081, for topics, the DLQ and consumer groups.
 
 To see events flow end to end, run the collector alongside it (`KAFKA_BOOTSTRAP_SERVERS=localhost:19092 cargo run`), post the sample events from the root README, then:
 
@@ -123,6 +129,7 @@ A template only applies to indexes created after it's installed. Existing indexe
 
 - **Exit codes:** 0 when everything consumed was written and committed before exiting; 1 on bad config, a fatal consumer error, or when the shutdown grace period ran out. Unwritten records are safe either way: their offsets were never committed.
 - **A partition stops moving:** look for `write failed; retrying` at error level. A missing index, a disk-full or read-only cluster block, bad credentials and rejected requests block the partition on purpose, so good data never lands in the DLQ; fix the cause and the sink resumes by itself.
+- **The DLQ can hold repeats:** a sink that crashes, or loses a partition, after dead-lettering a record but before committing its offset leaves that record to be dead-lettered again. Count unique `dlq.source.partition` + `dlq.source.offset` pairs, not messages.
 - **The DLQ topic:** each dead letter keeps the original key and payload bytes, with these headers: `dlq.source.topic`, `dlq.source.partition`, `dlq.source.offset`, `dlq.error.class` (`decode`, `invalid_tenant`, `invalid_index`, `too_large` or `rejected`), `dlq.error.reason`, `dlq.error.status` (HTTP status, when there is one), `dlq.attempts`, `dlq.failed_at`. To replay after a fix, run a sink with the DLQ as its topic.
 - **Consumer lag:** comes from Kafka (for MSK, the consumer-group lag metrics in CloudWatch), not from this service.
 
@@ -134,7 +141,7 @@ A template only applies to indexes created after it's installed. Existing indexe
 | Metric | Type | Labels |
 |---|---|---|
 | `sink_records_consumed_total` | counter | `topic` |
-| `sink_docs_written_total` | counter | Includes replays OpenSearch already had (409) |
+| `sink_docs_written_total` | counter | `result`: `created`, or `already_written` for a replay or resent event OpenSearch already had (409) |
 | `sink_dlq_records_total` | counter | `class` |
 | `sink_retries_total` | counter | `class`: `request` or `item` |
 | `sink_bulk_duration_seconds` | histogram | |
@@ -159,3 +166,26 @@ The end-to-end tests cover:
 - events sent out of order being sorted by `occured_at`
 
 Each test makes its own topics, index and consumer group; the template test installs its own copy of the template.
+
+### Load test
+
+[`loadtest.py`](../../scripts/loadtest.py) runs real sink processes against the local stack while they rebalance:
+
+1. It sends about 100,000 events over about 40 seconds. 5% of them are sent twice, like client retries, and 0.1% have an invalid tenant.
+2. Meanwhile four sink instances join, one is killed with `kill -9`, and one is stopped gracefully.
+
+It then checks:
+- every valid event is in OpenSearch exactly once
+- each tenant has its own index
+- every bad event is in the DLQ
+- every offset is committed
+- graceful stops exit 0
+
+It prints a rebalance timeline and counts re-reads and writes OpenSearch already had (409):
+
+```bash
+cargo build --release -p sink-opensearch
+python3 crates/sink-opensearch/loadtest.py                    # --events 300000 --partitions 12 --pace 10
+```
+
+It uses its own topics, consumer group and `events-lt-<run>-*` indexes, and keeps them so you can explore the data in Dashboards and the Console. It prints the commands to delete them, or pass `--clean-up` to delete them at the end. It never touches anything it didn't create. Sink logs are kept in `target/loadtest/<run>/`. The consumer session timeout is lowered to 10 seconds so a crashed instance leaves the group quickly.

@@ -127,11 +127,13 @@ pub async fn write_with_retry<W: Writer>(
                 let mut retry = Vec::new();
                 let mut reason = None;
                 let mut alert = false;
-                let mut written: u64 = 0;
+                let mut created: u64 = 0;
+                let mut already_written: u64 = 0;
 
                 for ((entry, doc), outcome) in pending.into_iter().zip(outcomes) {
                     match outcome {
-                        ItemOutcome::Done => written += 1,
+                        ItemOutcome::Done => created += 1,
+                        ItemOutcome::AlreadyWritten => already_written += 1,
                         ItemOutcome::Retry {
                             reason: item_reason,
                             alert: item_alert,
@@ -146,7 +148,9 @@ pub async fn write_with_retry<W: Writer>(
                     }
                 }
 
-                counter!("sink_docs_written_total").increment(written);
+                counter!("sink_docs_written_total", "result" => "created").increment(created);
+                counter!("sink_docs_written_total", "result" => "already_written")
+                    .increment(already_written);
                 if !retry.is_empty() {
                     counter!("sink_retries_total", "class" => "item").increment(retry.len() as u64);
                 }
@@ -345,6 +349,20 @@ mod tests {
     #[tokio::test]
     async fn writes_all_documents_in_one_call() {
         let writer = FakeWriter::new(vec![]);
+        let entries = vec![entry(0, Ok(10)), entry(1, Ok(11))];
+
+        let letters = write(&writer, &entries).await;
+
+        assert!(letters.is_empty());
+        assert_eq!(writer.calls(), vec![vec![10, 11]]);
+    }
+
+    #[tokio::test]
+    async fn documents_already_written_are_not_retried() {
+        let writer = FakeWriter::new(vec![Ok(vec![
+            ItemOutcome::AlreadyWritten,
+            ItemOutcome::Done,
+        ])]);
         let entries = vec![entry(0, Ok(10)), entry(1, Ok(11))];
 
         let letters = write(&writer, &entries).await;

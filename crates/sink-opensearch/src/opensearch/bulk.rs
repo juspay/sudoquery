@@ -93,6 +93,7 @@ fn outcome(item: ItemResult) -> ItemOutcome {
     };
     match classify_item(item.status) {
         ItemClass::Done => ItemOutcome::Done,
+        ItemClass::AlreadyWritten => ItemOutcome::AlreadyWritten,
         ItemClass::Retry { alert } => ItemOutcome::Retry {
             reason: describe(),
             alert,
@@ -235,7 +236,7 @@ mod tests {
         let outcomes = send(&client, 6).await.unwrap();
 
         assert!(matches!(outcomes[0], ItemOutcome::Done));
-        assert!(matches!(outcomes[1], ItemOutcome::Done));
+        assert!(matches!(outcomes[1], ItemOutcome::AlreadyWritten));
         assert!(matches!(
             outcomes[2],
             ItemOutcome::Retry { alert: false, .. }

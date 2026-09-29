@@ -138,6 +138,7 @@ A partition is paused when its buffer is full while its batch is in flight, and 
 - The key and payload are the original bytes.
 - Headers: `dlq.source.topic`, `dlq.source.partition`, `dlq.source.offset`, `dlq.error.class` (`decode`, `invalid_tenant`, `invalid_index`, `too_large`, `rejected`), `dlq.error.reason`, `dlq.error.status` when there is an HTTP status, `dlq.attempts`, `dlq.failed_at`.
 - A record is resolved only after Kafka confirms the dead letter. If the DLQ is unavailable, the partition stays blocked.
+- The DLQ is at-least-once too. When a partition moves or a sink crashes after a record was dead-lettered but before its offset was committed, the next owner dead-letters it again. Replaying is still safe, because document IDs deduplicate.
 - To replay after a fix, run a sink with the DLQ as its topic.
 
 ## Shutdown
