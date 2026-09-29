@@ -1,6 +1,9 @@
-//! Sink configuration: a TOML file plus environment overrides.
+//! Sink configuration: CAC keys plus environment overrides.
 //!
-//! The file path comes from `SINK_CONFIG` (default `sink-opensearch.toml`).
+//! Settings live in a CAC file (see [`crate::cac`]), one key per setting,
+//! named `section.name`, e.g. `batch.max_docs` or `opensearch.index`. The file
+//! path comes from `SINK_CONFIG` (default `cac.toml`).
+//!
 //! Endpoints and credentials can be overridden from the environment, using the
 //! same Kafka variable names as the event collector:
 //!
@@ -21,9 +24,12 @@ use std::path::PathBuf;
 use std::time::Duration;
 
 use serde::Deserialize;
+use serde_json::{Map, Value};
+
+use crate::cac::{Cac, CacError};
 
 const CONFIG_PATH_ENV: &str = "SINK_CONFIG";
-const DEFAULT_CONFIG_PATH: &str = "sink-opensearch.toml";
+const DEFAULT_CONFIG_PATH: &str = "cac.toml";
 const KAFKA_BOOTSTRAP_SERVERS_ENV: &str = "KAFKA_BOOTSTRAP_SERVERS";
 const KAFKA_CLIENT_CONFIG_ENV: &str = "KAFKA_CLIENT_CONFIG";
 const OPENSEARCH_URL_ENV: &str = "OPENSEARCH_URL";
@@ -34,14 +40,11 @@ const BOOTSTRAP_SERVERS: &str = "bootstrap.servers";
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
-    #[error("failed to read config file `{}`: {source}", path.display())]
-    Read {
-        path: PathBuf,
-        source: std::io::Error,
-    },
+    #[error(transparent)]
+    Cac(#[from] CacError),
 
-    #[error("invalid config file: {0}")]
-    Parse(#[from] toml::de::Error),
+    #[error("invalid config: {0}")]
+    Parse(#[from] serde_json::Error),
 
     #[error("invalid JSON in `{key}` environment variable: {source}")]
     EnvJson {
@@ -88,6 +91,7 @@ pub struct OpenSearchConfig {
     pub url: String,
     /// Where documents are written. `{tenant_id}` is replaced with each
     /// event's tenant, giving every tenant its own index or data stream.
+    /// This is the default; CAC overrides can change it per tenant.
     pub index: IndexTemplate,
     #[serde(default = "default_request_timeout_ms")]
     pub request_timeout_ms: u64,
@@ -324,21 +328,24 @@ impl EnvOverrides {
     }
 }
 
-impl Config {
-    /// Reads the config file named by `SINK_CONFIG`, applies environment
-    /// overrides and validates the result.
-    pub fn load() -> Result<Self, ConfigError> {
-        let path = PathBuf::from(
-            non_empty_env(CONFIG_PATH_ENV).unwrap_or_else(|| DEFAULT_CONFIG_PATH.to_owned()),
-        );
-        let raw =
-            std::fs::read_to_string(&path).map_err(|source| ConfigError::Read { path, source })?;
+/// The CAC file named by `SINK_CONFIG`.
+pub fn cac_path() -> PathBuf {
+    PathBuf::from(non_empty_env(CONFIG_PATH_ENV).unwrap_or_else(|| DEFAULT_CONFIG_PATH.to_owned()))
+}
 
-        Self::from_toml(&raw, EnvOverrides::from_env()?)
+impl Config {
+    /// Resolves the process-wide settings from CAC, applies environment
+    /// overrides and validates the result.
+    pub async fn load(cac: &Cac) -> Result<Self, ConfigError> {
+        Self::from_cac(cac.resolve_defaults().await?, EnvOverrides::from_env()?)
     }
 
-    pub fn from_toml(raw: &str, overrides: EnvOverrides) -> Result<Self, ConfigError> {
-        let mut config: Self = toml::from_str(raw)?;
+    /// Builds the config from resolved CAC keys such as `batch.max_docs`.
+    pub fn from_cac(
+        values: Map<String, Value>,
+        overrides: EnvOverrides,
+    ) -> Result<Self, ConfigError> {
+        let mut config: Self = serde_json::from_value(nest(values)?)?;
         config.apply(overrides);
         config.validate()?;
         Ok(config)
@@ -433,6 +440,26 @@ impl Config {
     }
 }
 
+/// Turns `{"batch.max_docs": 10}` into `{"batch": {"max_docs": 10}}`.
+fn nest(values: Map<String, Value>) -> Result<Value, ConfigError> {
+    let mut sections = Map::new();
+    for (key, value) in values {
+        let Some((section, name)) = key.split_once('.') else {
+            return Err(ConfigError::Invalid(format!(
+                "`{key}` is not a sink setting; keys look like `section.name`, e.g. `batch.max_docs`"
+            )));
+        };
+        if let Some(section) = sections
+            .entry(section)
+            .or_insert_with(|| Value::Object(Map::new()))
+            .as_object_mut()
+        {
+            section.insert(name.to_owned(), value);
+        }
+    }
+    Ok(Value::Object(sections))
+}
+
 fn validate_url(url: &str) -> Result<(), ConfigError> {
     let parsed = reqwest::Url::parse(url)
         .map_err(|error| ConfigError::Invalid(format!("`opensearch.url` `{url}`: {error}")))?;
@@ -481,24 +508,34 @@ fn parse_json_map(key: &'static str, raw: &str) -> Result<HashMap<String, String
 
 #[cfg(test)]
 mod tests {
+    use serde_json::json;
+
     use super::*;
 
-    const MINIMAL: &str = r#"
-        [kafka]
-        topics = ["events.generic"]
-        group_id = "sink-opensearch"
-        client_config = { "bootstrap.servers" = "file-broker:9092" }
+    fn minimal() -> Map<String, Value> {
+        let value = json!({
+            "kafka.topics": ["events.generic"],
+            "kafka.group_id": "sink-opensearch",
+            "kafka.client_config": { "bootstrap.servers": "cac-broker:9092" },
+            "opensearch.url": "http://localhost:9200",
+            "opensearch.index": "events",
+            "dlq.topic": "events.generic.dlq",
+        });
+        value.as_object().cloned().unwrap()
+    }
 
-        [opensearch]
-        url = "http://localhost:9200"
-        index = "events"
+    fn config_with(changes: &[(&str, Value)]) -> Result<Config, ConfigError> {
+        let mut values = minimal();
+        for (key, value) in changes {
+            values.insert((*key).to_owned(), value.clone());
+        }
+        Config::from_cac(values, EnvOverrides::default())
+    }
 
-        [dlq]
-        topic = "events.generic.dlq"
-    "#;
-
-    fn config_with(raw: &str) -> Result<Config, ConfigError> {
-        Config::from_toml(raw, EnvOverrides::default())
+    fn config_without(key: &str) -> Result<Config, ConfigError> {
+        let mut values = minimal();
+        values.remove(key);
+        Config::from_cac(values, EnvOverrides::default())
     }
 
     fn assert_invalid(result: Result<Config, ConfigError>, needle: &str) {
@@ -511,9 +548,19 @@ mod tests {
         }
     }
 
+    fn assert_rejected(result: Result<Config, ConfigError>, needle: &str) {
+        match result {
+            Err(ConfigError::Parse(error)) => assert!(
+                error.to_string().contains(needle),
+                "expected `{needle}` in `{error}`"
+            ),
+            other => panic!("expected a parse error, got {other:?}"),
+        }
+    }
+
     #[test]
     fn minimal_config_gets_defaults() {
-        let config = config_with(MINIMAL).unwrap();
+        let config = config_with(&[]).unwrap();
 
         assert_eq!(config.batch.max_docs, 1000);
         assert_eq!(config.batch.max_bytes, 5 * 1024 * 1024);
@@ -529,17 +576,30 @@ mod tests {
     }
 
     #[test]
-    fn partial_sections_keep_remaining_defaults() {
-        let config = config_with(&format!("{MINIMAL}\n[batch]\nmax_docs = 10\n")).unwrap();
+    fn dotted_keys_fill_their_sections() {
+        let config = config_with(&[
+            ("batch.max_docs", json!(10)),
+            ("opensearch.request_timeout_ms", json!(2000)),
+        ])
+        .unwrap();
 
         assert_eq!(config.batch.max_docs, 10);
         assert_eq!(config.batch.linger_ms, 1000);
+        assert_eq!(config.opensearch.request_timeout_ms, 2000);
+    }
+
+    #[test]
+    fn keys_need_a_section() {
+        assert_invalid(
+            config_with(&[("kafka_connector", json!({}))]),
+            "keys look like `section.name`",
+        );
     }
 
     #[test]
     fn env_overrides_take_priority() {
-        let config = Config::from_toml(
-            MINIMAL,
+        let config = Config::from_cac(
+            minimal(),
             EnvOverrides {
                 kafka_bootstrap_servers: Some("env-broker:9092".into()),
                 kafka_client_config: Some(HashMap::from([
@@ -566,8 +626,8 @@ mod tests {
 
     #[test]
     fn debug_output_hides_the_password() {
-        let config = Config::from_toml(
-            MINIMAL,
+        let config = Config::from_cac(
+            minimal(),
             EnvOverrides {
                 opensearch_username: Some("sink".into()),
                 opensearch_password: Some("hunter2".into()),
@@ -581,65 +641,49 @@ mod tests {
 
     #[test]
     fn unknown_keys_are_rejected() {
-        let result = config_with(&format!("{MINIMAL}\n[batch]\nmax_doc = 10\n"));
-
-        assert!(matches!(result, Err(ConfigError::Parse(_))));
+        assert_rejected(config_with(&[("batch.max_doc", json!(10))]), "max_doc");
     }
 
     #[test]
-    fn credentials_are_not_accepted_from_the_file() {
-        let raw = MINIMAL.replace(
-            "index = \"events\"",
-            "index = \"events\"\npassword = \"hunter2\"",
+    fn credentials_are_not_accepted_from_cac() {
+        assert_rejected(
+            config_with(&[("opensearch.password", json!("hunter2"))]),
+            "password",
         );
-
-        assert!(matches!(config_with(&raw), Err(ConfigError::Parse(_))));
     }
 
     #[test]
     fn dlq_topic_must_not_be_consumed() {
-        let raw = MINIMAL.replace("events.generic.dlq", "events.generic");
-
-        assert_invalid(config_with(&raw), "dead letters");
+        assert_invalid(
+            config_with(&[("dlq.topic", json!("events.generic"))]),
+            "dead letters",
+        );
     }
 
     #[test]
     fn bootstrap_servers_are_required() {
-        let raw = MINIMAL.replace(
-            r#"client_config = { "bootstrap.servers" = "file-broker:9092" }"#,
-            "",
-        );
-
-        assert_invalid(config_with(&raw), "bootstrap.servers");
-    }
-
-    fn with_index(index: &str) -> Result<Config, ConfigError> {
-        config_with(&MINIMAL.replace("index = \"events\"", &format!("index = \"{index}\"")))
-    }
-
-    fn assert_bad_index(index: &str, needle: &str) {
-        match with_index(index) {
-            Err(ConfigError::Parse(error)) => assert!(
-                error.to_string().contains(needle),
-                "expected `{needle}` in `{error}`"
-            ),
-            other => panic!("expected `{index}` to be rejected, got {other:?}"),
-        }
+        assert_invalid(config_without("kafka.client_config"), "bootstrap.servers");
     }
 
     #[test]
     fn index_names_follow_opensearch_rules() {
         for index in ["Events", "_events", "events,logs", "my events", ""] {
-            assert_bad_index(index, "not a valid index name");
+            assert_rejected(
+                config_with(&[("opensearch.index", json!(index))]),
+                "not a valid index name",
+            );
         }
         for index in ["events", "events-v1", ".events", "logs.2026"] {
-            assert!(with_index(index).is_ok(), "`{index}` should be valid");
+            assert!(
+                config_with(&[("opensearch.index", json!(index))]).is_ok(),
+                "`{index}` should be valid"
+            );
         }
     }
 
     #[test]
     fn index_can_be_per_tenant() {
-        let config = with_index("events-{tenant_id}").unwrap();
+        let config = config_with(&[("opensearch.index", json!("events-{tenant_id}"))]).unwrap();
 
         assert_eq!(
             config.opensearch.index.render("merchant-1").unwrap(),
@@ -649,10 +693,14 @@ mod tests {
 
     #[test]
     fn index_template_checks_its_fixed_parts() {
-        assert_bad_index("Events-{tenant_id}", "not a valid index name");
-        assert_bad_index("_{tenant_id}", "not a valid index name");
-        assert_bad_index("events-{tenant}", "the only placeholder is `{tenant_id}`");
-        assert_bad_index("events-{date}-{tenant_id}", "the only placeholder");
+        for (index, needle) in [
+            ("Events-{tenant_id}", "not a valid index name"),
+            ("_{tenant_id}", "not a valid index name"),
+            ("events-{tenant}", "the only placeholder is `{tenant_id}`"),
+            ("events-{date}-{tenant_id}", "the only placeholder"),
+        ] {
+            assert_rejected(config_with(&[("opensearch.index", json!(index))]), needle);
+        }
     }
 
     #[test]
@@ -685,15 +733,16 @@ mod tests {
 
     #[test]
     fn url_must_be_http() {
-        let raw = MINIMAL.replace("http://localhost:9200", "ftp://localhost");
-
-        assert_invalid(config_with(&raw), "http or https");
+        assert_invalid(
+            config_with(&[("opensearch.url", json!("ftp://localhost"))]),
+            "http or https",
+        );
     }
 
     #[test]
     fn username_requires_password() {
-        let result = Config::from_toml(
-            MINIMAL,
+        let result = Config::from_cac(
+            minimal(),
             EnvOverrides {
                 opensearch_username: Some("sink".into()),
                 ..EnvOverrides::default()
@@ -705,16 +754,18 @@ mod tests {
 
     #[test]
     fn backoff_bounds_are_checked() {
-        let raw = format!("{MINIMAL}\n[retry]\ninitial_backoff_ms = 500\nmax_backoff_ms = 100\n");
-
-        assert_invalid(config_with(&raw), "retry.initial_backoff_ms");
+        assert_invalid(
+            config_with(&[
+                ("retry.initial_backoff_ms", json!(500)),
+                ("retry.max_backoff_ms", json!(100)),
+            ]),
+            "retry.initial_backoff_ms",
+        );
     }
 
     #[test]
     fn zero_linger_is_rejected() {
-        let raw = format!("{MINIMAL}\n[batch]\nlinger_ms = 0\n");
-
-        assert_invalid(config_with(&raw), "linger_ms");
+        assert_invalid(config_with(&[("batch.linger_ms", json!(0))]), "linger_ms");
     }
 
     #[test]
@@ -722,5 +773,25 @@ mod tests {
         let error = parse_json_map(KAFKA_CLIENT_CONFIG_ENV, "not-json").unwrap_err();
 
         assert!(error.to_string().contains(KAFKA_CLIENT_CONFIG_ENV));
+    }
+
+    #[tokio::test]
+    async fn the_shipped_cac_file_is_valid() {
+        let cac = Cac::load(concat!(env!("CARGO_MANIFEST_DIR"), "/cac.toml"))
+            .await
+            .unwrap();
+
+        let config = Config::from_cac(
+            cac.resolve_defaults().await.unwrap(),
+            EnvOverrides::default(),
+        )
+        .unwrap();
+
+        assert_eq!(config.kafka.topics, vec!["events.generic"]);
+        assert_eq!(
+            config.opensearch.index,
+            IndexTemplate::parse("events-{tenant_id}").unwrap()
+        );
+        cac.close().await;
     }
 }

@@ -91,8 +91,12 @@ pub struct WriteError {
 pub trait Writer: Send + Sync + 'static {
     type Doc: Clone + Send + Sync + 'static;
 
-    /// Turns a record's payload into a document, or rejects it.
-    fn prepare(&self, payload: Option<&[u8]>) -> Result<Self::Doc, Rejection>;
+    /// Turns a record's payload into a document, or rejects it. May look up
+    /// settings for the record, such as its tenant's index.
+    fn prepare(
+        &self,
+        payload: Option<&[u8]>,
+    ) -> impl Future<Output = Result<Self::Doc, Rejection>> + Send;
 
     /// Bytes the document adds to a write request.
     fn doc_size(doc: &Self::Doc) -> usize;
@@ -194,6 +198,26 @@ fn consumer_config(config: &RuntimeConfig) -> ClientConfig {
     client_config
 }
 
+/// A consumed message, copied out of librdkafka's buffer so it can be held
+/// across an `.await`.
+struct Record {
+    tp: TopicPartition,
+    offset: i64,
+    key: Option<Bytes>,
+    payload: Option<Bytes>,
+}
+
+impl Record {
+    fn copy_from(message: &BorrowedMessage<'_>) -> Self {
+        Self {
+            tp: TopicPartition::new(message.topic(), message.partition()),
+            offset: message.offset(),
+            key: message.key().map(Bytes::copy_from_slice),
+            payload: message.payload().map(Bytes::copy_from_slice),
+        }
+    }
+}
+
 struct PartitionState<D> {
     epoch: u64,
     buffer: PartitionBuffer<D>,
@@ -250,38 +274,53 @@ impl<W: Writer> EventLoop<W> {
         tick.set_missed_tick_behavior(MissedTickBehavior::Delay);
 
         loop {
-            tokio::select! {
+            let record = tokio::select! {
                 biased;
                 () = shutdown.cancelled() => return Ok(()),
-                Some(result) = results_rx.recv() => self.on_result(result),
-                _ = tick.tick() => self.on_tick(),
+                Some(result) = results_rx.recv() => {
+                    self.on_result(result);
+                    continue;
+                }
+                _ = tick.tick() => {
+                    self.on_tick();
+                    continue;
+                }
                 message = consumer.recv() => match message {
-                    Ok(message) => self.on_message(&message),
+                    Ok(message) => Record::copy_from(&message),
                     Err(KafkaError::MessageConsumptionFatal(code)) => {
                         return Err(RuntimeError::FatalConsumer(KafkaError::MessageConsumptionFatal(code)));
                     }
-                    Err(error) => warn!(%error, "consumer error"),
+                    Err(error) => {
+                        warn!(%error, "consumer error");
+                        continue;
+                    }
                 },
-            }
+            };
+            self.on_record(record).await;
         }
     }
 
-    fn on_message(&mut self, message: &BorrowedMessage<'_>) {
-        let tp = TopicPartition::new(message.topic(), message.partition());
+    async fn on_record(&mut self, record: Record) {
+        let Record {
+            tp,
+            offset,
+            key,
+            payload,
+        } = record;
         let Some(epoch) = lock(&self.tracker).epoch(&tp) else {
             debug!(topic = %tp.topic, partition = tp.partition, "skipping a record for a partition that is no longer assigned");
             return;
         };
         counter!("sink_records_consumed_total", "topic" => tp.topic.clone()).increment(1);
 
-        let doc = self.writer.prepare(message.payload());
+        let doc = self.writer.prepare(payload.as_deref()).await;
         if let Err(rejection) = &doc {
-            debug!(topic = %tp.topic, partition = tp.partition, offset = message.offset(), class = rejection.class, reason = %rejection.reason, "record rejected before writing");
+            debug!(topic = %tp.topic, partition = tp.partition, offset, class = rejection.class, reason = %rejection.reason, "record rejected before writing");
         }
         let entry = Entry {
-            offset: message.offset(),
-            key: message.key().map(Bytes::copy_from_slice),
-            payload: message.payload().map(Bytes::copy_from_slice),
+            offset,
+            key,
+            payload,
             size: doc.as_ref().map_or(0, W::doc_size),
             doc,
             received: Instant::now(),

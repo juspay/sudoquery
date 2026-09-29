@@ -16,10 +16,10 @@ rdkafka = { workspace = true }
 reqwest = { version = "0.12", features = ["json"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
+superposition_provider = { workspace = true }
 thiserror = { workspace = true }
 tokio = { workspace = true }
 tokio-util = "0.7.19"
-toml = "0.8"
 tracing = { workspace = true }
 tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
 uuid = { workspace = true }

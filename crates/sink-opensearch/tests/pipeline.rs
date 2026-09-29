@@ -10,6 +10,7 @@
 //! `opensearch`). Each test uses its own topics, index and consumer group.
 
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::process::Command;
 use std::sync::{Arc, OnceLock};
 use std::time::Duration;
@@ -24,7 +25,7 @@ use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::util::Timeout;
 use rdkafka::{ClientConfig, Offset, TopicPartitionList};
 use serde_json::{Value, json};
-use sink_opensearch::config::EnvOverrides;
+use sink_opensearch::cac::Cac;
 use sink_opensearch::health::Health;
 use sink_opensearch::{Config, Drained};
 use tokio::sync::{Mutex, MutexGuard};
@@ -86,47 +87,57 @@ impl Stack {
         config
     }
 
-    fn sink_config(&self, names: &Names, max_docs: usize) -> Config {
-        self.sink_config_with_index(names, max_docs, &names.index)
+    /// A sink reading `names.topic` into `names.index`.
+    async fn sink(&self, names: &Names, max_docs: usize) -> SinkSettings {
+        self.sink_with(names, max_docs, &names.index, "").await
     }
 
-    fn sink_config_with_index(&self, names: &Names, max_docs: usize, index: &str) -> Config {
-        let raw = format!(
+    /// A sink with its own CAC file: `index` is the default
+    /// `opensearch.index`, and `overrides` is appended as-is.
+    async fn sink_with(
+        &self,
+        names: &Names,
+        max_docs: usize,
+        index: &str,
+        overrides: &str,
+    ) -> SinkSettings {
+        let cac_file = format!(
             r#"
-            [kafka]
-            topics = ["{topic}"]
-            group_id = "{group}"
-            client_config = {{ "bootstrap.servers" = "{kafka}" }}
+[default-configs]
+"kafka.topics" = {{ value = ["{topic}"], schema = {{ type = "array" }} }}
+"kafka.group_id" = {{ value = "{group}", schema = {{ type = "string" }} }}
+"kafka.client_config" = {{ value = {{ "bootstrap.servers" = "{kafka}" }}, schema = {{ type = "object" }} }}
+"opensearch.url" = {{ value = "{opensearch}", schema = {{ type = "string" }} }}
+"opensearch.index" = {{ value = "{index}", schema = {{ type = "string" }} }}
+"opensearch.request_timeout_ms" = {{ value = 2000, schema = {{ type = "integer" }} }}
+"batch.max_docs" = {{ value = {max_docs}, schema = {{ type = "integer" }} }}
+"batch.linger_ms" = {{ value = 100, schema = {{ type = "integer" }} }}
+"retry.initial_backoff_ms" = {{ value = 50, schema = {{ type = "integer" }} }}
+"retry.max_backoff_ms" = {{ value = 1000, schema = {{ type = "integer" }} }}
+"dlq.topic" = {{ value = "{dlq}", schema = {{ type = "string" }} }}
+"commit.interval_ms" = {{ value = 500, schema = {{ type = "integer" }} }}
+"shutdown.grace_ms" = {{ value = 10000, schema = {{ type = "integer" }} }}
 
-            [opensearch]
-            url = "{opensearch}"
-            index = "{index}"
-            request_timeout_ms = 2000
-
-            [batch]
-            max_docs = {max_docs}
-            linger_ms = 100
-
-            [retry]
-            initial_backoff_ms = 50
-            max_backoff_ms = 1000
-
-            [dlq]
-            topic = "{dlq}"
-
-            [commit]
-            interval_ms = 500
-
-            [shutdown]
-            grace_ms = 10000
-            "#,
+[dimensions]
+tenant_id = {{ position = 1, schema = {{ type = "string" }} }}
+workspace_id = {{ position = 2, schema = {{ type = "string" }} }}
+{overrides}
+"#,
             topic = names.topic,
             group = names.group,
             kafka = self.kafka,
             opensearch = self.opensearch,
             dlq = names.dlq,
         );
-        Config::from_toml(&raw, EnvOverrides::default()).expect("valid test config")
+        let path = std::env::temp_dir().join(format!(
+            "sink-opensearch-it-{}.toml",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::write(&path, cac_file).unwrap();
+
+        let cac = Cac::load(&path).await.expect("valid test CAC file");
+        let config = Config::load(&cac).await.expect("valid test config");
+        SinkSettings { cac, config, path }
     }
 
     async fn create_topics(&self, names: &Names) {
@@ -273,6 +284,56 @@ impl Stack {
             .await;
     }
 
+    /// Installs the repo's `index-template.json`, pointed at `pattern`
+    /// instead of `events-*`.
+    async fn install_index_template(&self, name: &str, pattern: &str) {
+        let raw =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/index-template.json"))
+                .unwrap();
+        let mut template: Value = serde_json::from_str(&raw).unwrap();
+        template["index_patterns"] = json!([pattern]);
+        let response = self
+            .http
+            .put(format!("{}/_index_template/{name}", self.opensearch))
+            .json(&template)
+            .send()
+            .await
+            .unwrap();
+        assert!(
+            response.status().is_success(),
+            "{}",
+            response.text().await.unwrap()
+        );
+    }
+
+    async fn get(&self, path: &str) -> Value {
+        self.http
+            .get(format!("{}/{path}", self.opensearch))
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap()
+    }
+
+    async fn search(&self, index: &str, body: Value) -> Value {
+        self.http
+            .post(format!("{}/{index}/_search", self.opensearch))
+            .json(&body)
+            .send()
+            .await
+            .unwrap()
+            .json()
+            .await
+            .unwrap()
+    }
+
+    async fn search_hits(&self, index: &str, query: Value) -> u64 {
+        let body = self.search(index, json!({ "query": query })).await;
+        body["hits"]["total"]["value"].as_u64().unwrap()
+    }
+
     async fn delete_index(&self, index: &str) {
         let _ = self
             .http
@@ -309,31 +370,51 @@ impl Stack {
     }
 }
 
+struct SinkSettings {
+    cac: Cac,
+    config: Config,
+    path: PathBuf,
+}
+
 struct RunningSink {
     shutdown: CancellationToken,
     handle: JoinHandle<Result<Drained, sink_opensearch::Error>>,
+    cac: Cac,
+    path: PathBuf,
 }
 
 impl RunningSink {
-    fn start(config: Config) -> Self {
+    fn start(settings: SinkSettings) -> Self {
+        let SinkSettings { cac, config, path } = settings;
         let shutdown = CancellationToken::new();
         let handle = tokio::spawn(sink_opensearch::run(
             config,
+            cac.clone(),
             Arc::new(Health::default()),
             shutdown.clone(),
         ));
-        Self { shutdown, handle }
+        Self {
+            shutdown,
+            handle,
+            cac,
+            path,
+        }
     }
 
     async fn stop(self) -> Drained {
         self.shutdown.cancel();
-        self.handle.await.unwrap().unwrap()
+        let drained = self.handle.await.unwrap().unwrap();
+        self.cac.close().await;
+        let _ = std::fs::remove_file(&self.path);
+        drained
     }
 
     /// Stops the sink without a graceful shutdown, like a crash.
     async fn kill(self) {
         self.handle.abort();
         let _ = self.handle.await;
+        self.cac.close().await;
+        let _ = std::fs::remove_file(&self.path);
     }
 }
 
@@ -404,7 +485,7 @@ async fn indexes_every_event_once_and_commits_all_offsets() {
     let events = events(1000);
     stack.produce(&names.topic, &records(&events)).await;
 
-    let sink = RunningSink::start(stack.sink_config(&names, 100));
+    let sink = RunningSink::start(stack.sink(&names, 100).await);
     stack.wait_for_count(&names.index, 1000).await;
 
     let (_, payload, id) = &events[42];
@@ -428,7 +509,7 @@ async fn a_crash_mid_stream_loses_nothing_and_duplicates_nothing() {
     stack.create_topics(&names).await;
     stack.produce(&names.topic, &records(&events(3000))).await;
 
-    let first = RunningSink::start(stack.sink_config(&names, 20));
+    let first = RunningSink::start(stack.sink(&names, 20).await);
     let deadline = Instant::now() + WAIT;
     while stack.count(&names.index).await < 300 {
         assert!(Instant::now() < deadline, "the first run made no progress");
@@ -440,7 +521,7 @@ async fn a_crash_mid_stream_loses_nothing_and_duplicates_nothing() {
         "the first run finished before it was killed; the test proves nothing"
     );
 
-    let second = RunningSink::start(stack.sink_config(&names, 100));
+    let second = RunningSink::start(stack.sink(&names, 100).await);
     stack.wait_for_count(&names.index, 3000).await;
     assert_eq!(second.stop().await, Drained::Complete);
 
@@ -486,7 +567,7 @@ async fn documents_that_cannot_be_indexed_go_to_the_dlq() {
     records.push(("garbage".into(), b"this is not json".to_vec()));
     stack.produce(&names.topic, &records).await;
 
-    let sink = RunningSink::start(stack.sink_config(&names, 100));
+    let sink = RunningSink::start(stack.sink(&names, 100).await);
     stack.wait_for_count(&names.index, 90).await;
     let letters = stack.read_topic(&names.dlq, 11).await;
 
@@ -545,7 +626,7 @@ async fn an_opensearch_outage_blocks_writes_and_then_recovers() {
     stack.produce(&names.topic, &records(&events(500))).await;
 
     let paused = PausedContainer::pause(env_or("OPENSEARCH_CONTAINER", "opensearch"));
-    let sink = RunningSink::start(stack.sink_config(&names, 50));
+    let sink = RunningSink::start(stack.sink(&names, 50).await);
     tokio::time::sleep(Duration::from_secs(8)).await;
     stack.produce(&names.topic, &records(&events(500))).await;
     tokio::time::sleep(Duration::from_secs(4)).await;
@@ -579,12 +660,26 @@ async fn each_tenant_gets_its_own_index() {
     }
     stack.produce(&names.topic, &records).await;
 
+    // Every tenant gets `<index>-<tenant>`, except merchant-b, which CAC
+    // moves to a dedicated index.
     let template = format!("{}-{{tenant_id}}", names.index);
-    let sink = RunningSink::start(stack.sink_config_with_index(&names, 100, &template));
     let merchant_a = format!("{}-merchant-a", names.index);
-    let merchant_b = format!("{}-merchant-b", names.index);
+    let merchant_b = format!("{}-merchant-b-dedicated", names.index);
+    let overrides = format!(
+        r#"
+[[overrides]]
+_context_ = {{ tenant_id = "merchant-b" }}
+"opensearch.index" = "{merchant_b}"
+"#
+    );
+    let sink = RunningSink::start(stack.sink_with(&names, 100, &template, &overrides).await);
     stack.wait_for_count(&merchant_a, 50).await;
     stack.wait_for_count(&merchant_b, 30).await;
+    assert_eq!(
+        stack.count(&format!("{}-merchant-b", names.index)).await,
+        0,
+        "merchant-b must only be in its dedicated index"
+    );
 
     // Uppercase can't be part of an index name, and the sink never rewrites
     // tenant IDs, so these go to the DLQ.
@@ -601,5 +696,149 @@ async fn each_tenant_gets_its_own_index() {
     assert_eq!(committed, ends);
     stack.delete_index(&merchant_a).await;
     stack.delete_index(&merchant_b).await;
+    stack.clean_up(&names).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs the local stack: docker compose -f tests/docker-compose.yml up -d redpanda opensearch"]
+async fn properties_can_change_shape_without_rejections() {
+    let _serial = serial().await;
+    let stack = Stack::from_env();
+    let names = Names::unique();
+    stack.create_topics(&names).await;
+    stack
+        .install_index_template(&names.index, &format!("{}-*", names.index))
+        .await;
+
+    // The same property arrives as a number, a string and an object, and new
+    // keys keep appearing. With dynamic mapping, most of these would be
+    // rejected after the first one.
+    let shapes = [
+        json!({ "amount": 100, "plan": "premium" }),
+        json!({ "amount": "100 INR", "plan": "basic" }),
+        json!({ "amount": { "value": 100, "currency": "INR" } }),
+        json!({ "cart": { "items": 3, "coupon": "SAVE10" }, "plan": "premium" }),
+    ];
+    let mut records = Vec::new();
+    for i in 0..40 {
+        let event = CanonicalEvent::builder()
+            .name("checkout_viewed".into())
+            .tenant_id("merchant-a".into())
+            .anon_id(format!("anon-{i}"))
+            .properties(Some(shapes[i % shapes.len()].clone()))
+            .build();
+        records.push((format!("anon-{i}"), serde_json::to_vec(&event).unwrap()));
+    }
+    stack.produce(&names.topic, &records).await;
+
+    let template = format!("{}-{{tenant_id}}", names.index);
+    let index = format!("{}-merchant-a", names.index);
+    let sink = RunningSink::start(stack.sink_with(&names, 100, &template, "").await);
+    stack.wait_for_count(&index, 40).await;
+    assert_eq!(sink.stop().await, Drained::Complete);
+
+    let mapping = stack.get(&format!("{index}/_mapping")).await;
+    let fields = &mapping[&index]["mappings"]["properties"];
+    assert_eq!(fields["properties"]["type"], "flat_object");
+    assert_eq!(fields["tenant_id"]["type"], "keyword");
+    assert_eq!(fields["occured_at"]["type"], "date");
+
+    let premium = json!({ "term": { "properties.plan": "premium" } });
+    assert_eq!(stack.search_hits(&index, premium).await, 20);
+    let coupon = json!({ "term": { "properties.cart.coupon": "SAVE10" } });
+    assert_eq!(stack.search_hits(&index, coupon).await, 10);
+
+    let (committed, ends) = stack.committed_and_end_offsets(&names).await;
+    assert_eq!(committed, ends);
+    let _ = stack
+        .http
+        .delete(format!(
+            "{}/_index_template/{}",
+            stack.opensearch, names.index
+        ))
+        .send()
+        .await;
+    stack.delete_index(&index).await;
+    stack.clean_up(&names).await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+#[ignore = "needs the local stack: docker compose -f tests/docker-compose.yml up -d redpanda opensearch"]
+async fn events_are_timed_by_when_they_happened() {
+    let _serial = serial().await;
+    let stack = Stack::from_env();
+    let names = Names::unique();
+    stack.create_topics(&names).await;
+    stack
+        .install_index_template(&names.index, &format!("{}-*", names.index))
+        .await;
+
+    // Sent in a different order from when they happened, the way a phone that
+    // was offline delivers old events late. arrived_at is the collector's
+    // nanosecond format.
+    let at = |time: &str| {
+        chrono::DateTime::parse_from_rfc3339(time)
+            .unwrap()
+            .with_timezone(&chrono::Utc)
+    };
+    let events = [
+        (
+            "checkout",
+            "2026-09-28T11:00:00Z",
+            "2026-09-28T11:00:00.100000000Z",
+        ),
+        (
+            "login",
+            "2026-09-28T09:00:00Z",
+            "2026-09-28T12:00:00.123456789Z",
+        ),
+        (
+            "browse",
+            "2026-09-28T10:00:00Z",
+            "2026-09-28T12:00:00.987654321Z",
+        ),
+    ];
+    let mut records = Vec::new();
+    for (name, occured_at, arrived_at) in events {
+        let event = CanonicalEvent::builder()
+            .name(name.into())
+            .tenant_id("merchant-a".into())
+            .anon_id("anon-1".into())
+            .occured_at(at(occured_at))
+            .arrived_at(Some(at(arrived_at)))
+            .build();
+        records.push(("anon-1".to_owned(), serde_json::to_vec(&event).unwrap()));
+    }
+    stack.produce(&names.topic, &records).await;
+
+    let template = format!("{}-{{tenant_id}}", names.index);
+    let index = format!("{}-merchant-a", names.index);
+    let sink = RunningSink::start(stack.sink_with(&names, 100, &template, "").await);
+    stack.wait_for_count(&index, 3).await;
+    assert_eq!(sink.stop().await, Drained::Complete);
+
+    let sorted = stack
+        .search(&index, json!({ "sort": [{ "@timestamp": "asc" }] }))
+        .await;
+    let order: Vec<&str> = sorted["hits"]["hits"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|hit| hit["_source"]["name"].as_str().unwrap())
+        .collect();
+    assert_eq!(order, vec!["login", "browse", "checkout"]);
+
+    let after_login = json!({ "range": { "@timestamp": { "gte": "2026-09-28T09:30:00Z" } } });
+    assert_eq!(stack.search_hits(&index, after_login).await, 2);
+
+    let _ = stack
+        .http
+        .delete(format!(
+            "{}/_index_template/{}",
+            stack.opensearch, names.index
+        ))
+        .send()
+        .await;
+    stack.delete_index(&index).await;
     stack.clean_up(&names).await;
 }

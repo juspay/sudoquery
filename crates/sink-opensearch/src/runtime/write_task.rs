@@ -289,7 +289,7 @@ mod tests {
     impl Writer for FakeWriter {
         type Doc = u32;
 
-        fn prepare(&self, _payload: Option<&[u8]>) -> Result<u32, Rejection> {
+        async fn prepare(&self, _payload: Option<&[u8]>) -> Result<u32, Rejection> {
             unreachable!("tests build entries directly")
         }
 

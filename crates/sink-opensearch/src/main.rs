@@ -1,6 +1,8 @@
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use sink_opensearch::cac::Cac;
+use sink_opensearch::config::cac_path;
 use sink_opensearch::health::{self, Health};
 use sink_opensearch::{Config, Drained};
 use tokio::net::TcpListener;
@@ -12,7 +14,14 @@ use tracing_subscriber::EnvFilter;
 async fn main() -> ExitCode {
     init_tracing();
 
-    let config = match Config::load() {
+    let cac = match Cac::load(cac_path()).await {
+        Ok(cac) => cac,
+        Err(error) => {
+            error!(%error, "failed to load configuration");
+            return ExitCode::FAILURE;
+        }
+    };
+    let config = match Config::load(&cac).await {
         Ok(config) => config,
         Err(error) => {
             error!(%error, "invalid configuration");
@@ -45,8 +54,9 @@ async fn main() -> ExitCode {
         server_shutdown.clone(),
     ));
 
-    let result = sink_opensearch::run(config, health, shutdown).await;
+    let result = sink_opensearch::run(config, cac.clone(), health, shutdown).await;
 
+    cac.close().await;
     server_shutdown.cancel();
     match server.await {
         Ok(Err(error)) => warn!(%error, "health server stopped with an error"),

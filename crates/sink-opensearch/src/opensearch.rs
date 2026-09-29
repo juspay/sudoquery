@@ -4,6 +4,7 @@ mod bulk;
 mod classify;
 mod document;
 mod response;
+mod tenant_index;
 
 use std::future::Future;
 
@@ -12,21 +13,27 @@ use bytes::BytesMut;
 use bulk::BulkClient;
 pub use bulk::BulkClientError;
 use document::BulkDoc;
+use tenant_index::TenantIndexes;
 
-use crate::config::{IndexTemplate, OpenSearchConfig};
+use crate::cac::Cac;
+use crate::config::OpenSearchConfig;
 use crate::runtime::{ItemOutcome, Rejection, WriteError, Writer};
 
 pub struct OpenSearchWriter {
     client: BulkClient,
-    index: IndexTemplate,
+    indexes: TenantIndexes,
     max_doc_bytes: usize,
 }
 
 impl OpenSearchWriter {
-    pub fn new(config: &OpenSearchConfig, max_doc_bytes: usize) -> Result<Self, BulkClientError> {
+    pub fn new(
+        config: &OpenSearchConfig,
+        cac: Cac,
+        max_doc_bytes: usize,
+    ) -> Result<Self, BulkClientError> {
         Ok(Self {
             client: BulkClient::new(config)?,
-            index: config.index.clone(),
+            indexes: TenantIndexes::new(cac),
             max_doc_bytes,
         })
     }
@@ -35,8 +42,20 @@ impl OpenSearchWriter {
 impl Writer for OpenSearchWriter {
     type Doc = BulkDoc;
 
-    fn prepare(&self, payload: Option<&[u8]>) -> Result<BulkDoc, Rejection> {
-        document::prepare(payload, &self.index, self.max_doc_bytes)
+    async fn prepare(&self, payload: Option<&[u8]>) -> Result<BulkDoc, Rejection> {
+        let decoded = document::decode(payload)?;
+        let event = &decoded.event;
+        let index = self
+            .indexes
+            .index_for(&event.tenant_id, event.workspace_id.as_deref())
+            .await
+            .map_err(|reason| {
+                Rejection::new(
+                    "invalid_index",
+                    format!("tenant `{}`: {reason}", event.tenant_id),
+                )
+            })?;
+        document::build(&decoded, &index, self.max_doc_bytes)
     }
 
     fn doc_size(doc: &BulkDoc) -> usize {

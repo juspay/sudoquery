@@ -1,5 +1,7 @@
 //! Turns an event payload into one `_bulk` `create` operation.
 
+use std::borrow::Cow;
+
 use bytes::{Bytes, BytesMut};
 use canonical_event::CanonicalEvent;
 use serde::Serialize;
@@ -35,15 +37,16 @@ struct Target<'a> {
     id: &'a str,
 }
 
-/// Validates the payload as a canonical event and builds its `create`
-/// operation into the tenant's index, with the event's `id` as the document
-/// ID so a replay can't create a duplicate. The source is the original
-/// payload bytes.
-pub fn prepare(
-    payload: Option<&[u8]>,
-    index: &IndexTemplate,
-    max_bytes: usize,
-) -> Result<BulkDoc, Rejection> {
+/// A payload that parsed as a canonical event.
+pub struct Decoded<'a> {
+    pub event: CanonicalEvent,
+    /// The payload on one line: the original bytes, unless they held a line
+    /// break.
+    source: Cow<'a, [u8]>,
+}
+
+/// Validates the payload as a canonical event.
+pub fn decode(payload: Option<&[u8]>) -> Result<Decoded<'_>, Rejection> {
     let payload = payload
         .filter(|payload| !payload.is_empty())
         .ok_or_else(|| Rejection::new("decode", "empty payload"))?;
@@ -52,21 +55,30 @@ pub fn prepare(
 
     // NDJSON can't hold a line break inside a document; pretty-printed JSON
     // is re-encoded on one line.
-    let compacted;
     let source = if payload.contains(&b'\n') {
         let value: serde_json::Value = serde_json::from_slice(payload)
             .map_err(|error| Rejection::new("decode", format!("not JSON: {error}")))?;
-        compacted = serde_json::to_vec(&value)
+        let compacted = serde_json::to_vec(&value)
             .map_err(|error| Rejection::new("decode", format!("failed to re-encode: {error}")))?;
-        compacted.as_slice()
+        Cow::Owned(compacted)
     } else {
-        payload
+        Cow::Borrowed(payload)
     };
 
+    Ok(Decoded { event, source })
+}
+
+/// Builds the event's `create` operation into its tenant's index, with the
+/// event's `id` as the document ID so a replay can't create a duplicate.
+pub fn build(
+    decoded: &Decoded<'_>,
+    index: &IndexTemplate,
+    max_bytes: usize,
+) -> Result<BulkDoc, Rejection> {
     let index = index
-        .render(&event.tenant_id)
+        .render(&decoded.event.tenant_id)
         .map_err(|reason| Rejection::new("invalid_tenant", reason))?;
-    let id = event.id().to_string();
+    let id = decoded.event.id().to_string();
     let action = serde_json::to_vec(&Action {
         create: Target {
             index: &index,
@@ -75,7 +87,7 @@ pub fn prepare(
     })
     .map_err(|error| Rejection::new("decode", format!("failed to encode action: {error}")))?;
 
-    let size = action.len() + source.len() + 2;
+    let size = action.len() + decoded.source.len() + 2;
     if size > max_bytes {
         return Err(Rejection::new(
             "too_large",
@@ -86,7 +98,7 @@ pub fn prepare(
     let mut doc = BytesMut::with_capacity(size);
     doc.extend_from_slice(&action);
     doc.extend_from_slice(b"\n");
-    doc.extend_from_slice(source);
+    doc.extend_from_slice(&decoded.source);
     doc.extend_from_slice(b"\n");
     Ok(BulkDoc(doc.freeze()))
 }
@@ -94,6 +106,14 @@ pub fn prepare(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn prepare(
+        payload: Option<&[u8]>,
+        index: &IndexTemplate,
+        max_bytes: usize,
+    ) -> Result<BulkDoc, Rejection> {
+        build(&decode(payload)?, index, max_bytes)
+    }
 
     const ID: &str = "0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c";
 

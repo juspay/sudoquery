@@ -4,7 +4,10 @@
 //! using the event's `id` as the document ID, and commits offsets only after
 //! OpenSearch or the dead letter queue has acknowledged every record. Delivery
 //! is at-least-once; replays can't create duplicates.
+//!
+//! Settings come from CAC, like the event collector's; see [`cac`].
 
+pub mod cac;
 pub mod config;
 pub mod health;
 mod opensearch;
@@ -14,6 +17,7 @@ use std::sync::Arc;
 
 use tokio_util::sync::CancellationToken;
 
+use cac::Cac;
 pub use config::Config;
 use health::Health;
 use opensearch::{BulkClientError, OpenSearchWriter};
@@ -30,13 +34,16 @@ pub enum Error {
 }
 
 /// Runs the sink until `shutdown` is cancelled, then writes out what it has
-/// buffered within the configured grace period.
+/// buffered within the configured grace period. `config` holds the
+/// process-wide settings from `cac`; `cac` is kept to resolve each tenant's
+/// index.
 pub async fn run(
     config: Config,
+    cac: Cac,
     health: Arc<Health>,
     shutdown: CancellationToken,
 ) -> Result<Drained, Error> {
-    let writer = OpenSearchWriter::new(&config.opensearch, config.batch.max_bytes)?;
+    let writer = OpenSearchWriter::new(&config.opensearch, cac, config.batch.max_bytes)?;
     let runtime_config = RuntimeConfig {
         topics: config.kafka.topics,
         group_id: config.kafka.group_id,

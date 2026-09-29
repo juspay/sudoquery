@@ -16,7 +16,7 @@ Revised 2026-09-25 to match what v1 implements. The original, broader spec was t
 ### Non-goals (v1)
 
 - Exactly-once delivery end to end.
-- Managing index templates, ISM policies or mappings; the operator creates these.
+- Installing index templates or ISM policies at runtime. The repo ships `index-template.json` for `events-*` (typed envelope fields, `properties` as `flat_object`); the local stack installs it, and other environments install it at deploy time.
 - Payloads other than JSON canonical events.
 - Any destination other than OpenSearch.
 
@@ -92,7 +92,16 @@ A partition's batches are written strictly in order, and a batch's retries finis
 
 `_id` is the canonical event's `id` (UUID). The action is always `create`, so a replay gets a 409, which counts as success. `create` also works with data streams.
 
-The target comes from `opensearch.index`, where `{tenant_id}` is replaced with the event's `tenant_id`: `events-{tenant_id}` gives each tenant its own index or data stream. The fixed parts of the template are checked against OpenSearch's naming rules at startup. The full name is checked for each event, and a tenant ID that can't form a valid name is dead-lettered as `invalid_tenant`. Tenant IDs are never lowercased or cleaned up, because that could put two tenants in one index.
+The target comes from the CAC key `opensearch.index`, resolved for each event's `tenant_id` and `workspace_id`, so CAC overrides can move a tenant, or one of its workspaces, to another index. In the resolved value, `{tenant_id}` is replaced with the event's tenant: `events-{tenant_id}` gives each tenant its own index or data stream.
+
+- **Checks:** the default's fixed parts are checked against OpenSearch's naming rules at startup. Each tenant's resolved value is checked when the tenant is first seen, and every full name is checked per event.
+- **Invalid tenant ID:** a tenant ID that can't form a valid name is dead-lettered as `invalid_tenant`. Tenant IDs are never lowercased or cleaned up, because that could put two tenants in one index.
+- **Invalid override:** a tenant whose override isn't a valid template is dead-lettered as `invalid_index`, without affecting other tenants.
+- **Caching:** resolved values are cached per tenant for 30 seconds, and the CAC file is re-read every 30 seconds, so a change applies within about a minute without a restart.
+
+### Event time
+
+The event's time in OpenSearch is `occured_at`, set by the client. `index-template.json` maps `@timestamp` as an alias for it, so tools that default to `@timestamp` sort and filter by when things happened. `arrived_at`, the collector's clock, is kept for freshness and ingestion lag. `occured_at` is always present, so it's also the field to use if indexes later become data streams.
 
 ## Errors
 
@@ -112,6 +121,7 @@ The classifier is a pure function with table tests.
 | Unknown item status | Retry the item |
 | Payload empty or not a canonical event | DLQ, without a write |
 | `tenant_id` can't form a valid index name | DLQ (`invalid_tenant`), without a write |
+| The tenant's configured `opensearch.index` isn't a valid template | DLQ (`invalid_index`), without a write |
 | Document larger than `batch.max_bytes` | DLQ, without a write |
 
 Retries never give up: capped exponential backoff with full jitter, `random(0, min(max, initial × 2^(attempt−1)))`. A partition whose writes keep failing stays blocked, and its paused consumption bounds memory.
@@ -126,7 +136,7 @@ A partition is paused when its buffer is full while its batch is in flight, and 
 
 - The producer is idempotent, which implies `acks=all`.
 - The key and payload are the original bytes.
-- Headers: `dlq.source.topic`, `dlq.source.partition`, `dlq.source.offset`, `dlq.error.class` (`decode`, `invalid_tenant`, `too_large`, `rejected`), `dlq.error.reason`, `dlq.error.status` when there is an HTTP status, `dlq.attempts`, `dlq.failed_at`.
+- Headers: `dlq.source.topic`, `dlq.source.partition`, `dlq.source.offset`, `dlq.error.class` (`decode`, `invalid_tenant`, `invalid_index`, `too_large`, `rejected`), `dlq.error.reason`, `dlq.error.status` when there is an HTTP status, `dlq.attempts`, `dlq.failed_at`.
 - A record is resolved only after Kafka confirms the dead letter. If the DLQ is unavailable, the partition stays blocked.
 - To replay after a fix, run a sink with the DLQ as its topic.
 
@@ -142,7 +152,7 @@ A fatal consumer error skips the drain: in-flight batches are cancelled, complet
 
 ## Configuration
 
-See [README.md](README.md#configuration). TOML file plus environment overrides that use the collector's variable names; unknown keys are rejected, and values are validated at startup (index naming rules, URL scheme, DLQ topic not consumed, both or neither credential).
+See [README.md](README.md#configuration). Settings come from a CAC (Superposition) file with one `section.name` key per setting and `tenant_id` and `workspace_id` dimensions, loaded the same way as the collector's `cac.toml`. Environment overrides use the collector's variable names. Unknown keys are rejected, and values are validated at startup: index naming rules, URL scheme, DLQ topic not consumed, and both or neither credential. Process-wide settings are resolved once with no tenant; `opensearch.index` is resolved per tenant.
 
 ## Observability
 
@@ -163,7 +173,9 @@ See [README.md](README.md#configuration). TOML file plus environment overrides t
 | Crash mid-stream, then restart | Count equals produced (no loss, no duplicates); committed offsets equal end offsets |
 | Mapping conflicts and an undecodable record | Good documents indexed; bad ones in the DLQ with correct headers and original bytes; offsets advance |
 | OpenSearch paused, more events produced, then unpaused | Every event indexed; committed offsets equal end offsets |
-| Events from three tenants with `index = "…-{tenant_id}"` | Each valid tenant's index holds exactly its events; the tenant with uppercase letters goes to the DLQ as `invalid_tenant` |
+| `properties` changing shape (number, string, object, new keys) under `index-template.json` | Every event indexed, none rejected; `properties` is a `flat_object`; exact and nested property searches work |
+| Events sent in a different order from when they happened | Sorting and range queries on `@timestamp` follow `occured_at` |
+| Events from three tenants with `opensearch.index = "…-{tenant_id}"`, and a CAC override giving one tenant a dedicated index | Each valid tenant's index holds exactly its events; the overridden tenant is only in its dedicated index; the tenant with uppercase letters goes to the DLQ as `invalid_tenant` |
 
 ## Deferred
 

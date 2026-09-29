@@ -1,0 +1,67 @@
+# sink-opensearch settings, resolved with CAC (Superposition) the same way the
+# event collector reads its cac.toml. Values here point at the local stack in
+# tests/docker-compose.yml:
+#
+#   SINK_CONFIG=crates/sink-opensearch/cac.toml cargo run -p sink-opensearch
+#
+# Every setting is one `section.name` key, so a single setting can be
+# overridden. Everything is read once at startup with no tenant context,
+# except `opensearch.index`, which is resolved per event for the event's
+# tenant_id and workspace_id. The file is re-read every 30 seconds, so tenant
+# overrides of `opensearch.index` apply without a restart; anything else needs
+# a restart.
+#
+# KAFKA_BOOTSTRAP_SERVERS, KAFKA_CLIENT_CONFIG and OPENSEARCH_URL override the
+# values below. OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD are read only from
+# the environment.
+
+[default-configs]
+# Topics to consume. Every payload must be a canonical event.
+"kafka.topics" = { value = ["events.generic"], schema = { type = "array", items = { type = "string" } } }
+"kafka.group_id" = { value = "sink-opensearch", schema = { type = "string" } }
+# Raw librdkafka properties: brokers, security, timeouts. The sink always sets
+# group.id, enable.auto.commit=false and enable.auto.offset.store=false.
+"kafka.client_config" = { value = { "bootstrap.servers" = "localhost:19092" }, schema = { type = "object" } }
+
+"opensearch.url" = { value = "http://localhost:9200", schema = { type = "string" } }
+# Index, alias or data stream. `{tenant_id}` is replaced with each event's
+# tenant, so every tenant gets its own index. Override it per tenant below.
+"opensearch.index" = { value = "events-{tenant_id}", schema = { type = "string" } }
+"opensearch.request_timeout_ms" = { value = 30000, schema = { type = "integer" } }
+
+# A partition's buffer is written once it holds max_docs records or max_bytes
+# bytes, or its oldest record has waited linger_ms. A document bigger than
+# max_bytes goes to the DLQ.
+"batch.max_docs" = { value = 1000, schema = { type = "integer" } }
+"batch.max_bytes" = { value = 5242880, schema = { type = "integer" } }
+"batch.linger_ms" = { value = 1000, schema = { type = "integer" } }
+# Concurrent bulk requests across all partitions.
+"batch.max_in_flight" = { value = 8, schema = { type = "integer" } }
+
+"retry.initial_backoff_ms" = { value = 100, schema = { type = "integer" } }
+"retry.max_backoff_ms" = { value = 30000, schema = { type = "integer" } }
+
+# Must exist, and must not be one of kafka.topics.
+"dlq.topic" = { value = "events.generic.dlq", schema = { type = "string" } }
+
+"commit.interval_ms" = { value = 5000, schema = { type = "integer" } }
+# Keep below the orchestrator's termination grace period.
+"shutdown.grace_ms" = { value = 25000, schema = { type = "integer" } }
+# /health and /metrics.
+"server.addr" = { value = "0.0.0.0:9464", schema = { type = "string" } }
+
+[dimensions]
+tenant_id = { position = 1, schema = { type = "string" } }
+workspace_id = { position = 2, schema = { type = "string" } }
+
+# Per-tenant index. For example, move one tenant to a dedicated index, and put
+# a group of small tenants in one shared index. Keep names under `events-*` so
+# index-template.json applies to them:
+#
+# [[overrides]]
+# _context_ = { tenant_id = "merchant-1" }
+# "opensearch.index" = "events-merchant-1-dedicated"
+#
+# [[overrides]]
+# _context_ = { tenant_id = "merchant-2" }
+# "opensearch.index" = "events-shared"

@@ -83,6 +83,32 @@ services:
       cluster.routing.allocation.disk.threshold_enabled: "false"
     ports:
       - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # Installs the index template for events-* indexes: field types, with
+  # `properties` as a flat_object.
+  opensearch-init:
+    image: curlimages/curl:8.10.1
+    container_name: opensearch-init
+    restart: "no"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    volumes:
+      - ../crates/sink-opensearch/index-template.json:/index-template.json:ro
+    command:
+      - -sSf
+      - -X
+      - PUT
+      - http://opensearch:9200/_index_template/events
+      - -H
+      - "Content-Type: application/json"
+      - --data-binary
+      - "@/index-template.json"
 
 volumes:
   redpanda-data:
