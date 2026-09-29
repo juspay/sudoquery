@@ -1,0 +1,57 @@
+{
+  "schema_version": 2,
+  "active_work_id": "fix-console-sparse-list-dd09c6f3",
+  "works": {
+    "sql-console-tabs-a75d341e": {
+      "work_id": "sql-console-tabs-a75d341e",
+      "active_plan": "/Users/sridatta.yalla/payment_page/hyper-analytics-dashboard/.omo/plans/sql-console-tabs.md",
+      "plan_name": "sql-console-tabs",
+      "status": "completed",
+      "started_at": "2026-06-08T13:47:32.689Z",
+      "updated_at": "2026-06-08T13:54:41.727Z",
+      "session_ids": [
+        "opencode:ses_158a974f8ffeFrWDaBcJnbq3MQ"
+      ],
+      "session_origins": {
+        "opencode:ses_158a974f8ffeFrWDaBcJnbq3MQ": "direct"
+      },
+      "agent": "atlas",
+      "task_sessions": {},
+      "ended_at": "2026-06-08T13:54:41.727Z",
+      "elapsed_ms": 429038
+    },
+    "fix-console-sparse-list-dd09c6f3": {
+      "work_id": "fix-console-sparse-list-dd09c6f3",
+      "active_plan": "/Users/sridatta.yalla/payment_page/hyper-analytics-dashboard/.omo/plans/fix-console-sparse-list.md",
+      "plan_name": "fix-console-sparse-list",
+      "status": "completed",
+      "started_at": "2026-06-08T14:00:49.425Z",
+      "updated_at": "2026-06-08T14:04:12.891Z",
+      "session_ids": [
+        "opencode:ses_158a974f8ffeFrWDaBcJnbq3MQ"
+      ],
+      "session_origins": {
+        "opencode:ses_158a974f8ffeFrWDaBcJnbq3MQ": "direct"
+      },
+      "agent": "atlas",
+      "task_sessions": {},
+      "ended_at": "2026-06-08T14:04:12.891Z",
+      "elapsed_ms": 203466
+    }
+  },
+  "active_plan": "/Users/sridatta.yalla/payment_page/hyper-analytics-dashboard/.omo/plans/fix-console-sparse-list.md",
+  "started_at": "2026-06-08T14:00:49.425Z",
+  "status": "completed",
+  "updated_at": "2026-06-08T14:04:12.891Z",
+  "session_ids": [
+    "opencode:ses_158a974f8ffeFrWDaBcJnbq3MQ"
+  ],
+  "session_origins": {
+    "opencode:ses_158a974f8ffeFrWDaBcJnbq3MQ": "direct"
+  },
+  "plan_name": "fix-console-sparse-list",
+  "task_sessions": {},
+  "agent": "atlas",
+  "ended_at": "2026-06-08T14:04:12.891Z",
+  "elapsed_ms": 203466
+}

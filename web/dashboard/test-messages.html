@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<body>
+  <script>
+    // Test the grouping logic
+    function groupByTurn(messages) {
+      const groups = [];
+      let currentGroup = { userMessage: null, responses: [] };
+
+      for (const msg of messages) {
+        if (msg.type === 'user_message') {
+          if (currentGroup.userMessage !== null || currentGroup.responses.length > 0) {
+            groups.push(currentGroup);
+          }
+          currentGroup = { userMessage: msg, responses: [] };
+          continue;
+        }
+        currentGroup.responses.push(msg);
+      }
+
+      if (currentGroup.userMessage !== null || currentGroup.responses.length > 0) {
+        groups.push(currentGroup);
+      }
+
+      return groups;
+    }
+
+    // Test with sample messages
+    const testMessages = [
+      { id: '1', type: 'user_message', content: 'Hello!' },
+      { id: '2', type: 'plain_llm_message', content: 'Hi there!' }
+    ];
+
+    const groups = groupByTurn(testMessages);
+    console.log('Groups:', JSON.stringify(groups, null, 2));
+    document.body.innerHTML = '<pre>' + JSON.stringify(groups, null, 2) + '</pre>';
+  </script>
+</body>
+</html>
