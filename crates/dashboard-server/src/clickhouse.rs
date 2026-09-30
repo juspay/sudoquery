@@ -24,7 +24,14 @@ pub async fn create_project_user(
         "CREATE USER '{}' IDENTIFIED WITH sha256_password BY '{}'",
         project_id_str, project_password
     );
-    execute_admin_query(&client, admin_url, admin_user, admin_password, &create_query).await?;
+    execute_admin_query(
+        &client,
+        admin_url,
+        admin_user,
+        admin_password,
+        &create_query,
+    )
+    .await?;
 
     let grant_query = format!("GRANT project_user TO '{}'", project_id_str);
     execute_admin_query(&client, admin_url, admin_user, admin_password, &grant_query).await?;
@@ -72,10 +79,7 @@ pub async fn execute_admin_query(
     Ok(body)
 }
 
-pub async fn execute_query(
-    clickhouse_url: &str,
-    query: &str,
-) -> Result<Value, ClickHouseError> {
+pub async fn execute_query(clickhouse_url: &str, query: &str) -> Result<Value, ClickHouseError> {
     let client = Client::new();
     let formatted_query = format!("{} FORMAT JSON", query.trim());
 
@@ -124,7 +128,10 @@ pub async fn execute_project_query(
 
     if !status.is_success() {
         tracing::error!("ClickHouse error for project {}: {}", project_id, body);
-        return Err(ClickHouseError::Query(format!("ClickHouse error: {}", body)));
+        return Err(ClickHouseError::Query(format!(
+            "ClickHouse error: {}",
+            body
+        )));
     }
 
     serde_json::from_str(&body).map_err(|e| ClickHouseError::Query(e.to_string()))

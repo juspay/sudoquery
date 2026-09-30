@@ -146,7 +146,11 @@ impl axum::response::IntoResponse for IngestError {
             IngestError::Database(_) => StatusCode::INTERNAL_SERVER_ERROR,
             IngestError::Kafka(_) => StatusCode::INTERNAL_SERVER_ERROR,
         };
-        (status, Json(serde_json::json!({ "error": self.to_string() }))).into_response()
+        (
+            status,
+            Json(serde_json::json!({ "error": self.to_string() })),
+        )
+            .into_response()
     }
 }
 
@@ -155,11 +159,12 @@ pub async fn push_batch(
     TypedHeader(auth_header): TypedHeader<AuthorizationHeader>,
     Json(payload): Json<BatchPayload>,
 ) -> Result<Json<serde_json::Value>, IngestError> {
-    let token_str = auth_header.0.strip_prefix("Bearer ")
+    let token_str = auth_header
+        .0
+        .strip_prefix("Bearer ")
         .ok_or(IngestError::MissingToken)?;
 
-    let token = Uuid::parse_str(token_str)
-        .map_err(|_| IngestError::InvalidToken)?;
+    let token = Uuid::parse_str(token_str).map_err(|_| IngestError::InvalidToken)?;
 
     let project_row = db::get_project_by_token(&s.db_pool, token)
         .await
@@ -196,13 +201,10 @@ pub async fn push_batch(
 
     let mut events_sent = 0;
     for row in &event_rows {
-        let payload = serde_json::to_string(row)
-            .map_err(|e| IngestError::Kafka(e.to_string()))?;
+        let payload = serde_json::to_string(row).map_err(|e| IngestError::Kafka(e.to_string()))?;
         let key = row.event_id.to_string();
 
-        let record = FutureRecord::to("events")
-            .payload(&payload)
-            .key(&key);
+        let record = FutureRecord::to("events").payload(&payload).key(&key);
 
         s.kafka_producer
             .send(record, std::time::Duration::from_secs(5))
@@ -229,7 +231,8 @@ pub async fn push_batch(
                     .payload(&schema_payload)
                     .key(&schema_key);
 
-                let _ = s.kafka_producer
+                let _ = s
+                    .kafka_producer
                     .send(schema_record, std::time::Duration::from_secs(5))
                     .await;
             }
@@ -254,11 +257,12 @@ pub async fn push_batches(
     TypedHeader(auth_header): TypedHeader<AuthorizationHeader>,
     Json(payload): Json<Vec<BatchPayload>>,
 ) -> Result<Json<serde_json::Value>, IngestError> {
-    let token_str = auth_header.0.strip_prefix("Bearer ")
+    let token_str = auth_header
+        .0
+        .strip_prefix("Bearer ")
         .ok_or(IngestError::MissingToken)?;
 
-    let token = Uuid::parse_str(token_str)
-        .map_err(|_| IngestError::InvalidToken)?;
+    let token = Uuid::parse_str(token_str).map_err(|_| IngestError::InvalidToken)?;
 
     let project_row = db::get_project_by_token(&s.db_pool, token)
         .await
@@ -285,7 +289,11 @@ pub async fn push_batches(
     let mut event_rows: Vec<EventRow> = Vec::new();
     for batch in payload {
         for event in batch.events {
-            event_rows.push(EventRow::from((event, &batch.session, project_row.project_id)));
+            event_rows.push(EventRow::from((
+                event,
+                &batch.session,
+                project_row.project_id,
+            )));
         }
     }
 
@@ -298,13 +306,10 @@ pub async fn push_batches(
 
     let mut events_sent = 0;
     for row in &event_rows {
-        let payload = serde_json::to_string(row)
-            .map_err(|e| IngestError::Kafka(e.to_string()))?;
+        let payload = serde_json::to_string(row).map_err(|e| IngestError::Kafka(e.to_string()))?;
         let key = row.event_id.to_string();
 
-        let record = FutureRecord::to("events")
-            .payload(&payload)
-            .key(&key);
+        let record = FutureRecord::to("events").payload(&payload).key(&key);
 
         s.kafka_producer
             .send(record, std::time::Duration::from_secs(5))
@@ -331,7 +336,8 @@ pub async fn push_batches(
                     .payload(&schema_payload)
                     .key(&schema_key);
 
-                let _ = s.kafka_producer
+                let _ = s
+                    .kafka_producer
                     .send(schema_record, std::time::Duration::from_secs(5))
                     .await;
             }
@@ -363,8 +369,12 @@ impl axum_extra::headers::Header for AuthorizationHeader {
     where
         I: Iterator<Item = &'i axum::http::HeaderValue>,
     {
-        let value = values.next().ok_or_else(axum_extra::headers::Error::invalid)?;
-        let s = value.to_str().map_err(|_| axum_extra::headers::Error::invalid())?;
+        let value = values
+            .next()
+            .ok_or_else(axum_extra::headers::Error::invalid)?;
+        let s = value
+            .to_str()
+            .map_err(|_| axum_extra::headers::Error::invalid())?;
         Ok(AuthorizationHeader(s.to_string()))
     }
 

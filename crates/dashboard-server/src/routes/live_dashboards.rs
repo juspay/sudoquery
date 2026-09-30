@@ -9,10 +9,8 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use crate::{
-    clickhouse,
-    db,
+    AppState, clickhouse, db,
     middleware::{ProjectAdmin, ProjectContext},
-    AppState,
 };
 
 // ============ Request/Response Types ============
@@ -107,12 +105,12 @@ pub async fn list_dashboards(
         .await
         .map_err(|e| DashboardError::Database(e.to_string()))?;
 
-    let response: Vec<DashboardResponse> = dashboards
-        .into_iter()
-        .map(dashboard_to_response)
-        .collect();
+    let response: Vec<DashboardResponse> =
+        dashboards.into_iter().map(dashboard_to_response).collect();
 
-    Ok(Json(ListDashboardsResponse { dashboards: response }))
+    Ok(Json(ListDashboardsResponse {
+        dashboards: response,
+    }))
 }
 
 // ============ Get Dashboard ============
@@ -122,8 +120,8 @@ pub async fn get_dashboard(
     ProjectContext { project, .. }: ProjectContext,
     Query(query): Query<GetDashboardQuery>,
 ) -> Result<Json<DashboardResponse>, DashboardError> {
-    let dashboard_id = Uuid::parse_str(&query.dashboard_id)
-        .map_err(|_| DashboardError::InvalidDashboardId)?;
+    let dashboard_id =
+        Uuid::parse_str(&query.dashboard_id).map_err(|_| DashboardError::InvalidDashboardId)?;
 
     let mut dashboard = db::get_dashboard(&state.db_pool, dashboard_id)
         .await
@@ -149,7 +147,14 @@ pub async fn get_dashboard(
 
     if should_run {
         // Execute query against ClickHouse
-        match clickhouse::execute_project_query(&state.clickhouse_url, project.id, &state.clickhouse_project_password, &dashboard.query).await {
+        match clickhouse::execute_project_query(
+            &state.clickhouse_url,
+            project.id,
+            &state.clickhouse_project_password,
+            &dashboard.query,
+        )
+        .await
+        {
             Ok(response) => {
                 // Update dashboard with new response
                 dashboard = db::update_dashboard_run(&state.db_pool, dashboard_id, &response)
@@ -157,7 +162,11 @@ pub async fn get_dashboard(
                     .map_err(|e| DashboardError::Database(e.to_string()))?;
             }
             Err(e) => {
-                tracing::error!("ClickHouse query error for dashboard {}: {}", dashboard_id, e);
+                tracing::error!(
+                    "ClickHouse query error for dashboard {}: {}",
+                    dashboard_id,
+                    e
+                );
                 error = Some(e.to_string());
             }
         }
@@ -175,8 +184,8 @@ pub async fn update_dashboard(
     ProjectAdmin { project, .. }: ProjectAdmin,
     Json(req): Json<UpdateDashboardRequest>,
 ) -> Result<Json<DashboardResponse>, DashboardError> {
-    let dashboard_id = Uuid::parse_str(&req.dashboard_id)
-        .map_err(|_| DashboardError::InvalidDashboardId)?;
+    let dashboard_id =
+        Uuid::parse_str(&req.dashboard_id).map_err(|_| DashboardError::InvalidDashboardId)?;
 
     // Verify dashboard belongs to the project
     let existing = db::get_dashboard(&state.db_pool, dashboard_id)
@@ -194,7 +203,9 @@ pub async fn update_dashboard(
         req.query.as_deref().unwrap_or(&existing.query),
         req.description.as_deref().unwrap_or(&existing.description),
         existing.title.as_deref(), // Preserve existing title
-        req.chart_config.as_deref().or(existing.chart_config.as_deref()),
+        req.chart_config
+            .as_deref()
+            .or(existing.chart_config.as_deref()),
     )
     .await
     .map_err(|e| DashboardError::Database(e.to_string()))?;
@@ -209,8 +220,8 @@ pub async fn delete_dashboard(
     ProjectAdmin { project, .. }: ProjectAdmin,
     Query(query): Query<DeleteDashboardQuery>,
 ) -> Result<StatusCode, DashboardError> {
-    let dashboard_id = Uuid::parse_str(&query.dashboard_id)
-        .map_err(|_| DashboardError::InvalidDashboardId)?;
+    let dashboard_id =
+        Uuid::parse_str(&query.dashboard_id).map_err(|_| DashboardError::InvalidDashboardId)?;
 
     // Verify dashboard belongs to the project
     let existing = db::get_dashboard(&state.db_pool, dashboard_id)
@@ -237,8 +248,13 @@ pub async fn test_run_dashboard(
     Json(req): Json<TestRunDashboardRequest>,
 ) -> Result<Json<DashboardResponse>, DashboardError> {
     // Execute query against ClickHouse
-    let response = clickhouse::execute_project_query(&state.clickhouse_url, project.id, &state.clickhouse_project_password, &req.query)
-        .await;
+    let response = clickhouse::execute_project_query(
+        &state.clickhouse_url,
+        project.id,
+        &state.clickhouse_project_password,
+        &req.query,
+    )
+    .await;
 
     // Build response with query result or error
     let now = Utc::now();
@@ -297,10 +313,15 @@ impl axum::response::IntoResponse for DashboardError {
         let (status, message) = match self {
             DashboardError::Database(msg) => {
                 tracing::error!("Database error: {}", msg);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
             DashboardError::NotFound => (StatusCode::NOT_FOUND, "Dashboard not found".to_string()),
-            DashboardError::InvalidDashboardId => (StatusCode::BAD_REQUEST, "Invalid dashboard ID".to_string()),
+            DashboardError::InvalidDashboardId => {
+                (StatusCode::BAD_REQUEST, "Invalid dashboard ID".to_string())
+            }
         };
 
         (status, Json(serde_json::json!({ "error": message }))).into_response()

@@ -7,9 +7,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    db,
+    AppState, db,
     middleware::{AuthUser, OrgAdmin, OrgContext, ProjectAdmin, ProjectContext},
-    AppState,
 };
 
 // ============ Create/Update Event Description ============
@@ -45,14 +44,17 @@ pub async fn upsert_event_description(
     .await
     .map_err(|e| EventDescriptionError::Database(e.to_string()))?;
 
-    Ok((StatusCode::OK, Json(EventDescriptionResponse {
-        id: desc.id.to_string(),
-        project_id: desc.project_id.to_string(),
-        event_name: desc.event_name,
-        description: desc.description,
-        created_at: desc.created_at.to_rfc3339(),
-        updated_at: desc.updated_at.to_rfc3339(),
-    })))
+    Ok((
+        StatusCode::OK,
+        Json(EventDescriptionResponse {
+            id: desc.id.to_string(),
+            project_id: desc.project_id.to_string(),
+            event_name: desc.event_name,
+            description: desc.description,
+            created_at: desc.created_at.to_rfc3339(),
+            updated_at: desc.updated_at.to_rfc3339(),
+        }),
+    ))
 }
 
 /// Create or update event description as org admin (requires X-Project-Id header)
@@ -76,14 +78,17 @@ pub async fn upsert_event_description_as_org_admin(
     .await
     .map_err(|e| EventDescriptionError::Database(e.to_string()))?;
 
-    Ok((StatusCode::OK, Json(EventDescriptionResponse {
-        id: desc.id.to_string(),
-        project_id: desc.project_id.to_string(),
-        event_name: desc.event_name,
-        description: desc.description,
-        created_at: desc.created_at.to_rfc3339(),
-        updated_at: desc.updated_at.to_rfc3339(),
-    })))
+    Ok((
+        StatusCode::OK,
+        Json(EventDescriptionResponse {
+            id: desc.id.to_string(),
+            project_id: desc.project_id.to_string(),
+            event_name: desc.event_name,
+            description: desc.description,
+            created_at: desc.created_at.to_rfc3339(),
+            updated_at: desc.updated_at.to_rfc3339(),
+        }),
+    ))
 }
 
 // ============ Get Event Descriptions ============
@@ -176,10 +181,19 @@ impl axum::response::IntoResponse for EventDescriptionError {
         let (status, message) = match self {
             EventDescriptionError::Database(msg) => {
                 tracing::error!("Database error: {}", msg);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
-            EventDescriptionError::NotFound => (StatusCode::NOT_FOUND, "Event description not found".to_string()),
-            EventDescriptionError::Forbidden => (StatusCode::FORBIDDEN, "Insufficient permissions".to_string()),
+            EventDescriptionError::NotFound => (
+                StatusCode::NOT_FOUND,
+                "Event description not found".to_string(),
+            ),
+            EventDescriptionError::Forbidden => (
+                StatusCode::FORBIDDEN,
+                "Insufficient permissions".to_string(),
+            ),
         };
 
         (status, Json(serde_json::json!({ "error": message }))).into_response()

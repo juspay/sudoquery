@@ -37,7 +37,11 @@ impl Related<super::user::Entity> for Entity {
         super::organization_membership::Relation::User.def()
     }
     fn via() -> Option<RelationDef> {
-        Some(super::organization_membership::Relation::Organization.def().rev())
+        Some(
+            super::organization_membership::Relation::Organization
+                .def()
+                .rev(),
+        )
     }
 }
 

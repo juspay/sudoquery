@@ -36,10 +36,7 @@ pub async fn create_message(
     .await
 }
 
-pub async fn get_message_by_id(
-    pool: &PgPool,
-    id: Uuid,
-) -> Result<Option<Message>, sqlx::Error> {
+pub async fn get_message_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Message>, sqlx::Error> {
     sqlx::query_as::<_, Message>(
         r#"
         SELECT id, chat_id, message, created_at, role

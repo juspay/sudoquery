@@ -81,10 +81,7 @@ pub async fn create_project(
     })
 }
 
-pub async fn get_project_by_id(
-    pool: &PgPool,
-    id: Uuid,
-) -> Result<Option<Project>, sqlx::Error> {
+pub async fn get_project_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Project>, sqlx::Error> {
     sqlx::query_as::<_, Project>(
         r#"
         SELECT id, organization_id, name, timezone, deleted_at, created_at, updated_at
@@ -196,7 +193,10 @@ pub struct ProjectWithTokenRow {
     pub token_created_at: DateTime<Utc>,
 }
 
-pub async fn get_project_by_token(pool: &PgPool, token: Uuid) -> Result<Option<ProjectWithTokenRow>, sqlx::Error> {
+pub async fn get_project_by_token(
+    pool: &PgPool,
+    token: Uuid,
+) -> Result<Option<ProjectWithTokenRow>, sqlx::Error> {
     sqlx::query_as::<_, ProjectWithTokenRow>(
         r#"
         SELECT

@@ -1,5 +1,5 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // request
 
@@ -245,13 +245,11 @@ impl ResponseAccumulator {
 
         if let Some(tool_calls) = delta.get("tool_calls").and_then(|t| t.as_array()) {
             for tc in tool_calls {
-                let index = tc
-                    .get("index")
-                    .and_then(|i| i.as_u64())
-                    .unwrap_or(0) as usize;
+                let index = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
 
                 if self.tool_calls.len() <= index {
-                    self.tool_calls.resize_with(index + 1, PartialToolCall::default);
+                    self.tool_calls
+                        .resize_with(index + 1, PartialToolCall::default);
                 }
 
                 let partial = &mut self.tool_calls[index];

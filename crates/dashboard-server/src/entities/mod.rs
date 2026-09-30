@@ -2,8 +2,8 @@ pub mod prelude;
 
 pub mod chat;
 pub mod event_description;
-pub mod message;
 pub mod invitation;
+pub mod message;
 pub mod organization;
 pub mod organization_membership;
 pub mod project;

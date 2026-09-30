@@ -1,17 +1,17 @@
 use axum::{
-    extract::FromRequestParts,
-    http::{request::Parts, StatusCode},
-    response::{IntoResponse, Response},
     Json,
+    extract::FromRequestParts,
+    http::{StatusCode, request::Parts},
+    response::{IntoResponse, Response},
 };
-use jsonwebtoken::{decode, decode_header, Algorithm, DecodingKey, Validation};
+use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use tokio::sync::RwLock;
 use uuid::Uuid;
 
-use crate::{db, AppState};
+use crate::{AppState, db};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct KeycloakClaims {
@@ -32,7 +32,9 @@ pub struct RealmAccess {
 }
 
 #[derive(Deserialize)]
-struct Jwks { keys: Vec<JwkKey> }
+struct Jwks {
+    keys: Vec<JwkKey>,
+}
 
 #[derive(Deserialize, Clone)]
 struct JwkKey {
@@ -48,12 +50,16 @@ static JWKS_CACHE: Lazy<RwLock<HashMap<String, JwkKey>>> =
 async fn get_decoding_key(realm_url: &str, kid: &str) -> Result<DecodingKey, AuthError> {
     // Always fetch fresh JWKS to handle key rotation
     let jwks_url = format!("{}/protocol/openid-connect/certs", realm_url);
-    let jwks: Jwks = reqwest::get(&jwks_url).await
+    let jwks: Jwks = reqwest::get(&jwks_url)
+        .await
         .map_err(|_| AuthError::InvalidToken)?
-        .json().await
+        .json()
+        .await
         .map_err(|_| AuthError::InvalidToken)?;
 
-    let key = jwks.keys.into_iter()
+    let key = jwks
+        .keys
+        .into_iter()
         .find(|k| k.kid == kid)
         .ok_or(AuthError::InvalidToken)?;
 
@@ -86,8 +92,13 @@ pub struct AuthUser {
 impl FromRequestParts<AppState> for AuthUser {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
-        let token = parts.headers.get("Authorization")
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
+        let token = parts
+            .headers
+            .get("Authorization")
             .and_then(|v| v.to_str().ok())
             .and_then(|v| v.strip_prefix("Bearer "))
             .ok_or(AuthError::MissingToken)?
@@ -112,18 +123,22 @@ impl FromRequestParts<AppState> for AuthUser {
         };
 
         // Load or create user from database
-        let user = match db::get_user_by_keycloak_id(&state.db_pool, &claims.sub).await
+        let user = match db::get_user_by_keycloak_id(&state.db_pool, &claims.sub)
+            .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
         {
             Some(user) => user,
             None => {
                 // Create user if they don't exist
                 let email = claims.email.clone().unwrap_or_default();
-                let username = claims.name.clone()
+                let username = claims
+                    .name
+                    .clone()
                     .or(claims.preferred_username.clone())
                     .unwrap_or_else(|| claims.sub.clone());
 
-                db::create_user(&state.db_pool, &claims.sub, &email, &username).await
+                db::create_user(&state.db_pool, &claims.sub, &email, &username)
+                    .await
                     .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             }
         };
@@ -141,25 +156,34 @@ pub struct OrgAdmin {
 impl FromRequestParts<AppState> for OrgAdmin {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
 
-        let org_id_str = parts.headers.get("X-Organization-Id")
+        let org_id_str = parts
+            .headers
+            .get("X-Organization-Id")
             .and_then(|v| v.to_str().ok())
             .ok_or(AuthError::MissingOrganizationId)?;
 
-        let org_id = Uuid::parse_str(org_id_str)
-            .map_err(|_| AuthError::InvalidOrganizationId)?;
+        let org_id = Uuid::parse_str(org_id_str).map_err(|_| AuthError::InvalidOrganizationId)?;
 
-        let organization = db::get_organization_by_id(&state.db_pool, org_id).await
+        let organization = db::get_organization_by_id(&state.db_pool, org_id)
+            .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::OrganizationNotFound)?;
 
-        let role = db::get_user_organization_role(&state.db_pool, auth_user.user.id, org_id).await
+        let role = db::get_user_organization_role(&state.db_pool, auth_user.user.id, org_id)
+            .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
         match role {
-            Some(db::OrgRole::OrgAdmin) => Ok(OrgAdmin { auth_user, organization }),
+            Some(db::OrgRole::OrgAdmin) => Ok(OrgAdmin {
+                auth_user,
+                organization,
+            }),
             _ => Err(AuthError::Forbidden),
         }
     }
@@ -175,24 +199,34 @@ pub struct OrgContext {
 impl FromRequestParts<AppState> for OrgContext {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
 
-        let org_id_str = parts.headers.get("X-Organization-Id")
+        let org_id_str = parts
+            .headers
+            .get("X-Organization-Id")
             .and_then(|v| v.to_str().ok())
             .ok_or(AuthError::MissingOrganizationId)?;
 
-        let org_id = Uuid::parse_str(org_id_str)
-            .map_err(|_| AuthError::InvalidOrganizationId)?;
+        let org_id = Uuid::parse_str(org_id_str).map_err(|_| AuthError::InvalidOrganizationId)?;
 
-        let organization = db::get_organization_by_id(&state.db_pool, org_id).await
+        let organization = db::get_organization_by_id(&state.db_pool, org_id)
+            .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::OrganizationNotFound)?;
 
-        let role = db::get_user_organization_role(&state.db_pool, auth_user.user.id, org_id).await
+        let role = db::get_user_organization_role(&state.db_pool, auth_user.user.id, org_id)
+            .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
-        Ok(OrgContext { auth_user, organization, role })
+        Ok(OrgContext {
+            auth_user,
+            organization,
+            role,
+        })
     }
 }
 
@@ -206,25 +240,36 @@ pub struct ProjectAccess {
 impl FromRequestParts<AppState> for ProjectAccess {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
 
-        let project_id_str = parts.headers.get("X-Project-Id")
+        let project_id_str = parts
+            .headers
+            .get("X-Project-Id")
             .and_then(|v| v.to_str().ok())
             .ok_or(AuthError::MissingProjectId)?;
 
-        let project_id = Uuid::parse_str(project_id_str)
-            .map_err(|_| AuthError::InvalidProjectId)?;
+        let project_id =
+            Uuid::parse_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
 
-        let project = db::get_project_by_id(&state.db_pool, project_id).await
+        let project = db::get_project_by_id(&state.db_pool, project_id)
+            .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::ProjectNotFound)?;
 
-        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, project_id).await
+        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, project_id)
+            .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::Forbidden)?;
 
-        Ok(ProjectAccess { auth_user, project, role })
+        Ok(ProjectAccess {
+            auth_user,
+            project,
+            role,
+        })
     }
 }
 
@@ -238,24 +283,35 @@ pub struct ProjectContext {
 impl FromRequestParts<AppState> for ProjectContext {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
 
-        let project_id_str = parts.headers.get("X-Project-Id")
+        let project_id_str = parts
+            .headers
+            .get("X-Project-Id")
             .and_then(|v| v.to_str().ok())
             .ok_or(AuthError::MissingProjectId)?;
 
-        let project_id = Uuid::parse_str(project_id_str)
-            .map_err(|_| AuthError::InvalidProjectId)?;
+        let project_id =
+            Uuid::parse_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
 
-        let project = db::get_project_by_id(&state.db_pool, project_id).await
+        let project = db::get_project_by_id(&state.db_pool, project_id)
+            .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::ProjectNotFound)?;
 
-        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, project_id).await
+        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, project_id)
+            .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
-        Ok(ProjectContext { auth_user, project, role })
+        Ok(ProjectContext {
+            auth_user,
+            project,
+            role,
+        })
     }
 }
 
@@ -268,21 +324,28 @@ pub struct ProjectAdmin {
 impl FromRequestParts<AppState> for ProjectAdmin {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
 
-        let project_id_str = parts.headers.get("X-Project-Id")
+        let project_id_str = parts
+            .headers
+            .get("X-Project-Id")
             .and_then(|v| v.to_str().ok())
             .ok_or(AuthError::MissingProjectId)?;
 
-        let project_id = Uuid::parse_str(project_id_str)
-            .map_err(|_| AuthError::InvalidProjectId)?;
+        let project_id =
+            Uuid::parse_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
 
-        let project = db::get_project_by_id(&state.db_pool, project_id).await
+        let project = db::get_project_by_id(&state.db_pool, project_id)
+            .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::ProjectNotFound)?;
 
-        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, project_id).await
+        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, project_id)
+            .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
         match role {
@@ -301,22 +364,29 @@ pub struct ProjectAdminOrOrgAdmin {
 impl FromRequestParts<AppState> for ProjectAdminOrOrgAdmin {
     type Rejection = AuthError;
 
-    async fn from_request_parts(parts: &mut Parts, state: &AppState) -> Result<Self, Self::Rejection> {
+    async fn from_request_parts(
+        parts: &mut Parts,
+        state: &AppState,
+    ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
 
-        let project_id_str = parts.headers.get("X-Project-Id")
+        let project_id_str = parts
+            .headers
+            .get("X-Project-Id")
             .and_then(|v| v.to_str().ok())
             .ok_or(AuthError::MissingProjectId)?;
 
-        let project_id = Uuid::parse_str(project_id_str)
-            .map_err(|_| AuthError::InvalidProjectId)?;
+        let project_id =
+            Uuid::parse_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
 
-        let project = db::get_project_by_id(&state.db_pool, project_id).await
+        let project = db::get_project_by_id(&state.db_pool, project_id)
+            .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::ProjectNotFound)?;
 
         // Check if user has project admin role
-        let project_role = db::get_user_project_role(&state.db_pool, auth_user.user.id, project_id).await
+        let project_role = db::get_user_project_role(&state.db_pool, auth_user.user.id, project_id)
+            .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
         if matches!(project_role, Some(db::ProjectRole::ProjectAdmin)) {
@@ -325,8 +395,10 @@ impl FromRequestParts<AppState> for ProjectAdminOrOrgAdmin {
 
         // Or check if user is org admin of the project's organization
         if let Some(org_id) = project.organization_id {
-            let org_role = db::get_user_organization_role(&state.db_pool, auth_user.user.id, org_id).await
-                .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
+            let org_role =
+                db::get_user_organization_role(&state.db_pool, auth_user.user.id, org_id)
+                    .await
+                    .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
             if matches!(org_role, Some(db::OrgRole::OrgAdmin)) {
                 return Ok(ProjectAdminOrOrgAdmin { auth_user, project });
@@ -339,17 +411,28 @@ impl FromRequestParts<AppState> for ProjectAdminOrOrgAdmin {
 
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
-    #[error("Missing Authorization header")] MissingToken,
-    #[error("Invalid or expired token")] InvalidToken,
-    #[error("Insufficient permissions")] Forbidden,
-    #[error("Missing Organization ID header")] MissingOrganizationId,
-    #[error("Invalid Organization ID")] InvalidOrganizationId,
-    #[error("Organization not found")] OrganizationNotFound,
-    #[error("Missing Project ID header")] MissingProjectId,
-    #[error("Invalid Project ID")] InvalidProjectId,
-    #[error("Project not found")] ProjectNotFound,
-    #[error("Internal server error")] Internal,
-    #[error("Internal server error: {0}")] InternalWithMessage(String),
+    #[error("Missing Authorization header")]
+    MissingToken,
+    #[error("Invalid or expired token")]
+    InvalidToken,
+    #[error("Insufficient permissions")]
+    Forbidden,
+    #[error("Missing Organization ID header")]
+    MissingOrganizationId,
+    #[error("Invalid Organization ID")]
+    InvalidOrganizationId,
+    #[error("Organization not found")]
+    OrganizationNotFound,
+    #[error("Missing Project ID header")]
+    MissingProjectId,
+    #[error("Invalid Project ID")]
+    InvalidProjectId,
+    #[error("Project not found")]
+    ProjectNotFound,
+    #[error("Internal server error")]
+    Internal,
+    #[error("Internal server error: {0}")]
+    InternalWithMessage(String),
 }
 
 impl IntoResponse for AuthError {
@@ -358,14 +441,20 @@ impl IntoResponse for AuthError {
             AuthError::MissingToken => (StatusCode::UNAUTHORIZED, "Missing Bearer token"),
             AuthError::InvalidToken => (StatusCode::UNAUTHORIZED, "Invalid or expired token"),
             AuthError::Forbidden => (StatusCode::FORBIDDEN, "Insufficient permissions"),
-            AuthError::MissingOrganizationId => (StatusCode::BAD_REQUEST, "Missing X-Organization-Id header"),
-            AuthError::InvalidOrganizationId => (StatusCode::BAD_REQUEST, "Invalid Organization ID"),
+            AuthError::MissingOrganizationId => {
+                (StatusCode::BAD_REQUEST, "Missing X-Organization-Id header")
+            }
+            AuthError::InvalidOrganizationId => {
+                (StatusCode::BAD_REQUEST, "Invalid Organization ID")
+            }
             AuthError::OrganizationNotFound => (StatusCode::NOT_FOUND, "Organization not found"),
             AuthError::MissingProjectId => (StatusCode::BAD_REQUEST, "Missing X-Project-Id header"),
             AuthError::InvalidProjectId => (StatusCode::BAD_REQUEST, "Invalid Project ID"),
             AuthError::ProjectNotFound => (StatusCode::NOT_FOUND, "Project not found"),
             AuthError::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
-            AuthError::InternalWithMessage(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
+            AuthError::InternalWithMessage(_) => {
+                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")
+            }
         };
         (status, Json(serde_json::json!({ "error": message }))).into_response()
     }

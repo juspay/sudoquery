@@ -37,7 +37,7 @@ async-stream = "0.3.6"
 anyhow = "1.0.102"
 
 [dev-dependencies]
-clickhouse = { version = "0.12.2", features = ["test-util"] }
+clickhouse = { version = "0.13.3", features = ["test-util"] }
 wiremock = "0.6"
 tower-test = "0.4"
 assert_matches = "1.5"

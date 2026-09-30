@@ -2,7 +2,11 @@ use axum::{Json, extract::State, http::StatusCode};
 use serde_json::Value;
 use uuid::Uuid;
 
-use crate::{middleware::{AuthUser, ProjectAccess}, AppState, db::{chat, message}};
+use crate::{
+    AppState,
+    db::{chat, message},
+    middleware::{AuthUser, ProjectAccess},
+};
 
 #[derive(serde::Deserialize)]
 pub struct MetricRequest {
@@ -26,40 +30,42 @@ pub async fn get_metric_data_handler(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
-    
+
     if chat.project_id != project.id {
         return Err(StatusCode::FORBIDDEN);
     }
-    
+
     let msg = message::get_message_by_id(&state.db_pool, req.message_id)
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
-    
+
     if msg.chat_id != req.chat_id {
         return Err(StatusCode::BAD_REQUEST);
     }
-    
+
     if msg.role != "tool" {
         return Err(StatusCode::BAD_REQUEST);
     }
-    
-    let message_obj = msg.message.as_object()
+
+    let message_obj = msg
+        .message
+        .as_object()
         .ok_or(StatusCode::INTERNAL_SERVER_ERROR)?;
-    
-    let msg_tool_call_id = message_obj.get("tool_call_id")
+
+    let msg_tool_call_id = message_obj
+        .get("tool_call_id")
         .and_then(|v| v.as_str())
         .ok_or(StatusCode::BAD_REQUEST)?;
-    
+
     if msg_tool_call_id != req.tool_call_id {
         return Err(StatusCode::BAD_REQUEST);
     }
-    
-    let content = message_obj.get("content")
-        .ok_or(StatusCode::BAD_REQUEST)?;
-    
+
+    let content = message_obj.get("content").ok_or(StatusCode::BAD_REQUEST)?;
+
     let data: Value = serde_json::from_str(content.as_str().unwrap_or("{}"))
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
-    
+
     Ok(Json(MetricResponse { data }))
 }

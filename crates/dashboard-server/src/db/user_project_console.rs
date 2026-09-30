@@ -128,10 +128,7 @@ pub async fn update_console(
 }
 
 /// Delete a console by id. Caller must verify ownership before calling.
-pub async fn delete_console(
-    pool: &PgPool,
-    id: Uuid,
-) -> Result<(), sqlx::Error> {
+pub async fn delete_console(pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         DELETE FROM user_project_consoles

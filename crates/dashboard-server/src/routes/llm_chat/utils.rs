@@ -1,20 +1,19 @@
+use crate::{AppState, middleware::auth::AuthUser, routes::llm_chat::tools};
 use axum::{
+    Json, Router,
     extract::State,
     response::sse::{Event, KeepAlive, Sse},
     routing::post,
-    Json, Router,
 };
 use futures_util::StreamExt;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 use std::convert::Infallible;
 use std::sync::Arc;
 use tokio_stream::wrappers::ReceiverStream;
-use crate::{AppState, middleware::auth::AuthUser, routes::llm_chat::tools};
 
 use super::types::{ChatResponse, ResponseAccumulator};
-
 
 // --- Request / Response types -----------------------------------------
 
@@ -22,14 +21,14 @@ use super::types::{ChatResponse, ResponseAccumulator};
 pub struct ChatRequest {
     prompt: Option<String>,
     messages: Option<Vec<Value>>,
-    model: Option<String>, // optional override
+    model: Option<String>,     // optional override
     tools: Option<Vec<Value>>, // tool definitions from the client
 }
 
 /// What you send to the client inside each SSE event's data field.
 #[derive(Serialize)]
 pub struct ChunkPayload {
-    text: String,       // the raw token text
+    text: String, // the raw token text
     text_type: Option<Value>,
     token_count: usize, // example transform: running token count
 }
@@ -39,7 +38,6 @@ pub async fn chat_handler(
     _auth_user: AuthUser,
     Json(req): Json<ChatRequest>,
 ) -> Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>> {
-
     // Channel between the spawned task and the SSE stream
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(32);
 
@@ -47,23 +45,27 @@ pub async fn chat_handler(
 
     tokio::spawn(async move {
         let messages_to_pass = if let Some(p) = &req.prompt {
-            &vec![json!({ "role": "system", "content": SYTEM_PROMPT}), json!({"role": "user", "content": p})]
+            &vec![
+                json!({ "role": "system", "content": SYTEM_PROMPT}),
+                json!({"role": "user", "content": p}),
+            ]
         } else if let Some(msgs) = &req.messages {
             msgs
         } else {
             &vec![]
         };
 
-
-            // ChatRequest { messages: Some(msgs), ..} => msgs,
-            // _ => &vec![]
+        // ChatRequest { messages: Some(msgs), ..} => msgs,
+        // _ => &vec![]
 
         let model = req.model.unwrap_or_else(|| "private-large".to_string());
         let tools_value = match &req.tools {
             Some(t) if !t.is_empty() => json!(t),
             _ => tools::get_tools(),
         };
-        let result = direct_stream_from_litellm(&state, messages_to_pass, &model, tools_value, tx.clone()).await;
+        let result =
+            direct_stream_from_litellm(&state, messages_to_pass, &model, tools_value, tx.clone())
+                .await;
         match result {
             Err(e) => {
                 // Send error as a final SSE event, then drop tx to close stream
@@ -81,7 +83,6 @@ pub async fn chat_handler(
     Sse::new(ReceiverStream::new(rx)).keep_alive(KeepAlive::default())
 }
 
-
 async fn direct_stream_from_litellm(
     state: &AppState,
     messages: &Vec<serde_json::Value>,
@@ -95,7 +96,6 @@ async fn direct_stream_from_litellm(
         "messages": messages,
         "tools": tools
     });
-
 
     let response = state
         .http
@@ -161,7 +161,6 @@ async fn managed_stream_from_litellm(
         "tools": tools
     });
 
-
     let response = state
         .http
         .post(&state.litellm_url)
@@ -218,7 +217,13 @@ async fn managed_stream_from_litellm(
                                     return Ok((response_accumulator.finish()));
                                 }
                             }
-                            DeltaContent::ToolCallChunk { index, id, name, arguments, content} => {
+                            DeltaContent::ToolCallChunk {
+                                index,
+                                id,
+                                name,
+                                arguments,
+                                content,
+                            } => {
                                 if let Some(text) = content {
                                     // ---- Transform / enrich the chunk here ----
                                     token_count += text.split_whitespace().count();
@@ -251,7 +256,13 @@ async fn managed_stream_from_litellm(
 
 enum DeltaContent<'a> {
     Text(&'a str),
-    ToolCallChunk { index: usize, id: Option<&'a str>, name: Option<&'a str>, arguments: &'a str, content: Option<&'a str> },
+    ToolCallChunk {
+        index: usize,
+        id: Option<&'a str>,
+        name: Option<&'a str>,
+        arguments: &'a str,
+        content: Option<&'a str>,
+    },
     Done,
 }
 
@@ -278,7 +289,13 @@ fn extract_delta(json: &Value) -> Option<DeltaContent> {
             .unwrap_or("");
         let text = delta.get("content").and_then(|c| c.as_str());
 
-        return Some(DeltaContent::ToolCallChunk { index, id, name, arguments, content: text});
+        return Some(DeltaContent::ToolCallChunk {
+            index,
+            id,
+            name,
+            arguments,
+            content: text,
+        });
     }
 
     // normal text content
@@ -286,13 +303,15 @@ fn extract_delta(json: &Value) -> Option<DeltaContent> {
         return Some(DeltaContent::Text(text));
     }
 
-
     None
 }
 
 fn is_done(json: &Value) -> bool {
     if let Some(choice) = json.get("choices").and_then(|c| c.get(0)) {
-        return choice.get("finish_reason").and_then(|r| r.as_str()).is_some()
+        return choice
+            .get("finish_reason")
+            .and_then(|r| r.as_str())
+            .is_some();
     }
 
     false

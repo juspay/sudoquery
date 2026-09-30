@@ -1,4 +1,4 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use uuid::Uuid;
@@ -69,7 +69,7 @@ pub async fn generate_title_handler(
     Json(req): Json<GenerateTitleRequest>,
 ) -> Result<Json<GenerateTitleResponse>, TitleGenError> {
     let chat_id = req.chat_id;
-    
+
     // Verify chat exists and belongs to this project
     let chat = match chat::get_chat_by_id(&state.db_pool, chat_id).await {
         Ok(Some(c)) => c,
@@ -80,13 +80,15 @@ pub async fn generate_title_handler(
             return Err(TitleGenError::Database(e.to_string()));
         }
     };
-    
+
     if chat.project_id != project.id {
-        return Err(TitleGenError::Forbidden("Chat not found in this project".to_string()));
+        return Err(TitleGenError::Forbidden(
+            "Chat not found in this project".to_string(),
+        ));
     }
-    
+
     let messages_result = message::list_messages_by_chat(&state.db_pool, chat_id).await;
-    
+
     let db_messages = match messages_result {
         Ok(msgs) => msgs,
         Err(e) => {
@@ -100,18 +102,21 @@ pub async fn generate_title_handler(
         }));
     }
 
-    let chat_messages: Vec<ChatMessage> = db_messages.iter().filter_map(|m| {
-        let msg = m.message.as_object()?;
-        let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("user");
-        let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
-        
-        Some(match role {
-            "system" => ChatMessage::new_system(content),
-            "user" => ChatMessage::new_user(content),
-            "assistant" => ChatMessage::new_assistant(content),
-            _ => ChatMessage::new_user(content),
+    let chat_messages: Vec<ChatMessage> = db_messages
+        .iter()
+        .filter_map(|m| {
+            let msg = m.message.as_object()?;
+            let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("user");
+            let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
+
+            Some(match role {
+                "system" => ChatMessage::new_system(content),
+                "user" => ChatMessage::new_user(content),
+                "assistant" => ChatMessage::new_assistant(content),
+                _ => ChatMessage::new_user(content),
+            })
         })
-    }).collect();
+        .collect();
 
     if chat_messages.is_empty() {
         return Ok(Json(GenerateTitleResponse {
@@ -119,27 +124,34 @@ pub async fn generate_title_handler(
         }));
     }
 
-    let last_user_message = chat_messages.iter().rev().find(|m| {
-        matches!(m, ChatMessage::User(_))
-    });
+    let last_user_message = chat_messages
+        .iter()
+        .rev()
+        .find(|m| matches!(m, ChatMessage::User(_)));
 
-    let conversation_context: Vec<String> = chat_messages.iter().rev().take(6).rev().map(|m| {
-        let (role, content) = match m {
-            ChatMessage::System(sm) => ("system", sm.content.clone()),
-            ChatMessage::User(um) => ("user", um.content.clone()),
-            ChatMessage::Assistant(am) => ("assistant", am.content.clone().unwrap_or_default()),
-            ChatMessage::Tool(tm) => ("tool", tm.content.clone()),
-        };
-        format!("{}: {}", role, content)
-    }).collect();
+    let conversation_context: Vec<String> = chat_messages
+        .iter()
+        .rev()
+        .take(6)
+        .rev()
+        .map(|m| {
+            let (role, content) = match m {
+                ChatMessage::System(sm) => ("system", sm.content.clone()),
+                ChatMessage::User(um) => ("user", um.content.clone()),
+                ChatMessage::Assistant(am) => ("assistant", am.content.clone().unwrap_or_default()),
+                ChatMessage::Tool(tm) => ("tool", tm.content.clone()),
+            };
+            format!("{}: {}", role, content)
+        })
+        .collect();
 
     let context_str = conversation_context.join("\n");
-    let last_msg_content = last_user_message.map(|m| {
-        match m {
+    let last_msg_content = last_user_message
+        .map(|m| match m {
             ChatMessage::User(um) => um.content.clone(),
             _ => String::new(),
-        }
-    }).unwrap_or_default();
+        })
+        .unwrap_or_default();
 
     let api_messages = vec![
         ChatMessage::new_system(TITLE_GENERATION_SYSTEM_PROMPT),
@@ -176,10 +188,7 @@ pub async fn generate_title_handler(
     }))
 }
 
-async fn call_llm_for_title(
-    state: &AppState,
-    body: serde_json::Value,
-) -> anyhow::Result<String> {
+async fn call_llm_for_title(state: &AppState, body: serde_json::Value) -> anyhow::Result<String> {
     let response = state
         .http
         .post(&state.litellm_url)
@@ -217,32 +226,32 @@ async fn call_llm_for_title(
 
 fn clean_title(title: &str) -> String {
     let mut cleaned = title.to_string();
-    
+
     cleaned = cleaned.trim_matches(|c| c == '"' || c == '\'').to_string();
-    
+
     cleaned = cleaned.replace("**", "");
     cleaned = cleaned.replace('*', "");
     cleaned = cleaned.replace('`', "");
-    
+
     cleaned = cleaned.split('#').next().unwrap_or(&cleaned).to_string();
-    
+
     if cleaned.starts_with('[') && cleaned.contains("](") {
         if let Some(start) = cleaned.find('[') {
             if let Some(end) = cleaned.find("](") {
                 if let Some(close) = cleaned[end..].find(')') {
-                    cleaned = cleaned[start+1..end+close].to_string();
+                    cleaned = cleaned[start + 1..end + close].to_string();
                 }
             }
         }
     }
-    
+
     if cleaned.chars().count() > 50 {
         cleaned = cleaned.chars().take(50).collect();
     }
-    
+
     if cleaned.trim().is_empty() {
         cleaned = "New Chat".to_string();
     }
-    
+
     cleaned
 }

@@ -1,12 +1,19 @@
 use axum::{
-    extract::{State, Path},
+    extract::{Path, State},
     http::StatusCode,
     response::Json,
 };
 use serde::Serialize;
 use uuid::Uuid;
 
-use crate::{db::{self, chat::{self, ChatType}}, middleware::ProjectAccess, AppState};
+use crate::{
+    AppState,
+    db::{
+        self,
+        chat::{self, ChatType},
+    },
+    middleware::ProjectAccess,
+};
 
 #[derive(Serialize)]
 pub struct ChatResponse {
@@ -20,7 +27,9 @@ pub struct ChatResponse {
 
 pub async fn list_chats(
     State(state): State<AppState>,
-    ProjectAccess { project, auth_user, .. }: ProjectAccess,
+    ProjectAccess {
+        project, auth_user, ..
+    }: ProjectAccess,
 ) -> Result<Json<Vec<ChatResponse>>, ChatError> {
     let chats = db::list_chats_by_project_and_user(&state.db_pool, project.id, auth_user.user.id)
         .await
@@ -47,7 +56,9 @@ pub async fn list_chats(
 pub async fn delete_chat(
     State(state): State<AppState>,
     Path(chat_id): Path<Uuid>,
-    ProjectAccess { project, auth_user, .. }: ProjectAccess,
+    ProjectAccess {
+        project, auth_user, ..
+    }: ProjectAccess,
 ) -> Result<StatusCode, ChatError> {
     let chat = match chat::get_chat_by_id(&state.db_pool, chat_id).await {
         Ok(Some(c)) => c,
@@ -57,7 +68,9 @@ pub async fn delete_chat(
 
     // Verify the chat belongs to the user's project
     if chat.project_id != project.id {
-        return Err(ChatError::Database("Chat not found in this project".to_string()));
+        return Err(ChatError::Database(
+            "Chat not found in this project".to_string(),
+        ));
     }
 
     // Optionally verify the user owns the chat (or is admin)
@@ -83,7 +96,10 @@ impl axum::response::IntoResponse for ChatError {
         let (status, message) = match self {
             ChatError::Database(msg) => {
                 tracing::error!("Database error: {}", msg);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
         };
 

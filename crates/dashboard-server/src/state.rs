@@ -1,7 +1,7 @@
 use rdkafka::producer::FutureProducer;
+use reqwest::Client;
 use sea_orm::DatabaseConnection;
 use sqlx::PgPool;
-use reqwest::Client;
 
 use crate::keycloak::KeycloakAdmin;
 

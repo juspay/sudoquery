@@ -1,6 +1,5 @@
 use crate::db::ChatType;
 
-
 pub fn get_system_prompt(chat_type: &ChatType) -> &str {
     if chat_type == &ChatType::General {
         return GENERAL_SYTEM_PROMPT;
@@ -219,7 +218,6 @@ CRITICAL RULES:
 
 If user asks you to create dashboard. You should tell them that they should use the "Create Dashboard" option in the UI and then ask them what metrics they want to see in the dashboard.
 "#;
-
 
 const CREATE_DASHBOARD_SYTEM_PROMPT: &str = r#"You are an analytics assistant helps in creating live dashboards. Follow this EXACT workflow:
 

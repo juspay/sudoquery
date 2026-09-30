@@ -1,9 +1,7 @@
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 // request
-
-
 
 // response
 
@@ -27,7 +25,7 @@ pub struct AssistantMessage {
     pub role: String,
     pub content: Option<String>,
     pub tool_calls: Option<Vec<ToolCall>>,
-    pub reasoning_content: Option<String>
+    pub reasoning_content: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -105,11 +103,11 @@ impl ResponseAccumulator {
         // finish reason
         if let Some(reason) = choice.get("finish_reason").and_then(|r| r.as_str()) {
             self.finish_reason = match reason {
-                "stop"           => Some(FinishReason::Stop),
-                "length"         => Some(FinishReason::Length),
-                "tool_calls"     => Some(FinishReason::ToolCalls),
+                "stop" => Some(FinishReason::Stop),
+                "length" => Some(FinishReason::Length),
+                "tool_calls" => Some(FinishReason::ToolCalls),
                 "content_filter" => Some(FinishReason::ContentFilter),
-                _                => None,
+                _ => None,
             };
         }
 
@@ -135,13 +133,12 @@ impl ResponseAccumulator {
         // tool calls
         if let Some(tool_calls) = delta.get("tool_calls").and_then(|t| t.as_array()) {
             for tc in tool_calls {
-                let index = tc.get("index")
-                    .and_then(|i| i.as_u64())
-                    .unwrap_or(0) as usize;
+                let index = tc.get("index").and_then(|i| i.as_u64()).unwrap_or(0) as usize;
 
                 // grow the vec if needed
                 if self.tool_calls.len() <= index {
-                    self.tool_calls.resize_with(index + 1, PartialToolCall::default);
+                    self.tool_calls
+                        .resize_with(index + 1, PartialToolCall::default);
                 }
 
                 let partial = &mut self.tool_calls[index];
@@ -149,13 +146,15 @@ impl ResponseAccumulator {
                 if let Some(id) = tc.get("id").and_then(|i| i.as_str()) {
                     partial.id = id.to_string();
                 }
-                if let Some(name) = tc.get("function")
+                if let Some(name) = tc
+                    .get("function")
                     .and_then(|f| f.get("name"))
                     .and_then(|n| n.as_str())
                 {
                     partial.name = name.to_string();
                 }
-                if let Some(args) = tc.get("function")
+                if let Some(args) = tc
+                    .get("function")
                     .and_then(|f| f.get("arguments"))
                     .and_then(|a| a.as_str())
                 {
@@ -193,8 +192,16 @@ impl ResponseAccumulator {
                 index: 0,
                 message: AssistantMessage {
                     role: self.role,
-                    content: if self.content.is_empty() { None } else { Some(self.content) },
-                    reasoning_content: if self.reasoning_content.is_empty() { None } else { Some(self.reasoning_content) },
+                    content: if self.content.is_empty() {
+                        None
+                    } else {
+                        Some(self.content)
+                    },
+                    reasoning_content: if self.reasoning_content.is_empty() {
+                        None
+                    } else {
+                        Some(self.reasoning_content)
+                    },
                     tool_calls,
                 },
                 finish_reason: self.finish_reason,

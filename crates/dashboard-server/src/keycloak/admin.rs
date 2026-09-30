@@ -49,16 +49,22 @@ impl KeycloakAdmin {
         }
 
         // Admin auth uses master realm (for managing users in any realm)
-        let url = format!("{}/realms/master/protocol/openid-connect/token", self.base_url);
+        let url = format!(
+            "{}/realms/master/protocol/openid-connect/token",
+            self.base_url
+        );
 
-        let res = self.client.post(&url)
+        let res = self
+            .client
+            .post(&url)
             .form(&[
                 ("grant_type", "password"),
                 ("client_id", "admin-cli"),
                 ("username", &self.admin_username),
                 ("password", &self.admin_password),
             ])
-            .send().await?;
+            .send()
+            .await?;
 
         if !res.status().is_success() {
             let status = res.status().as_u16();
@@ -72,33 +78,62 @@ impl KeycloakAdmin {
             + std::time::Duration::from_secs(token_res.expires_in.saturating_sub(10));
 
         let mut cache = self.cached_token.write().await;
-        *cache = Some(CachedToken { token: token_res.access_token.clone(), expires_at });
+        *cache = Some(CachedToken {
+            token: token_res.access_token.clone(),
+            expires_at,
+        });
 
         Ok(token_res.access_token)
     }
 
-    pub async fn post<T: serde::Serialize>(&self, path: &str, body: &T) -> Result<reqwest::Response, KeycloakError> {
+    pub async fn post<T: serde::Serialize>(
+        &self,
+        path: &str,
+        body: &T,
+    ) -> Result<reqwest::Response, KeycloakError> {
         let token = self.admin_token().await?;
-        Ok(self.client.post(&format!("{}{}", self.base_url, path))
-            .bearer_auth(&token).json(body).send().await?)
+        Ok(self
+            .client
+            .post(&format!("{}{}", self.base_url, path))
+            .bearer_auth(&token)
+            .json(body)
+            .send()
+            .await?)
     }
 
-    pub async fn put<T: serde::Serialize>(&self, path: &str, body: &T) -> Result<reqwest::Response, KeycloakError> {
+    pub async fn put<T: serde::Serialize>(
+        &self,
+        path: &str,
+        body: &T,
+    ) -> Result<reqwest::Response, KeycloakError> {
         let token = self.admin_token().await?;
-        Ok(self.client.put(&format!("{}{}", self.base_url, path))
-            .bearer_auth(&token).json(body).send().await?)
+        Ok(self
+            .client
+            .put(&format!("{}{}", self.base_url, path))
+            .bearer_auth(&token)
+            .json(body)
+            .send()
+            .await?)
     }
 
     pub async fn get(&self, path: &str) -> Result<reqwest::Response, KeycloakError> {
         let token = self.admin_token().await?;
-        Ok(self.client.get(&format!("{}{}", self.base_url, path))
-            .bearer_auth(&token).send().await?)
+        Ok(self
+            .client
+            .get(&format!("{}{}", self.base_url, path))
+            .bearer_auth(&token)
+            .send()
+            .await?)
     }
 
     pub async fn delete(&self, path: &str) -> Result<reqwest::Response, KeycloakError> {
         let token = self.admin_token().await?;
-        Ok(self.client.delete(&format!("{}{}", self.base_url, path))
-            .bearer_auth(&token).send().await?)
+        Ok(self
+            .client
+            .delete(&format!("{}{}", self.base_url, path))
+            .bearer_auth(&token)
+            .send()
+            .await?)
     }
 
     pub async fn check(res: reqwest::Response) -> Result<reqwest::Response, KeycloakError> {

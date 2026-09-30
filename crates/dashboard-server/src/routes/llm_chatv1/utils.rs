@@ -1,33 +1,35 @@
+use crate::{
+    AppState,
+    db::{ChatType, chat, message},
+    middleware::{ProjectAccess, auth::AuthUser},
+    routes::llm_chatv1::constants::get_system_prompt,
+};
 use axum::{
+    Json,
     extract::{Path, State},
     http::StatusCode,
     response::sse::{Event, KeepAlive, Sse},
-    Json,
 };
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
-use uuid::Uuid;
+use serde_json::{Value, json};
 use std::convert::Infallible;
 use tokio_stream::wrappers::ReceiverStream;
-use crate::{AppState, db::{ChatType, chat, message}, middleware::{ProjectAccess, auth::AuthUser}, routes::llm_chatv1::constants::{get_system_prompt}};
+use uuid::Uuid;
 
-use super::tools::get_tools;
 use super::execute_tool;
+use super::tools::get_tools;
 
-use super::types::{ChatMessage, MessageRole, ChatResponse, ResponseAccumulator};
+use super::types::{ChatMessage, ChatResponse, MessageRole, ResponseAccumulator};
 
-const CLIENT_HANDLED_TOOLS: &[&str] = &[
-    "request_datetime_range",
-    "request_single_datetime",
-];
+const CLIENT_HANDLED_TOOLS: &[&str] = &["request_datetime_range", "request_single_datetime"];
 
 #[derive(Deserialize, Serialize)]
 pub struct ChatRequest {
     prompt: String,
     chat_id: Option<Uuid>,
     message_id: Option<Uuid>, // If provided, edits this message and truncates conversation after it
-    chat_type: ChatType
+    chat_type: ChatType,
 }
 
 #[derive(Debug)]
@@ -62,7 +64,9 @@ pub async fn chat_handler_v1(
             match chat::get_chat_by_id(&state.db_pool, existing_chat_id).await {
                 Ok(Some(chat)) => {
                     if chat.project_id != project.id {
-                        return Err(ChatHandlerError::Forbidden("Chat not found in this project".to_string()));
+                        return Err(ChatHandlerError::Forbidden(
+                            "Chat not found in this project".to_string(),
+                        ));
                     }
                     if chat.chat_type != req.chat_type {
                         return Err(ChatHandlerError::Forbidden("ChatType mismatch".to_string()));
@@ -78,10 +82,21 @@ pub async fn chat_handler_v1(
             }
         }
         None => {
-            match chat::create_chat(&state.db_pool, project.id, _auth_user.user.id, "New Chat", &req.chat_type).await {
+            match chat::create_chat(
+                &state.db_pool,
+                project.id,
+                _auth_user.user.id,
+                "New Chat",
+                &req.chat_type,
+            )
+            .await
+            {
                 Ok(new_chat) => new_chat.id,
                 Err(e) => {
-                    return Err(ChatHandlerError::Database(format!("Failed to create chat: {}", e)));
+                    return Err(ChatHandlerError::Database(format!(
+                        "Failed to create chat: {}",
+                        e
+                    )));
                 }
             }
         }
@@ -89,7 +104,11 @@ pub async fn chat_handler_v1(
 
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(32);
 
-    tx.send(Ok(Event::default().event("chat_id").data(chat_id.to_string()))).await.unwrap();
+    tx.send(Ok(Event::default()
+        .event("chat_id")
+        .data(chat_id.to_string())))
+        .await
+        .unwrap();
 
     // Handle edit mode: if message_id is provided, update that message and truncate conversation
     let messages_so_far = if let Some(edit_message_id) = req.message_id {
@@ -105,11 +124,15 @@ pub async fn chat_handler_v1(
         };
 
         if msg.chat_id != chat_id {
-            return Err(ChatHandlerError::Forbidden("Message does not belong to this chat".to_string()));
+            return Err(ChatHandlerError::Forbidden(
+                "Message does not belong to this chat".to_string(),
+            ));
         }
 
         if msg.role != "user" {
-            return Err(ChatHandlerError::Forbidden("Can only edit user messages".to_string()));
+            return Err(ChatHandlerError::Forbidden(
+                "Can only edit user messages".to_string(),
+            ));
         }
 
         // Update the message content
@@ -119,53 +142,92 @@ pub async fn chat_handler_v1(
         });
 
         println!("edit_message_id is {}", edit_message_id);
-        if let Err(e) = message::update_message_content(&state.db_pool, edit_message_id, &updated_message).await {
+        if let Err(e) =
+            message::update_message_content(&state.db_pool, edit_message_id, &updated_message).await
+        {
             tracing::error!("Failed to update message: {}", e);
-            return Err(ChatHandlerError::Database("Failed to update message".to_string()));
+            return Err(ChatHandlerError::Database(
+                "Failed to update message".to_string(),
+            ));
         }
 
         // Delete all messages after this message_id
-        if let Err(e) = message::delete_messages_after(&state.db_pool, chat_id, edit_message_id).await {
+        if let Err(e) =
+            message::delete_messages_after(&state.db_pool, chat_id, edit_message_id).await
+        {
             tracing::error!("Failed to delete messages: {}", e);
-            return Err(ChatHandlerError::Database("Failed to delete subsequent messages".to_string()));
+            return Err(ChatHandlerError::Database(
+                "Failed to delete subsequent messages".to_string(),
+            ));
         }
 
         // Fetch messages up to and including the edited message
-        message::list_messages_by_chat(&state.db_pool, chat_id).await.unwrap()
+        message::list_messages_by_chat(&state.db_pool, chat_id)
+            .await
+            .unwrap()
     } else {
         // Normal flow: create new message
-        if let Err(e) = message::create_message(&state.db_pool, chat_id, &json!({"content": req.prompt, "role": "user"}), "user").await {
+        if let Err(e) = message::create_message(
+            &state.db_pool,
+            chat_id,
+            &json!({"content": req.prompt, "role": "user"}),
+            "user",
+        )
+        .await
+        {
             tracing::error!("Failed to save message: {}", e);
-            return Err(ChatHandlerError::Database("Failed to save message".to_string()));
+            return Err(ChatHandlerError::Database(
+                "Failed to save message".to_string(),
+            ));
         }
 
-        message::list_messages_by_chat(&state.db_pool, chat_id).await.unwrap()
+        message::list_messages_by_chat(&state.db_pool, chat_id)
+            .await
+            .unwrap()
     };
 
     let state = state.clone();
     let project_id = project.id;
 
-    let mut messages: Vec<ChatMessage> = messages_so_far.iter().map(|m| {
-        let msg = m.message.as_object().unwrap();
-        let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("user");
-        let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
+    let mut messages: Vec<ChatMessage> = messages_so_far
+        .iter()
+        .map(|m| {
+            let msg = m.message.as_object().unwrap();
+            let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("user");
+            let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
 
-        match role {
-            "system" => ChatMessage::new_system(content),
-            "user" => ChatMessage::new_user(content),
-            "assistant" => {
-                let tool_calls: Option<Vec<super::types::ToolCall>> = msg.get("tool_calls")
-                    .and_then(|v| serde_json::from_value(v.clone()).ok());
-                let reasoning_content = msg.get("reasoning_content").and_then(|v| v.as_str()).map(String::from);
-                let content_opt = if content.is_empty() { None } else { Some(content.to_string()) };
-                ChatMessage::new_assistant_with_tool_calls(content_opt, tool_calls, reasoning_content)
+            match role {
+                "system" => ChatMessage::new_system(content),
+                "user" => ChatMessage::new_user(content),
+                "assistant" => {
+                    let tool_calls: Option<Vec<super::types::ToolCall>> = msg
+                        .get("tool_calls")
+                        .and_then(|v| serde_json::from_value(v.clone()).ok());
+                    let reasoning_content = msg
+                        .get("reasoning_content")
+                        .and_then(|v| v.as_str())
+                        .map(String::from);
+                    let content_opt = if content.is_empty() {
+                        None
+                    } else {
+                        Some(content.to_string())
+                    };
+                    ChatMessage::new_assistant_with_tool_calls(
+                        content_opt,
+                        tool_calls,
+                        reasoning_content,
+                    )
+                }
+                _ => ChatMessage::new_user(content),
             }
-            _ => ChatMessage::new_user(content),
-        }
-    }).collect();
+        })
+        .collect();
 
     tokio::spawn(async move {
-        messages.insert(0, ChatMessage::new_system(get_system_prompt(&req.chat_type)));
+        messages.insert(
+            0,
+            ChatMessage::new_system(get_system_prompt(&req.chat_type)),
+        );
         talk_to_llm(messages, &state, tx, chat_id, project_id, &req.chat_type).await;
     });
 
@@ -204,7 +266,9 @@ pub async fn client_tool_call_response_v1(
     };
 
     if chat.project_id != project.id {
-        return Err(ChatHandlerError::Forbidden("Chat not found in this project".to_string()));
+        return Err(ChatHandlerError::Forbidden(
+            "Chat not found in this project".to_string(),
+        ));
     }
 
     let messages_so_far = match message::list_messages_by_chat(&state.db_pool, chat_id).await {
@@ -222,50 +286,91 @@ pub async fn client_tool_call_response_v1(
     let value = req.value;
 
     tokio::spawn(async move {
-        let mut messages: Vec<ChatMessage> = messages_so_far.iter().map(|m| {
-            let msg = m.message.as_object().unwrap();
-            let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("user");
-            let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
+        let mut messages: Vec<ChatMessage> = messages_so_far
+            .iter()
+            .map(|m| {
+                let msg = m.message.as_object().unwrap();
+                let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("user");
+                let content = msg.get("content").and_then(|v| v.as_str()).unwrap_or("");
 
-            match role {
-                "system" => ChatMessage::new_system(content),
-                "user" => ChatMessage::new_user(content),
-                "assistant" => {
-                    let tool_calls: Option<Vec<super::types::ToolCall>> = msg.get("tool_calls")
-                        .and_then(|v| serde_json::from_value(v.clone()).ok());
-                    let reasoning_content = msg.get("reasoning_content").and_then(|v| v.as_str()).map(String::from);
-                    let content_opt = if content.is_empty() { None } else { Some(content.to_string()) };
-                    ChatMessage::new_assistant_with_tool_calls(content_opt, tool_calls, reasoning_content)
+                match role {
+                    "system" => ChatMessage::new_system(content),
+                    "user" => ChatMessage::new_user(content),
+                    "assistant" => {
+                        let tool_calls: Option<Vec<super::types::ToolCall>> = msg
+                            .get("tool_calls")
+                            .and_then(|v| serde_json::from_value(v.clone()).ok());
+                        let reasoning_content = msg
+                            .get("reasoning_content")
+                            .and_then(|v| v.as_str())
+                            .map(String::from);
+                        let content_opt = if content.is_empty() {
+                            None
+                        } else {
+                            Some(content.to_string())
+                        };
+                        ChatMessage::new_assistant_with_tool_calls(
+                            content_opt,
+                            tool_calls,
+                            reasoning_content,
+                        )
+                    }
+                    _ => ChatMessage::new_user(content),
                 }
-                _ => ChatMessage::new_user(content),
-            }
-        }).collect();
+            })
+            .collect();
 
-        messages.insert(0, ChatMessage::new_system(get_system_prompt(&chat.chat_type)));
+        messages.insert(
+            0,
+            ChatMessage::new_system(get_system_prompt(&chat.chat_type)),
+        );
 
-        let last_assistant_has_tool_call = messages.last().and_then(|m| {
-            if let ChatMessage::Assistant(assistant_msg) = m {
-                assistant_msg.tool_calls.as_ref().map(|tool_calls| {
-                    tool_calls.iter().any(|tc| tc.id == tool_call_id)
-                })
-            } else {
-                None
-            }
-        }).unwrap_or(false);
+        let last_assistant_has_tool_call = messages
+            .last()
+            .and_then(|m| {
+                if let ChatMessage::Assistant(assistant_msg) = m {
+                    assistant_msg
+                        .tool_calls
+                        .as_ref()
+                        .map(|tool_calls| tool_calls.iter().any(|tc| tc.id == tool_call_id))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(false);
 
         println!("Last message: {:?}", messages.last());
-        println!("Last assistant has tool call: {}", last_assistant_has_tool_call);
+        println!(
+            "Last assistant has tool call: {}",
+            last_assistant_has_tool_call
+        );
 
         if last_assistant_has_tool_call {
-            let tool_response_msg = ChatMessage::new_tool(&tool_call_id, serde_json::to_string(&value).unwrap_or_default());
+            let tool_response_msg = ChatMessage::new_tool(
+                &tool_call_id,
+                serde_json::to_string(&value).unwrap_or_default(),
+            );
             let tool_response_value = serde_json::to_value(&tool_response_msg).unwrap_or_default();
             messages.push(tool_response_msg);
             // write message to database with role tool
-            message::create_message(&state.db_pool, chat_id, &tool_response_value, "tool").await.unwrap();
-            talk_to_llm(messages, &state, tx.clone(), chat_id, project_id, &chat.chat_type).await;
+            message::create_message(&state.db_pool, chat_id, &tool_response_value, "tool")
+                .await
+                .unwrap();
+            talk_to_llm(
+                messages,
+                &state,
+                tx.clone(),
+                chat_id,
+                project_id,
+                &chat.chat_type,
+            )
+            .await;
         } else {
-            let error_json = json!({"error": "No pending tool call found with matching ID"}).to_string();
-            let _ = tx.send(Ok(Event::default().event("error").data(error_json))).await;
+            let error_json =
+                json!({"error": "No pending tool call found with matching ID"}).to_string();
+            let _ = tx
+                .send(Ok(Event::default().event("error").data(error_json)))
+                .await;
         }
     });
 
@@ -305,14 +410,19 @@ pub async fn get_chat_messages(
         .await
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
 
-    let message_items: Vec<MessageItem> = messages.into_iter().map(|m| MessageItem {
-        id: m.id.to_string(),
-        chat_id: m.chat_id.to_string(),
-        message: m.message,
-        created_at: m.created_at.to_rfc3339(),
-    }).collect();
+    let message_items: Vec<MessageItem> = messages
+        .into_iter()
+        .map(|m| MessageItem {
+            id: m.id.to_string(),
+            chat_id: m.chat_id.to_string(),
+            message: m.message,
+            created_at: m.created_at.to_rfc3339(),
+        })
+        .collect();
 
-    Ok(Json(MessagesResponse { messages: message_items }))
+    Ok(Json(MessagesResponse {
+        messages: message_items,
+    }))
 }
 
 async fn talk_to_llm(
@@ -321,12 +431,13 @@ async fn talk_to_llm(
     tx: tokio::sync::mpsc::Sender<Result<Event, Infallible>>,
     chat_id: Uuid,
     project_id: Uuid,
-    chat_type: &ChatType
+    chat_type: &ChatType,
 ) {
     let model = "private-large".to_string();
 
     loop {
-        let result = call_litellm(&state, &messages, &model, get_tools(chat_type), tx.clone()).await;
+        let result =
+            call_litellm(&state, &messages, &model, get_tools(chat_type), tx.clone()).await;
         match result {
             Err(e) => {
                 let error_json = json!({"error": e.to_string()}).to_string();
@@ -344,19 +455,28 @@ async fn talk_to_llm(
                 let msg_value = serde_json::to_value(&assistant_msg).unwrap_or_default();
                 messages.push(ChatMessage::Assistant(assistant_msg));
                 // add message to database with role assistant
-                let saved_msg = match message::create_message(&state.db_pool, chat_id, &msg_value, "assistant").await {
-                    Ok(msg) => msg,
-                    Err(e) => {
-                        tracing::error!("Failed to save assistant message: {}", e);
-                        let error_json = json!({"error": "Failed to save message"}).to_string();
-                        let _ = tx.send(Ok(Event::default().event("error").data(error_json))).await;
-                        return;
-                    }
-                };
+                let saved_msg =
+                    match message::create_message(&state.db_pool, chat_id, &msg_value, "assistant")
+                        .await
+                    {
+                        Ok(msg) => msg,
+                        Err(e) => {
+                            tracing::error!("Failed to save assistant message: {}", e);
+                            let error_json = json!({"error": "Failed to save message"}).to_string();
+                            let _ = tx
+                                .send(Ok(Event::default().event("error").data(error_json)))
+                                .await;
+                            return;
+                        }
+                    };
 
                 // Send message_end with the message_id
                 let message_end_json = json!({"message_id": saved_msg.id.to_string()}).to_string();
-                let _ = tx.send(Ok(Event::default().event("message_end").data(message_end_json))).await;
+                let _ = tx
+                    .send(Ok(Event::default()
+                        .event("message_end")
+                        .data(message_end_json)))
+                    .await;
 
                 let Some(tool_calls) = &choice.message.tool_calls else {
                     return;
@@ -366,26 +486,54 @@ async fn talk_to_llm(
                     let tool_name = &tc.function.name;
 
                     let tool_call_id = &tc.id;
-                    if let Some(tool_result) = execute_tool::execute_tool(tool_name, &tc.function.arguments, state, project_id, &tx, tool_call_id).await {
+                    if let Some(tool_result) = execute_tool::execute_tool(
+                        tool_name,
+                        &tc.function.arguments,
+                        state,
+                        project_id,
+                        &tx,
+                        tool_call_id,
+                    )
+                    .await
+                    {
                         let tool_msg = ChatMessage::new_tool(
                             tool_call_id,
-                            serde_json::to_string(&tool_result).unwrap_or_default()
+                            serde_json::to_string(&tool_result).unwrap_or_default(),
                         );
                         let tool_msg_value = serde_json::to_value(&tool_msg).unwrap_or_default();
                         messages.push(tool_msg.clone());
-                        let _ = tx.send(Ok(Event::default().event("complete_message").data(serde_json::to_string(&tool_msg).unwrap()))).await;
+                        let _ = tx
+                            .send(Ok(Event::default()
+                                .event("complete_message")
+                                .data(serde_json::to_string(&tool_msg).unwrap())))
+                            .await;
                         // add tool message to database
-                        let saved_msg = match message::create_message(&state.db_pool, chat_id, &tool_msg_value, "tool").await {
+                        let saved_msg = match message::create_message(
+                            &state.db_pool,
+                            chat_id,
+                            &tool_msg_value,
+                            "tool",
+                        )
+                        .await
+                        {
                             Ok(msg) => msg,
                             Err(e) => {
                                 tracing::error!("Failed to save tool message: {}", e);
-                                let error_json = json!({"error": "Failed to save message"}).to_string();
-                                let _ = tx.send(Ok(Event::default().event("error").data(error_json))).await;
+                                let error_json =
+                                    json!({"error": "Failed to save message"}).to_string();
+                                let _ = tx
+                                    .send(Ok(Event::default().event("error").data(error_json)))
+                                    .await;
                                 return;
                             }
                         };
-                        let message_end_json = json!({"message_id": saved_msg.id.to_string()}).to_string();
-                        let _ = tx.send(Ok(Event::default().event("message_end").data(message_end_json))).await;
+                        let message_end_json =
+                            json!({"message_id": saved_msg.id.to_string()}).to_string();
+                        let _ = tx
+                            .send(Ok(Event::default()
+                                .event("message_end")
+                                .data(message_end_json)))
+                            .await;
                     } else {
                         return;
                     }
@@ -465,7 +613,10 @@ async fn stream_response(
 
 fn is_done(json: &Value) -> bool {
     if let Some(choice) = json.get("choices").and_then(|c| c.get(0)) {
-        return choice.get("finish_reason").and_then(|r| r.as_str()).is_some();
+        return choice
+            .get("finish_reason")
+            .and_then(|r| r.as_str())
+            .is_some();
     }
     false
 }

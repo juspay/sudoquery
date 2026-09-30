@@ -1,4 +1,4 @@
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 struct ChartAxisConfig {
     x_axis: Option<&'static str>,
@@ -88,8 +88,18 @@ GROUP BY date
 ORDER BY date"#,
         tags: &["events", "daily", "volume", "time-series", "trend"],
         chart_config: Some(ChartConfig {
-            line_chart: Some(ChartAxisConfig { x_axis: Some("date"), y_axis: Some("event_count"), label_axis: None, value_axis: None }),
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("date"), y_axis: Some("event_count"), label_axis: None, value_axis: None }),
+            line_chart: Some(ChartAxisConfig {
+                x_axis: Some("date"),
+                y_axis: Some("event_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("date"),
+                y_axis: Some("event_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
             pie_chart: None,
             funnel_chart: None,
             sankey_chart: None,
@@ -111,8 +121,18 @@ ORDER BY count DESC
 LIMIT 20"#,
         tags: &["events", "distribution", "top-events", "breakdown"],
         chart_config: Some(ChartConfig {
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("event_name"), y_axis: Some("count"), label_axis: None, value_axis: None }),
-            pie_chart: Some(ChartAxisConfig { x_axis: None, y_axis: None, label_axis: Some("event_name"), value_axis: Some("count") }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("event_name"),
+                y_axis: Some("count"),
+                label_axis: None,
+                value_axis: None,
+            }),
+            pie_chart: Some(ChartAxisConfig {
+                x_axis: None,
+                y_axis: None,
+                label_axis: Some("event_name"),
+                value_axis: Some("count"),
+            }),
             line_chart: None,
             funnel_chart: None,
             sankey_chart: None,
@@ -134,8 +154,18 @@ GROUP BY platform
 ORDER BY event_count DESC"#,
         tags: &["platform", "distribution", "breakdown"],
         chart_config: Some(ChartConfig {
-            pie_chart: Some(ChartAxisConfig { x_axis: None, y_axis: None, label_axis: Some("platform"), value_axis: Some("event_count") }),
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("platform"), y_axis: Some("event_count"), label_axis: None, value_axis: None }),
+            pie_chart: Some(ChartAxisConfig {
+                x_axis: None,
+                y_axis: None,
+                label_axis: Some("platform"),
+                value_axis: Some("event_count"),
+            }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("platform"),
+                y_axis: Some("event_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
             line_chart: None,
             funnel_chart: None,
             sankey_chart: None,
@@ -157,8 +187,18 @@ GROUP BY device_type
 ORDER BY event_count DESC"#,
         tags: &["device", "device-type", "distribution", "breakdown"],
         chart_config: Some(ChartConfig {
-            pie_chart: Some(ChartAxisConfig { x_axis: None, y_axis: None, label_axis: Some("device_type"), value_axis: Some("event_count") }),
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("device_type"), y_axis: Some("event_count"), label_axis: None, value_axis: None }),
+            pie_chart: Some(ChartAxisConfig {
+                x_axis: None,
+                y_axis: None,
+                label_axis: Some("device_type"),
+                value_axis: Some("event_count"),
+            }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("device_type"),
+                y_axis: Some("event_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
             line_chart: None,
             funnel_chart: None,
             sankey_chart: None,
@@ -181,8 +221,18 @@ ORDER BY event_count DESC
 LIMIT 10"#,
         tags: &["browser", "distribution", "breakdown"],
         chart_config: Some(ChartConfig {
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("browser"), y_axis: Some("event_count"), label_axis: None, value_axis: None }),
-            pie_chart: Some(ChartAxisConfig { x_axis: None, y_axis: None, label_axis: Some("browser"), value_axis: Some("event_count") }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("browser"),
+                y_axis: Some("event_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
+            pie_chart: Some(ChartAxisConfig {
+                x_axis: None,
+                y_axis: None,
+                label_axis: Some("browser"),
+                value_axis: Some("event_count"),
+            }),
             line_chart: None,
             funnel_chart: None,
             sankey_chart: None,
@@ -206,7 +256,12 @@ ORDER BY event_count DESC
 LIMIT 20"#,
         tags: &["country", "geography", "location", "distribution"],
         chart_config: Some(ChartConfig {
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("country"), y_axis: Some("event_count"), label_axis: None, value_axis: None }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("country"),
+                y_axis: Some("event_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
             line_chart: None,
             pie_chart: None,
             funnel_chart: None,
@@ -228,8 +283,18 @@ GROUP BY hour
 ORDER BY hour"#,
         tags: &["hourly", "time", "pattern", "distribution"],
         chart_config: Some(ChartConfig {
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("hour"), y_axis: Some("event_count"), label_axis: None, value_axis: None }),
-            line_chart: Some(ChartAxisConfig { x_axis: Some("hour"), y_axis: Some("event_count"), label_axis: None, value_axis: None }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("hour"),
+                y_axis: Some("event_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
+            line_chart: Some(ChartAxisConfig {
+                x_axis: Some("hour"),
+                y_axis: Some("event_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
             pie_chart: None,
             funnel_chart: None,
             sankey_chart: None,
@@ -250,8 +315,18 @@ GROUP BY week
 ORDER BY week"#,
         tags: &["weekly", "trend", "time-series"],
         chart_config: Some(ChartConfig {
-            line_chart: Some(ChartAxisConfig { x_axis: Some("week"), y_axis: Some("event_count"), label_axis: None, value_axis: None }),
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("week"), y_axis: Some("event_count"), label_axis: None, value_axis: None }),
+            line_chart: Some(ChartAxisConfig {
+                x_axis: Some("week"),
+                y_axis: Some("event_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("week"),
+                y_axis: Some("event_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
             pie_chart: None,
             funnel_chart: None,
             sankey_chart: None,
@@ -272,8 +347,18 @@ GROUP BY month
 ORDER BY month"#,
         tags: &["monthly", "trend", "time-series"],
         chart_config: Some(ChartConfig {
-            line_chart: Some(ChartAxisConfig { x_axis: Some("month"), y_axis: Some("event_count"), label_axis: None, value_axis: None }),
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("month"), y_axis: Some("event_count"), label_axis: None, value_axis: None }),
+            line_chart: Some(ChartAxisConfig {
+                x_axis: Some("month"),
+                y_axis: Some("event_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("month"),
+                y_axis: Some("event_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
             pie_chart: None,
             funnel_chart: None,
             sankey_chart: None,
@@ -323,8 +408,18 @@ GROUP BY date
 ORDER BY date"#,
         tags: &["dau", "users", "daily", "active"],
         chart_config: Some(ChartConfig {
-            line_chart: Some(ChartAxisConfig { x_axis: Some("date"), y_axis: Some("unique_users"), label_axis: None, value_axis: None }),
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("date"), y_axis: Some("unique_users"), label_axis: None, value_axis: None }),
+            line_chart: Some(ChartAxisConfig {
+                x_axis: Some("date"),
+                y_axis: Some("unique_users"),
+                label_axis: None,
+                value_axis: None,
+            }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("date"),
+                y_axis: Some("unique_users"),
+                label_axis: None,
+                value_axis: None,
+            }),
             pie_chart: None,
             funnel_chart: None,
             sankey_chart: None,
@@ -368,7 +463,12 @@ ORDER BY level ASC;
 "#,
         tags: &["funnel", "conversion", "sequential", "windowFunnel"],
         chart_config: Some(ChartConfig {
-            funnel_chart: Some(ChartAxisConfig { x_axis: None, y_axis: None, label_axis: Some("event"), value_axis: Some("count") }),
+            funnel_chart: Some(ChartAxisConfig {
+                x_axis: None,
+                y_axis: None,
+                label_axis: Some("event"),
+                value_axis: Some("count"),
+            }),
             bar_chart: None,
             line_chart: None,
             pie_chart: None,
@@ -392,7 +492,12 @@ ORDER BY event_count DESC
 LIMIT 20"#,
         tags: &["city", "location", "top", "distribution"],
         chart_config: Some(ChartConfig {
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("city"), y_axis: Some("event_count"), label_axis: None, value_axis: None }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("city"),
+                y_axis: Some("event_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
             line_chart: None,
             pie_chart: None,
             funnel_chart: None,
@@ -427,10 +532,26 @@ WHERE event_name = '{event_name}'
 GROUP BY property_value
 ORDER BY count DESC
 LIMIT 30"#,
-        tags: &["events", "property", "distribution", "breakdown", "properties"],
+        tags: &[
+            "events",
+            "property",
+            "distribution",
+            "breakdown",
+            "properties",
+        ],
         chart_config: Some(ChartConfig {
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("property_value"), y_axis: Some("count"), label_axis: None, value_axis: None }),
-            pie_chart: Some(ChartAxisConfig { x_axis: None, y_axis: None, label_axis: Some("property_value"), value_axis: Some("count") }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("property_value"),
+                y_axis: Some("count"),
+                label_axis: None,
+                value_axis: None,
+            }),
+            pie_chart: Some(ChartAxisConfig {
+                x_axis: None,
+                y_axis: None,
+                label_axis: Some("property_value"),
+                value_axis: Some("count"),
+            }),
             line_chart: None,
             funnel_chart: None,
             sankey_chart: None,
@@ -469,10 +590,28 @@ FROM (
 WHERE time_gap IS NOT NULL
 GROUP BY gap_bucket
 ORDER BY gap_bucket"#,
-        tags: &["consecutive", "time-gap", "window", "lead", "session", "dwell-time", "distribution"],
+        tags: &[
+            "consecutive",
+            "time-gap",
+            "window",
+            "lead",
+            "session",
+            "dwell-time",
+            "distribution",
+        ],
         chart_config: Some(ChartConfig {
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("gap_bucket"), y_axis: Some("pair_count"), label_axis: None, value_axis: None }),
-            pie_chart: Some(ChartAxisConfig { x_axis: None, y_axis: None, label_axis: Some("gap_bucket"), value_axis: Some("pair_count") }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("gap_bucket"),
+                y_axis: Some("pair_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
+            pie_chart: Some(ChartAxisConfig {
+                x_axis: None,
+                y_axis: None,
+                label_axis: Some("gap_bucket"),
+                value_axis: Some("pair_count"),
+            }),
             line_chart: None,
             funnel_chart: None,
             sankey_chart: None,
@@ -501,10 +640,29 @@ FROM (
 WHERE edit_dist IS NOT NULL
 GROUP BY similarity_bucket
 ORDER BY similarity_bucket"#,
-        tags: &["consecutive", "similarity", "edit-distance", "text", "window", "lead", "reformulation", "distribution"],
+        tags: &[
+            "consecutive",
+            "similarity",
+            "edit-distance",
+            "text",
+            "window",
+            "lead",
+            "reformulation",
+            "distribution",
+        ],
         chart_config: Some(ChartConfig {
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("similarity_bucket"), y_axis: Some("pair_count"), label_axis: None, value_axis: None }),
-            pie_chart: Some(ChartAxisConfig { x_axis: None, y_axis: None, label_axis: Some("similarity_bucket"), value_axis: Some("pair_count") }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("similarity_bucket"),
+                y_axis: Some("pair_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
+            pie_chart: Some(ChartAxisConfig {
+                x_axis: None,
+                y_axis: None,
+                label_axis: Some("similarity_bucket"),
+                value_axis: Some("pair_count"),
+            }),
             line_chart: None,
             funnel_chart: None,
             sankey_chart: None,
@@ -532,10 +690,27 @@ FROM (
 WHERE inv_position IS NOT NULL
 GROUP BY position_bucket
 ORDER BY position_bucket"#,
-        tags: &["ranking", "reciprocal", "position", "inverse", "weight", "distribution"],
+        tags: &[
+            "ranking",
+            "reciprocal",
+            "position",
+            "inverse",
+            "weight",
+            "distribution",
+        ],
         chart_config: Some(ChartConfig {
-            bar_chart: Some(ChartAxisConfig { x_axis: Some("position_bucket"), y_axis: Some("event_count"), label_axis: None, value_axis: None }),
-            pie_chart: Some(ChartAxisConfig { x_axis: None, y_axis: None, label_axis: Some("position_bucket"), value_axis: Some("event_count") }),
+            bar_chart: Some(ChartAxisConfig {
+                x_axis: Some("position_bucket"),
+                y_axis: Some("event_count"),
+                label_axis: None,
+                value_axis: None,
+            }),
+            pie_chart: Some(ChartAxisConfig {
+                x_axis: None,
+                y_axis: None,
+                label_axis: Some("position_bucket"),
+                value_axis: Some("event_count"),
+            }),
             line_chart: None,
             funnel_chart: None,
             sankey_chart: None,
@@ -555,29 +730,39 @@ FROM (
 )
 WHERE {filter_conditions}
 GROUP BY dim_a, dim_b"#,
-        tags: &["cross-tab", "2x2", "matrix", "boolean", "contingency", "grouping"],
+        tags: &[
+            "cross-tab",
+            "2x2",
+            "matrix",
+            "boolean",
+            "contingency",
+            "grouping",
+        ],
         chart_config: None,
     },
 ];
 
 pub fn list_golden_queries() -> Value {
-    let queries: Vec<Value> = GOLDEN_QUERIES.iter().map(|q| {
-        json!({
-            "id": q.id,
-            "name": q.name,
-            "description": q.description,
-            "useCase": q.use_case,
-            "tags": q.tags,
+    let queries: Vec<Value> = GOLDEN_QUERIES
+        .iter()
+        .map(|q| {
+            json!({
+                "id": q.id,
+                "name": q.name,
+                "description": q.description,
+                "useCase": q.use_case,
+                "tags": q.tags,
+            })
         })
-    }).collect();
+        .collect();
     json!({ "golden_queries": queries })
 }
 
 pub fn fetch_golden_query(identifier: &str) -> Value {
     let lower = identifier.to_lowercase();
-    let query = GOLDEN_QUERIES.iter().find(|q| {
-        q.name.to_lowercase() == lower || q.id == identifier
-    });
+    let query = GOLDEN_QUERIES
+        .iter()
+        .find(|q| q.name.to_lowercase() == lower || q.id == identifier);
 
     match query {
         Some(q) => {

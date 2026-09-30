@@ -6,11 +6,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{
-    db,
-    middleware::ProjectAccess,
-    AppState,
-};
+use crate::{AppState, db, middleware::ProjectAccess};
 
 // ============ Request/Response Types ============
 
@@ -56,7 +52,9 @@ pub struct ConsoleResponse {
 
 pub async fn create_console(
     State(state): State<AppState>,
-    ProjectAccess { project, auth_user, .. }: ProjectAccess,
+    ProjectAccess {
+        project, auth_user, ..
+    }: ProjectAccess,
     Json(req): Json<CreateConsoleRequest>,
 ) -> Result<(StatusCode, Json<ConsoleResponse>), ConsoleError> {
     let console = db::create_console(
@@ -84,15 +82,14 @@ pub struct ConsoleListItem {
 
 pub async fn list_consoles(
     State(state): State<AppState>,
-    ProjectAccess { project, auth_user, .. }: ProjectAccess,
+    ProjectAccess {
+        project, auth_user, ..
+    }: ProjectAccess,
 ) -> Result<Json<Vec<ConsoleListItem>>, ConsoleError> {
-    let consoles = db::list_consoles_by_user_and_project(
-        &state.db_pool,
-        auth_user.user.id,
-        project.id,
-    )
-    .await
-    .map_err(|e| ConsoleError::Database(e.to_string()))?;
+    let consoles =
+        db::list_consoles_by_user_and_project(&state.db_pool, auth_user.user.id, project.id)
+            .await
+            .map_err(|e| ConsoleError::Database(e.to_string()))?;
 
     let response: Vec<ConsoleListItem> = consoles
         .into_iter()
@@ -114,8 +111,8 @@ pub async fn get_console(
     ProjectAccess { auth_user, .. }: ProjectAccess,
     Query(query): Query<GetConsoleQuery>,
 ) -> Result<Json<ConsoleResponse>, ConsoleError> {
-    let console_id = Uuid::parse_str(&query.console_id)
-        .map_err(|_| ConsoleError::InvalidConsoleId)?;
+    let console_id =
+        Uuid::parse_str(&query.console_id).map_err(|_| ConsoleError::InvalidConsoleId)?;
 
     let console = db::get_console_by_id_and_user(&state.db_pool, console_id, auth_user.user.id)
         .await
@@ -132,8 +129,8 @@ pub async fn update_console(
     ProjectAccess { auth_user, .. }: ProjectAccess,
     Json(req): Json<UpdateConsoleRequest>,
 ) -> Result<Json<ConsoleResponse>, ConsoleError> {
-    let console_id = Uuid::parse_str(&req.console_id)
-        .map_err(|_| ConsoleError::InvalidConsoleId)?;
+    let console_id =
+        Uuid::parse_str(&req.console_id).map_err(|_| ConsoleError::InvalidConsoleId)?;
 
     // Verify ownership
     let existing = db::get_console_by_id_and_user(&state.db_pool, console_id, auth_user.user.id)
@@ -160,8 +157,8 @@ pub async fn delete_console(
     ProjectAccess { auth_user, .. }: ProjectAccess,
     Query(query): Query<DeleteConsoleQuery>,
 ) -> Result<StatusCode, ConsoleError> {
-    let console_id = Uuid::parse_str(&query.console_id)
-        .map_err(|_| ConsoleError::InvalidConsoleId)?;
+    let console_id =
+        Uuid::parse_str(&query.console_id).map_err(|_| ConsoleError::InvalidConsoleId)?;
 
     // Verify ownership
     db::get_console_by_id_and_user(&state.db_pool, console_id, auth_user.user.id)
@@ -204,10 +201,15 @@ impl axum::response::IntoResponse for ConsoleError {
         let (status, message) = match self {
             ConsoleError::Database(msg) => {
                 tracing::error!("Database error: {}", msg);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
             ConsoleError::NotFound => (StatusCode::NOT_FOUND, "Console not found".to_string()),
-            ConsoleError::InvalidConsoleId => (StatusCode::BAD_REQUEST, "Invalid console ID".to_string()),
+            ConsoleError::InvalidConsoleId => {
+                (StatusCode::BAD_REQUEST, "Invalid console ID".to_string())
+            }
         };
 
         (status, Json(serde_json::json!({ "error": message }))).into_response()

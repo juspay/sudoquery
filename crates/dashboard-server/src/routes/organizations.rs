@@ -4,10 +4,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
+    AppState,
     db::{self, OrgRole},
     entities,
     middleware::{AuthError, AuthUser, OrgAdmin, OrgContext},
-    AppState,
 };
 
 // ============ Create Organization ============
@@ -29,18 +29,23 @@ pub async fn create_organization(
     AuthUser { user, .. }: AuthUser,
     Json(req): Json<CreateOrganizationRequest>,
 ) -> Result<(StatusCode, Json<OrganizationResponse>), OrganizationError> {
-    let org = db::create_organization(&state.db_pool, &req.name).await
+    let org = db::create_organization(&state.db_pool, &req.name)
+        .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
     // Add creator as org_admin
-    db::add_user_to_organization(&state.db_pool, user.id, org.id, &OrgRole::OrgAdmin).await
+    db::add_user_to_organization(&state.db_pool, user.id, org.id, &OrgRole::OrgAdmin)
+        .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
-    Ok((StatusCode::CREATED, Json(OrganizationResponse {
-        id: org.id.to_string(),
-        name: org.name,
-        created_at: org.created_at.to_rfc3339(),
-    })))
+    Ok((
+        StatusCode::CREATED,
+        Json(OrganizationResponse {
+            id: org.id.to_string(),
+            name: org.name,
+            created_at: org.created_at.to_rfc3339(),
+        }),
+    ))
 }
 
 // ============ Delete Organization ============
@@ -49,7 +54,8 @@ pub async fn delete_organization(
     State(state): State<AppState>,
     OrgAdmin { organization, .. }: OrgAdmin,
 ) -> Result<StatusCode, OrganizationError> {
-    db::soft_delete_organization(&state.db_pool, organization.id).await
+    db::soft_delete_organization(&state.db_pool, organization.id)
+        .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -67,7 +73,8 @@ pub async fn list_my_organizations(
     State(state): State<AppState>,
     AuthUser { user, .. }: AuthUser,
 ) -> Result<Json<Vec<MyOrganizationResponse>>, OrganizationError> {
-    let orgs = db::list_user_organizations(&state.db_pool, user.id).await
+    let orgs = db::list_user_organizations(&state.db_pool, user.id)
+        .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
     let response: Vec<MyOrganizationResponse> = orgs
@@ -120,7 +127,9 @@ pub async fn update_organization(
     org_active.name = Set(req.name);
     org_active.updated_at = Set(chrono::Utc::now().into());
 
-    let updated = org_active.update(&state.db_conn).await
+    let updated = org_active
+        .update(&state.db_conn)
+        .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
     Ok(Json(OrganizationResponse {
@@ -150,8 +159,7 @@ pub async fn add_organization_member(
     OrgAdmin { organization, .. }: OrgAdmin,
     Json(req): Json<AddOrgMemberRequest>,
 ) -> Result<(StatusCode, Json<OrgMemberResponse>), OrganizationError> {
-    let user_id = Uuid::parse_str(&req.user_id)
-        .map_err(|_| OrganizationError::InvalidUserId)?;
+    let user_id = Uuid::parse_str(&req.user_id).map_err(|_| OrganizationError::InvalidUserId)?;
 
     let role = match req.role.as_str() {
         "org_admin" => OrgRole::OrgAdmin,
@@ -159,32 +167,39 @@ pub async fn add_organization_member(
         _ => return Err(OrganizationError::InvalidRole),
     };
 
-    let membership = db::add_user_to_organization(&state.db_pool, user_id, organization.id, &role).await
+    let membership = db::add_user_to_organization(&state.db_pool, user_id, organization.id, &role)
+        .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
-    Ok((StatusCode::CREATED, Json(OrgMemberResponse {
-        user_id: membership.user_id.to_string(),
-        organization_id: membership.organization_id.to_string(),
-        role: membership.role.as_str().to_string(),
-    })))
+    Ok((
+        StatusCode::CREATED,
+        Json(OrgMemberResponse {
+            user_id: membership.user_id.to_string(),
+            organization_id: membership.organization_id.to_string(),
+            role: membership.role.as_str().to_string(),
+        }),
+    ))
 }
 
 // ============ Remove User from Organization ============
 
 pub async fn remove_organization_member(
     State(state): State<AppState>,
-    OrgAdmin { auth_user, organization }: OrgAdmin,
+    OrgAdmin {
+        auth_user,
+        organization,
+    }: OrgAdmin,
     axum::extract::Path(user_id): axum::extract::Path<String>,
 ) -> Result<StatusCode, OrganizationError> {
-    let user_uuid = Uuid::parse_str(&user_id)
-        .map_err(|_| OrganizationError::InvalidUserId)?;
+    let user_uuid = Uuid::parse_str(&user_id).map_err(|_| OrganizationError::InvalidUserId)?;
 
     // Prevent users from removing themselves
     if user_uuid == auth_user.user.id {
         return Err(OrganizationError::CannotRemoveSelf);
     }
 
-    db::remove_user_from_organization(&state.db_pool, user_uuid, organization.id).await
+    db::remove_user_from_organization(&state.db_pool, user_uuid, organization.id)
+        .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -204,7 +219,8 @@ pub async fn list_organization_members(
     State(state): State<AppState>,
     OrgContext { organization, .. }: OrgContext,
 ) -> Result<Json<Vec<OrgMemberListResponse>>, OrganizationError> {
-    let members = db::list_organization_members(&state.db_pool, organization.id).await
+    let members = db::list_organization_members(&state.db_pool, organization.id)
+        .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
     let response: Vec<OrgMemberListResponse> = members
@@ -233,8 +249,7 @@ pub async fn update_organization_member_role(
     axum::extract::Path(user_id): axum::extract::Path<String>,
     Json(req): Json<UpdateOrgMemberRoleRequest>,
 ) -> Result<StatusCode, OrganizationError> {
-    let user_uuid = Uuid::parse_str(&user_id)
-        .map_err(|_| OrganizationError::InvalidUserId)?;
+    let user_uuid = Uuid::parse_str(&user_id).map_err(|_| OrganizationError::InvalidUserId)?;
 
     let role = match req.role.as_str() {
         "org_admin" => OrgRole::OrgAdmin,
@@ -242,7 +257,8 @@ pub async fn update_organization_member_role(
         _ => return Err(OrganizationError::InvalidRole),
     };
 
-    db::update_organization_membership_role(&state.db_pool, user_uuid, organization.id, &role).await
+    db::update_organization_membership_role(&state.db_pool, user_uuid, organization.id, &role)
+        .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
@@ -252,12 +268,18 @@ pub async fn update_organization_member_role(
 
 #[derive(Debug, thiserror::Error)]
 pub enum OrganizationError {
-    #[error("Invalid user ID")] InvalidUserId,
-    #[error("Invalid role")] InvalidRole,
-    #[error("Organization not found")] NotFound,
-    #[error("Cannot remove yourself")] CannotRemoveSelf,
-    #[error("Database error: {0}")] Database(String),
-    #[error("Auth error: {0}")] Auth(#[from] AuthError),
+    #[error("Invalid user ID")]
+    InvalidUserId,
+    #[error("Invalid role")]
+    InvalidRole,
+    #[error("Organization not found")]
+    NotFound,
+    #[error("Cannot remove yourself")]
+    CannotRemoveSelf,
+    #[error("Database error: {0}")]
+    Database(String),
+    #[error("Auth error: {0}")]
+    Auth(#[from] AuthError),
 }
 
 impl axum::response::IntoResponse for OrganizationError {
@@ -265,10 +287,20 @@ impl axum::response::IntoResponse for OrganizationError {
         use axum::http::StatusCode;
 
         let (status, message): (StatusCode, String) = match self {
-            OrganizationError::InvalidUserId => (StatusCode::BAD_REQUEST, "Invalid user ID".to_string()),
-            OrganizationError::InvalidRole => (StatusCode::BAD_REQUEST, "Invalid role. Must be 'org_admin' or 'org_user'".to_string()),
-            OrganizationError::NotFound => (StatusCode::NOT_FOUND, "Organization not found".to_string()),
-            OrganizationError::CannotRemoveSelf => (StatusCode::BAD_REQUEST, "Cannot remove yourself".to_string()),
+            OrganizationError::InvalidUserId => {
+                (StatusCode::BAD_REQUEST, "Invalid user ID".to_string())
+            }
+            OrganizationError::InvalidRole => (
+                StatusCode::BAD_REQUEST,
+                "Invalid role. Must be 'org_admin' or 'org_user'".to_string(),
+            ),
+            OrganizationError::NotFound => {
+                (StatusCode::NOT_FOUND, "Organization not found".to_string())
+            }
+            OrganizationError::CannotRemoveSelf => (
+                StatusCode::BAD_REQUEST,
+                "Cannot remove yourself".to_string(),
+            ),
             OrganizationError::Database(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
             OrganizationError::Auth(e) => return e.into_response(),
         };

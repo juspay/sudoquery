@@ -95,11 +95,7 @@ pub async fn soft_delete_user(pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error
     Ok(())
 }
 
-pub async fn update_user_email(
-    pool: &PgPool,
-    id: Uuid,
-    email: &str,
-) -> Result<(), sqlx::Error> {
+pub async fn update_user_email(pool: &PgPool, id: Uuid, email: &str) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         UPDATE users

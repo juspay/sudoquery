@@ -12,10 +12,7 @@ pub struct Organization {
     pub updated_at: DateTime<Utc>,
 }
 
-pub async fn create_organization(
-    pool: &PgPool,
-    name: &str,
-) -> Result<Organization, sqlx::Error> {
+pub async fn create_organization(pool: &PgPool, name: &str) -> Result<Organization, sqlx::Error> {
     let uuid7 = uuid7::uuid7();
     let id = Uuid::from_bytes(*uuid7.as_bytes());
 
@@ -83,7 +80,10 @@ pub struct OrganizationWithAccess {
     pub access_level: String,
 }
 
-pub async fn list_user_organizations(pool: &PgPool, user_id: Uuid) -> Result<Vec<OrganizationWithAccess>, sqlx::Error> {
+pub async fn list_user_organizations(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Vec<OrganizationWithAccess>, sqlx::Error> {
     sqlx::query_as::<_, OrganizationWithAccess>(
         r#"
         SELECT DISTINCT ON (o.id)

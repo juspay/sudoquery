@@ -168,10 +168,7 @@ pub async fn update_dashboard_run(
 }
 
 /// Delete a live dashboard
-pub async fn delete_dashboard(
-    pool: &PgPool,
-    dashboard_id: Uuid,
-) -> Result<(), sqlx::Error> {
+pub async fn delete_dashboard(pool: &PgPool, dashboard_id: Uuid) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         DELETE FROM live_dashboards

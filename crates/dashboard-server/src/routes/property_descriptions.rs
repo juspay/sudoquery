@@ -7,9 +7,8 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
-    db,
+    AppState, db,
     middleware::{AuthUser, ProjectAdmin, ProjectContext},
-    AppState,
 };
 
 // ============ Create/Update Property Description ============
@@ -51,16 +50,19 @@ pub async fn upsert_property_description(
     .await
     .map_err(|e| PropertyDescriptionError::Database(e.to_string()))?;
 
-    Ok((StatusCode::OK, Json(PropertyDescriptionResponse {
-        id: desc.id.to_string(),
-        project_id: desc.project_id.to_string(),
-        event_name: desc.event_name,
-        property_name: desc.property_name,
-        property_type: desc.property_type,
-        description: desc.description,
-        created_at: desc.created_at.to_rfc3339(),
-        updated_at: desc.updated_at.to_rfc3339(),
-    })))
+    Ok((
+        StatusCode::OK,
+        Json(PropertyDescriptionResponse {
+            id: desc.id.to_string(),
+            project_id: desc.project_id.to_string(),
+            event_name: desc.event_name,
+            property_name: desc.property_name,
+            property_type: desc.property_type,
+            description: desc.description,
+            created_at: desc.created_at.to_rfc3339(),
+            updated_at: desc.updated_at.to_rfc3339(),
+        }),
+    ))
 }
 
 // ============ Get Property Descriptions ============
@@ -172,10 +174,19 @@ impl axum::response::IntoResponse for PropertyDescriptionError {
         let (status, message) = match self {
             PropertyDescriptionError::Database(msg) => {
                 tracing::error!("Database error: {}", msg);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
-            PropertyDescriptionError::NotFound => (StatusCode::NOT_FOUND, "Property description not found".to_string()),
-            PropertyDescriptionError::Forbidden => (StatusCode::FORBIDDEN, "Insufficient permissions".to_string()),
+            PropertyDescriptionError::NotFound => (
+                StatusCode::NOT_FOUND,
+                "Property description not found".to_string(),
+            ),
+            PropertyDescriptionError::Forbidden => (
+                StatusCode::FORBIDDEN,
+                "Insufficient permissions".to_string(),
+            ),
         };
 
         (status, Json(serde_json::json!({ "error": message }))).into_response()

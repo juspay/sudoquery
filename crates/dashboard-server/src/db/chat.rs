@@ -19,7 +19,7 @@ pub struct Chat {
 #[sqlx(type_name = "chat_type", rename_all = "snake_case")]
 pub enum ChatType {
     General,
-    CreateDashboard
+    CreateDashboard,
 }
 
 pub async fn create_chat(
@@ -27,7 +27,7 @@ pub async fn create_chat(
     project_id: Uuid,
     user_id: Uuid,
     title: &str,
-    chat_type: &ChatType
+    chat_type: &ChatType,
 ) -> Result<Chat, sqlx::Error> {
     let id = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
 
@@ -47,10 +47,7 @@ pub async fn create_chat(
     .await
 }
 
-pub async fn get_chat_by_id(
-    pool: &PgPool,
-    id: Uuid,
-) -> Result<Option<Chat>, sqlx::Error> {
+pub async fn get_chat_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Chat>, sqlx::Error> {
     sqlx::query_as::<_, Chat>(
         r#"
         SELECT id, project_id, user_id, title, created_at, version, chat_type
@@ -80,10 +77,7 @@ pub async fn list_chats_by_project(
     .await
 }
 
-pub async fn list_chats_by_user(
-    pool: &PgPool,
-    user_id: Uuid,
-) -> Result<Vec<Chat>, sqlx::Error> {
+pub async fn list_chats_by_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<Chat>, sqlx::Error> {
     sqlx::query_as::<_, Chat>(
         r#"
         SELECT id, project_id, user_id, title, created_at, version, chat_type
@@ -130,11 +124,7 @@ pub async fn delete_chat(pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error> {
     Ok(())
 }
 
-pub async fn update_chat_title(
-    pool: &PgPool,
-    id: Uuid,
-    title: &str,
-) -> Result<Chat, sqlx::Error> {
+pub async fn update_chat_title(pool: &PgPool, id: Uuid, title: &str) -> Result<Chat, sqlx::Error> {
     sqlx::query_as::<_, Chat>(
         r#"
         UPDATE chats

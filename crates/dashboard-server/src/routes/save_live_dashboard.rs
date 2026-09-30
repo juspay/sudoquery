@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::{
+    AppState,
     db::{self, message},
     middleware::ProjectAdmin,
-    AppState,
 };
 
 // ============ Request/Response Types ============
@@ -98,17 +98,16 @@ pub async fn save_live_dashboard_from_tool_call(
         .and_then(|v| v.as_str())
         .unwrap_or("Dashboard created from chat");
 
-    let title = args
-        .get("label")
-        .and_then(|v| v.as_str());
+    let title = args.get("label").and_then(|v| v.as_str());
 
     let chart_config = args.get("chart_config").map(|v| v.to_string());
 
     // 9. Check if dashboard already exists with this creation_source
     let creation_source = format!("{}-{}", req.message_id, req.tool_call_id);
-    if let Some(existing) = db::live_dashboard::get_dashboard_by_source(&state.db_pool, project.id, &creation_source)
-        .await
-        .map_err(|e| SaveDashboardError::Database(e.to_string()))?
+    if let Some(existing) =
+        db::live_dashboard::get_dashboard_by_source(&state.db_pool, project.id, &creation_source)
+            .await
+            .map_err(|e| SaveDashboardError::Database(e.to_string()))?
     {
         return Err(SaveDashboardError::DuplicateDashboard(existing.id));
     }
@@ -211,27 +210,34 @@ impl axum::response::IntoResponse for SaveDashboardError {
             SaveDashboardError::MessageNotFound => {
                 (StatusCode::NOT_FOUND, "Message not found".to_string())
             }
-            SaveDashboardError::ToolCallNotFound => {
-                (StatusCode::NOT_FOUND, "Tool call not found in message".to_string())
-            }
-            SaveDashboardError::InvalidToolCall => {
-                (StatusCode::BAD_REQUEST, "Invalid tool call structure".to_string())
-            }
-            SaveDashboardError::InvalidToolType => {
-                (StatusCode::BAD_REQUEST, "Tool call is not test_run_live_dashboard".to_string())
-            }
-            SaveDashboardError::MissingQueryToolCallId => {
-                (StatusCode::BAD_REQUEST, "Missing query_tool_call_id in tool call".to_string())
-            }
-            SaveDashboardError::QueryToolCallNotFound => {
-                (StatusCode::NOT_FOUND, "Referenced query tool call not found in chat history".to_string())
-            }
-            SaveDashboardError::MissingQuery => {
-                (StatusCode::BAD_REQUEST, "Query not found in referenced tool call".to_string())
-            }
-            SaveDashboardError::DuplicateDashboard(id) => {
-                (StatusCode::CONFLICT, format!("Dashboard already exists: {}", id))
-            }
+            SaveDashboardError::ToolCallNotFound => (
+                StatusCode::NOT_FOUND,
+                "Tool call not found in message".to_string(),
+            ),
+            SaveDashboardError::InvalidToolCall => (
+                StatusCode::BAD_REQUEST,
+                "Invalid tool call structure".to_string(),
+            ),
+            SaveDashboardError::InvalidToolType => (
+                StatusCode::BAD_REQUEST,
+                "Tool call is not test_run_live_dashboard".to_string(),
+            ),
+            SaveDashboardError::MissingQueryToolCallId => (
+                StatusCode::BAD_REQUEST,
+                "Missing query_tool_call_id in tool call".to_string(),
+            ),
+            SaveDashboardError::QueryToolCallNotFound => (
+                StatusCode::NOT_FOUND,
+                "Referenced query tool call not found in chat history".to_string(),
+            ),
+            SaveDashboardError::MissingQuery => (
+                StatusCode::BAD_REQUEST,
+                "Query not found in referenced tool call".to_string(),
+            ),
+            SaveDashboardError::DuplicateDashboard(id) => (
+                StatusCode::CONFLICT,
+                format!("Dashboard already exists: {}", id),
+            ),
         };
 
         (status, Json(serde_json::json!({ "error": message }))).into_response()
