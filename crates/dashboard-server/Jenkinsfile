@@ -1,0 +1,131 @@
+def isVersionBumpCandidateBranch(branch) {
+  (branch ==~ /^main$/)
+}
+
+
+def fetchFromRemote(){
+  sh ("""
+    git remote set-url origin ssh://git@ssh.bitbucket.juspay.net/picaf/${NPM_REPO_NAME}.git;
+    git config --add remote.origin.fetch "+refs/notes/*:refs/notes/*";
+    git fetch;
+    """)
+}
+
+def skipBuild = false
+
+pipeline {
+  agent {
+    label 'hypersdk'
+  }
+
+  environment {
+    IMAGE_NAME = 'hyper-analytics'
+    NS = '297984596149.dkr.ecr.me-central-1.amazonaws.com'
+    DOCKER_REGISTRY = ''
+    NPM_REPO_NAME = "hyper-analytics-dashboard"
+    GIT_AUTHOR_NAME = 'jenkins.user'
+    GIT_AUTHOR_EMAIL = 'jenkins.user@juspay.in'
+    GIT_COMMITTER_NAME = 'jenkins.user'
+    GIT_COMMITTER_EMAIL = 'jenkins.user@juspay.in'
+    GIT_USERNAME = 'jenkins.user'
+    GIT_EMAIL = 'jenkins.user@juspay.in'
+  }
+
+  stages {
+    stage('Checkout') {
+      steps {
+        script {
+          skipBuild = (sh(script: "git log -1 --pretty=%B | grep -F -ie '[skip ci]' -e '[ci skip]'", returnStatus: true) == 0)
+          fetchFromRemote()
+          sh("cat ./package.json | jq -r '.version'")
+        }
+      }
+    }
+
+    stage('Install Dependencies') {
+      when {
+        expression { !skipBuild }
+      }
+      steps {
+        script {
+          sh("npm config set package-lock=false; npm i")
+        }
+      }
+    }
+
+    stage('Semantic Release') {
+      when {
+        expression { !skipBuild }
+      }
+      steps {
+        script {
+          if (isVersionBumpCandidateBranch(env.BRANCH_NAME)) {
+            sh("npx semantic-release --debug")
+            env.VERSION = """${sh(
+                  returnStdout: true,
+                  script: '''
+                  set +x;
+                  cat ./package.json | jq -r '.version' | tr -d '\n'
+                  '''
+              )}"""
+            echo "Release version: ${env.VERSION}"
+          }
+        }
+      }
+    }
+
+    stage('Get Version') {
+      when {
+        expression { skipBuild }
+      }
+      steps {
+        script {
+          env.VERSION = """${sh(
+                  returnStdout: true,
+                  script: '''
+                  set +x;
+                  cat ./package.json | jq -r '.version' | tr -d '\n'
+                  '''
+              )}"""
+          echo "Release version: ${env.VERSION}"
+        }
+      }
+    }
+
+    stage('Build Docker Image') {
+      when {
+        expression { skipBuild }
+      }
+      steps {
+        script {
+          sh("DOCKER_BUILDKIT=1 docker build -t ${IMAGE_NAME}:${env.VERSION} .")
+        }
+      }
+    }
+
+    stage('Docker push'){
+	    when {
+        expression {skipBuild}
+	    }
+      steps {
+        script {
+          sh("aws ecr get-login-password --region me-central-1 | docker login --username AWS --password-stdin ${NS}")
+          sh("docker tag ${IMAGE_NAME}:${env.VERSION} ${NS}/${IMAGE_NAME}:${env.VERSION}")
+          sh("docker push ${NS}/${IMAGE_NAME}:${env.VERSION}")
+        }
+      }
+    }
+  }
+
+  post {
+    always {
+      cleanWs()
+    }
+    success {
+      echo 'Pipeline succeeded!'
+    }
+    failure {
+      echo 'Pipeline failed!'
+    }
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "name": "hyper-analytics-dashboard",
+  "version": "1.4.0",
+  "private": true,
+  "release": {
+    "branches": [
+      "main"
+    ],
+    "repositoryUrl": "git@ssh.bitbucket.juspay.net:picaf/hyper-analytics-dashboard.git",
+    "plugins": [
+      "@semantic-release/commit-analyzer",
+      "@semantic-release/release-notes-generator",
+      "@semantic-release/npm",
+      "@semantic-release/git"
+    ]
+  },
+  "devDependencies": {
+    "@semantic-release/commit-analyzer": "^9.0.2",
+    "@semantic-release/git": "^10.0.1",
+    "@semantic-release/npm": "^9.0.1",
+    "@semantic-release/release-notes-generator": "^10.0.3",
+    "semantic-release": "^19.0.5"
+  }
+}
