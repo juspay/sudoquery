@@ -1,0 +1,14 @@
+# gitleaks:ignore
+
+# Local dev Keycloak JDBC URL (no credential)
+c076a80fd44d8e2cb344d5feb4e0b20a58fa4b73:crates/dashboard-server/docker-compose.yml:generic-api-key:40
+
+# Intentionally invalid token in negative test
+c076a80fd44d8e2cb344d5feb4e0b20a58fa4b73:crates/dashboard-server/test_flows.sh:curl-auth-header:145
+
+# Public-by-design browser analytics token (Vite bundles VITE_* into client JS)
+f6d0c9742602ae60309777ed1dab978bf755c106:web/dashboard/.env.production:generic-api-key:12
+f6d0c9742602ae60309777ed1dab978bf755c106:web/dashboard/.env:generic-api-key:13
+
+# Docs example token
+dfe9fd7ab219d2aba23130a2d0e6135143d46df1:README.md:curl-auth-header:163
