@@ -1,3 +1,4 @@
+pub mod aggregations;
 pub mod chats;
 pub mod event_descriptions;
 pub mod invitations;
@@ -8,5 +9,7 @@ pub mod organizations;
 pub mod projects;
 pub mod property_descriptions;
 pub mod save_live_dashboard;
+pub mod search;
+pub mod sessions;
 pub mod user_project_consoles;
 pub mod users;

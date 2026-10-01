@@ -98,7 +98,8 @@ pipeline {
       }
       steps {
         script {
-          sh("DOCKER_BUILDKIT=1 docker build -t ${IMAGE_NAME}:${env.VERSION} .")
+          // The build context is the workspace root: the crate depends on crates/canonical-event.
+          sh("DOCKER_BUILDKIT=1 docker build -f Dockerfile -t ${IMAGE_NAME}:${env.VERSION} ../..")
         }
       }
     }

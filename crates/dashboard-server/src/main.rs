@@ -19,12 +19,14 @@ mod ingest;
 mod keycloak;
 mod middleware;
 mod models;
+mod opensearch;
 mod routes;
 mod state;
 
 use keycloak::KeycloakAdmin;
 use middleware::auth::ProjectAccess;
 use models::ChatCompletionRequest;
+use opensearch::OpenSearch;
 use sea_orm::Database;
 use sqlx::postgres::PgPoolOptions;
 use state::AppState;
@@ -242,6 +244,35 @@ fn get_kafka_broker_url() -> String {
     std::env::var("KAFKA_BROKER_URL").unwrap_or_else(|_| "localhost:19092".to_string())
 }
 
+fn get_opensearch_url() -> String {
+    std::env::var("OPENSEARCH_URL").unwrap_or_else(|_| "http://localhost:9200".to_string())
+}
+
+// Must name the index sink-opensearch writes to; `{tenant_id}` is filled in per request.
+fn get_opensearch_index() -> String {
+    std::env::var("OPENSEARCH_INDEX").unwrap_or_else(|_| "events-{tenant_id}".to_string())
+}
+
+fn get_opensearch_credentials() -> Option<(String, String)> {
+    let username = std::env::var("OPENSEARCH_USERNAME").ok();
+    let password = std::env::var("OPENSEARCH_PASSWORD").ok();
+    match (username, password) {
+        (Some(username), Some(password)) => Some((username, password)),
+        (None, None) => None,
+        _ => panic!("OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD must be set together"),
+    }
+}
+
+fn get_opensearch_request_timeout() -> std::time::Duration {
+    let millis = match std::env::var("OPENSEARCH_REQUEST_TIMEOUT_MS") {
+        Ok(value) => value
+            .parse()
+            .expect("OPENSEARCH_REQUEST_TIMEOUT_MS must be a number of milliseconds"),
+        Err(_) => 30_000,
+    };
+    std::time::Duration::from_millis(millis)
+}
+
 async fn chat_completions(Json(req): Json<ChatCompletionRequest>) -> impl IntoResponse {
     let api_key = get_llm_api_key();
     if api_key.is_empty() {
@@ -347,6 +378,14 @@ async fn main() {
         .await
         .expect("Failed to connect to database with SeaORM");
 
+    let opensearch = OpenSearch::new(
+        &get_opensearch_url(),
+        get_opensearch_credentials(),
+        get_opensearch_index(),
+        get_opensearch_request_timeout(),
+    )
+    .expect("Failed to create OpenSearch client");
+
     let state = AppState {
         http: Client::new(),
         litellm_url: get_llm_api_endpoint(),
@@ -363,6 +402,7 @@ async fn main() {
         clickhouse_admin_user,
         clickhouse_admin_password,
         clickhouse_project_password,
+        opensearch,
     };
 
     let api_routes = Router::new()
@@ -574,6 +614,14 @@ async fn main() {
             "/project/console",
             delete(routes::user_project_consoles::delete_console),
         )
+        // Event search routes (OpenSearch)
+        .route("/search", post(routes::search::search))
+        .route("/count", post(routes::search::count))
+        .route("/doc/{doc_id}", get(routes::search::get_doc))
+        .route("/session", post(routes::sessions::list_sessions))
+        .route("/session/{session_id}", post(routes::sessions::get_session))
+        .route("/histogram", post(routes::aggregations::histogram))
+        .route("/facets", post(routes::aggregations::facets))
         .with_state(state);
 
     let router = Router::new().nest("/api", api_routes);

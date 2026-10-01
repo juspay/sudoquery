@@ -4,6 +4,7 @@ use sea_orm::DatabaseConnection;
 use sqlx::PgPool;
 
 use crate::keycloak::KeycloakAdmin;
+use crate::opensearch::OpenSearch;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -22,4 +23,5 @@ pub struct AppState {
     pub clickhouse_admin_user: String,
     pub clickhouse_admin_password: String,
     pub clickhouse_project_password: String,
+    pub opensearch: OpenSearch,
 }
