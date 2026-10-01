@@ -20,4 +20,12 @@ export default defineConfig([
       globals: globals.browser,
     },
   },
+  {
+    // Vendored from OpenSearch Dashboards and kept close to upstream, which
+    // types its AST nodes as `any` throughout.
+    files: ['src/vendor/kuery/**/*.ts'],
+    rules: {
+      '@typescript-eslint/no-explicit-any': 'off',
+    },
+  },
 ])
