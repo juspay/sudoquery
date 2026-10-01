@@ -227,7 +227,7 @@ export default function DiscoverPage() {
               <Histogram
                 data={histogram.data}
                 height={chart.size}
-                onZoom={(from, to) =>
+                onSelect={(from, to) =>
                   update({ time: { from: from.toISOString(), to: to.toISOString() } })
                 }
               />
