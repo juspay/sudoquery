@@ -26,6 +26,8 @@ const TYPE_BADGE: Record<FieldType, string> = {
 };
 
 interface FieldSidebarProps {
+  /** In pixels. */
+  width: number;
   fields: FieldDef[];
   columns: string[];
   docs: EventDoc[];
@@ -37,6 +39,7 @@ interface FieldSidebarProps {
 }
 
 export function FieldSidebar({
+  width,
   fields,
   columns,
   docs,
@@ -147,7 +150,7 @@ export function FieldSidebar({
   return (
     <Box
       component="aside"
-      sx={{ ...panelSx, width: 272, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}
+      sx={{ ...panelSx, width, flexShrink: 0, display: 'flex', flexDirection: 'column', minHeight: 0 }}
     >
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, px: 1.5, py: 1, borderBottom: HAIRLINE }}>
         <SearchIcon size={14} color={colorInk40} />

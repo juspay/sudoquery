@@ -80,10 +80,15 @@ export function intervalMs(interval: string): number | null {
   return match ? Number(match[1]) * UNIT_MS[match[2]] : null;
 }
 
-/** Axis label for a histogram bucket, as coarse as its interval allows. */
-export function formatBucket(time: Date, interval: string): string {
+/**
+ * Axis label for a histogram bucket, as coarse as its interval allows. The
+ * date is included once the chart covers more than a day, or every label
+ * of 12h buckets would read the same few times.
+ */
+export function formatBucket(time: Date, interval: string, spanMs: number): string {
   const width = intervalMs(interval) ?? 0;
   if (width >= UNIT_MS.d) return format(time, 'MMM d');
+  if (spanMs > UNIT_MS.d) return format(time, 'MMM d HH:mm');
   if (width >= UNIT_MS.m) return format(time, 'HH:mm');
   return format(time, 'HH:mm:ss');
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_RANGE,
   QUICK_RANGES,
+  formatBucket,
   intervalMs,
   rangeLabel,
   resolveRange,
@@ -84,5 +85,23 @@ describe('intervalMs', () => {
     expect(intervalMs('12h')).toBe(43_200_000);
     expect(intervalMs('365d')).toBe(31_536_000_000);
     expect(intervalMs('soon')).toBeNull();
+  });
+});
+
+describe('formatBucket', () => {
+  const time = new Date(2026, 8, 30, 18, 30, 15);
+  const hour = 3_600_000;
+
+  it('shows the time of day within a single day', () => {
+    expect(formatBucket(time, '30s', hour)).toBe('18:30:15');
+    expect(formatBucket(time, '5m', 12 * hour)).toBe('18:30');
+  });
+
+  it('adds the date once the chart spans more than a day', () => {
+    expect(formatBucket(time, '12h', 30 * 24 * hour)).toBe('Sep 30 18:30');
+  });
+
+  it('shows only the date for day-wide buckets', () => {
+    expect(formatBucket(time, '1d', 90 * 24 * hour)).toBe('Sep 30');
   });
 });

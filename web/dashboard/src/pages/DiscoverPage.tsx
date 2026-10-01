@@ -6,6 +6,7 @@ import { DiscoverHeader } from '../components/Discover/DiscoverHeader';
 import { DocTable } from '../components/Discover/DocTable';
 import { FieldSidebar } from '../components/Discover/FieldSidebar';
 import { Histogram } from '../components/Discover/Histogram';
+import { ResizeHandle } from '../components/Discover/ResizeHandle';
 import { HAIRLINE, panelSx } from '../components/Discover/styles';
 import { EmptyStateCard } from '../components/shared/EmptyStateCard';
 import { discoverFields, flattenEvent } from '../discover/fields';
@@ -15,6 +16,7 @@ import { formatTimestamp } from '../discover/timeRange';
 import { topValues } from '../discover/topValues';
 import type { EventDoc, FilterValue } from '../discover/types';
 import { useAsyncResult, useDiscover, useSearchScope } from '../discover/useDiscover';
+import { usePersistentSize } from '../hooks/usePersistentSize';
 import { isAbort, searchErrorMessage, searchService } from '../services/searchService';
 import { colorInk40, colorInk60 } from '../theme/tokens';
 import { downloadAsCSV, downloadAsJSON } from '../utils/download';
@@ -57,6 +59,9 @@ export default function DiscoverPage() {
   // The fields offered depend on the events loaded, which depend on the query,
   // so the loaded events are fed back in through this state.
   const [fieldDocs, setFieldDocs] = useState<EventDoc[]>(NO_DOCS);
+
+  const sidebar = usePersistentSize('discover_sidebar_width', 272, 200, 560);
+  const chart = usePersistentSize('discover_histogram_height', 132, 60, 420);
 
   const fields = useMemo(() => discoverFields(fieldDocs), [fieldDocs]);
   const discover = useDiscover(fields);
@@ -180,8 +185,9 @@ export default function DiscoverPage() {
         lookupValues={lookupValues}
       />
 
-      <Box sx={{ flex: 1, minHeight: 0, display: 'flex', gap: 1.5 }}>
+      <Box sx={{ flex: 1, minHeight: 0, display: 'flex' }}>
         <FieldSidebar
+          width={sidebar.size}
           fields={fields}
           columns={state.columns}
           docs={docs}
@@ -191,8 +197,17 @@ export default function DiscoverPage() {
           onFilter={filterValue}
           onFilterExists={filterExists}
         />
+        <ResizeHandle
+          direction="column"
+          label="Resize field list"
+          size={sidebar.size}
+          min={sidebar.min}
+          max={sidebar.max}
+          onResize={sidebar.setSize}
+          onReset={sidebar.reset}
+        />
 
-        <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column' }}>
           <Box sx={{ ...panelSx, px: 2, pt: 1.25, pb: 0.5 }}>
             <Box sx={{ display: 'flex', alignItems: 'baseline', gap: 1.5, flexWrap: 'wrap' }}>
               <Typography sx={{ fontSize: '18px', fontWeight: 600, color: 'text.primary' }}>
@@ -211,14 +226,24 @@ export default function DiscoverPage() {
             {histogram.data ? (
               <Histogram
                 data={histogram.data}
+                height={chart.size}
                 onZoom={(from, to) =>
                   update({ time: { from: from.toISOString(), to: to.toISOString() } })
                 }
               />
             ) : (
-              <Skeleton variant="rounded" height={132} sx={{ my: 0.5 }} />
+              <Skeleton variant="rounded" height={chart.size} sx={{ my: 0.5 }} />
             )}
           </Box>
+          <ResizeHandle
+            direction="row"
+            label="Resize chart"
+            size={chart.size}
+            min={chart.min}
+            max={chart.max}
+            onResize={chart.setSize}
+            onReset={chart.reset}
+          />
 
           <Box sx={{ ...panelSx, flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
             {error ? (

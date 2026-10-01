@@ -19,6 +19,9 @@ interface HistogramProps {
 
 export function Histogram({ data, height = 132, onZoom }: HistogramProps) {
   const width = intervalMs(data.interval) ?? 0;
+  const first = data.buckets[0]?.time;
+  const last = data.buckets[data.buckets.length - 1]?.time;
+  const span = first && last ? new Date(last).getTime() - new Date(first).getTime() + width : 0;
 
   const bars = useMemo(
     () => data.buckets.map((bucket) => ({ time: bucket.time, count: bucket.count })),
@@ -57,7 +60,7 @@ export function Histogram({ data, height = 132, onZoom }: HistogramProps) {
           tickSize: 0,
           tickPadding: 6,
           tickValues: ticks,
-          format: (value) => formatBucket(new Date(String(value)), data.interval),
+          format: (value) => formatBucket(new Date(String(value)), data.interval, span),
         }}
         onClick={(bar) => {
           const from = new Date(String(bar.indexValue));
