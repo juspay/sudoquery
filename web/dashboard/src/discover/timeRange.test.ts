@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_RANGE,
   QUICK_RANGES,
+  endsAtFixedTime,
   formatBucket,
   intervalMs,
   rangeLabel,
@@ -70,6 +71,12 @@ describe('rangeLabel', () => {
     }
   });
 
+  it('shows an absolute start that runs up to now', () => {
+    expect(rangeLabel({ from: '2026-09-01T10:00:00', to: 'now' })).toBe(
+      'Sep 1, 2026 10:00:00 → now',
+    );
+  });
+
   it('shows both ends of any other range', () => {
     expect(rangeLabel({ from: 'now-2h', to: 'now-1h' })).toBe('now-2h → now-1h');
     expect(rangeLabel({ from: '2026-09-01T10:00:00', to: '2026-09-01T11:00:00' })).toBe(
@@ -103,5 +110,17 @@ describe('formatBucket', () => {
 
   it('shows only the date for day-wide buckets', () => {
     expect(formatBucket(time, '1d', 90 * 24 * hour)).toBe('Sep 30');
+  });
+});
+
+describe('endsAtFixedTime', () => {
+  it('is false for ranges that end now or relative to now', () => {
+    expect(endsAtFixedTime({ from: 'now-15m', to: 'now' })).toBe(false);
+    expect(endsAtFixedTime({ from: '2026-09-01T10:00:00Z', to: 'now' })).toBe(false);
+    expect(endsAtFixedTime({ from: 'now-2h', to: 'now-1h' })).toBe(false);
+  });
+
+  it('is true for an absolute end', () => {
+    expect(endsAtFixedTime({ from: 'now-2h', to: '2026-09-01T11:00:00Z' })).toBe(true);
   });
 });

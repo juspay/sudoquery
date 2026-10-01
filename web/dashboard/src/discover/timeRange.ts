@@ -74,6 +74,14 @@ export function rangeLabel(range: TimeRange): string {
   return `${formatEnd(range.from)} → ${formatEnd(range.to)}`;
 }
 
+/**
+ * Whether the range ends at a fixed moment. Refreshing such a range shows
+ * nothing new; one ending at `now` (or `now-1h`) moves forward instead.
+ */
+export function endsAtFixedTime(range: TimeRange): boolean {
+  return !RELATIVE.test(range.to.trim());
+}
+
 /** Milliseconds in a histogram interval such as `30s`, `5m` or `1d`. */
 export function intervalMs(interval: string): number | null {
   const match = /^(\d+)([smhdw])$/.exec(interval);

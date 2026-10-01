@@ -22,6 +22,7 @@ describe('url state', () => {
       ],
       columns: ['name', 'properties.plan'],
       order: 'asc',
+      refresh: '30s',
     };
 
     const params = new URLSearchParams(serializeState(state).toString());
@@ -30,7 +31,7 @@ describe('url state', () => {
   });
 
   it('falls back to defaults for unknown values', () => {
-    const params = new URLSearchParams('lang=sql&sort=sideways&from=now-1h');
+    const params = new URLSearchParams('lang=sql&sort=sideways&from=now-1h&refresh=1s');
 
     expect(parseState(params)).toEqual(DEFAULT_STATE);
   });

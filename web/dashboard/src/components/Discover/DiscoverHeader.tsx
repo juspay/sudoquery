@@ -1,9 +1,12 @@
 import { Link as RouterLink, useLocation } from 'react-router-dom';
 import { Box, CircularProgress, IconButton, Tab, Tabs, Tooltip } from '@mui/material';
 import { RefreshCw as RefreshIcon } from 'lucide-react';
+import { useAutoRefresh } from '../../discover/autoRefresh';
+import { endsAtFixedTime } from '../../discover/timeRange';
 import type { Discover } from '../../discover/useDiscover';
 import type { FieldDef } from '../../discover/types';
 import { colorCream2, colorInk60 } from '../../theme/tokens';
+import { AutoRefreshPicker } from './AutoRefreshPicker';
 import { FilterBar } from './FilterBar';
 import { QueryBar } from './QueryBar';
 import { TimeRangePicker } from './TimeRangePicker';
@@ -27,6 +30,7 @@ interface DiscoverHeaderProps {
 export function DiscoverHeader({ tab, discover, fields, loading, lookupValues }: DiscoverHeaderProps) {
   const location = useLocation();
   const { state, update, refresh, built } = discover;
+  useAutoRefresh(state.refresh, refresh);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
@@ -61,6 +65,11 @@ export function DiscoverHeader({ tab, discover, fields, loading, lookupValues }:
           lookupValues={lookupValues}
         />
         <TimeRangePicker value={state.time} onChange={(time) => update({ time })} />
+        <AutoRefreshPicker
+          value={state.refresh}
+          fixedEnd={endsAtFixedTime(state.time)}
+          onChange={(next) => update({ refresh: next })}
+        />
         <Tooltip title="Refresh">
           <IconButton
             onClick={refresh}

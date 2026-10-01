@@ -1,3 +1,4 @@
+import { parseRefreshInterval } from './autoRefresh';
 import { DEFAULT_RANGE } from './timeRange';
 import type { DiscoverState, FilterOperator, FilterPill, FilterValue } from './types';
 
@@ -8,6 +9,7 @@ export const DEFAULT_STATE: DiscoverState = {
   filters: [],
   columns: [],
   order: 'desc',
+  refresh: null,
 };
 
 const OPERATORS: FilterOperator[] = ['is', 'is_one_of', 'exists', 'range'];
@@ -81,6 +83,7 @@ export function parseState(params: URLSearchParams): DiscoverState {
     filters: parseFilters(params.get('f')),
     columns: columns ? columns.split(',').filter(Boolean) : [],
     order: params.get('sort') === 'asc' ? 'asc' : 'desc',
+    refresh: parseRefreshInterval(params.get('refresh')),
   };
 }
 
@@ -96,5 +99,6 @@ export function serializeState(state: DiscoverState): URLSearchParams {
   if (state.filters.length > 0) params.set('f', serializeFilters(state.filters));
   if (state.columns.length > 0) params.set('cols', state.columns.join(','));
   if (state.order !== DEFAULT_STATE.order) params.set('sort', state.order);
+  if (state.refresh !== null) params.set('refresh', state.refresh);
   return params;
 }

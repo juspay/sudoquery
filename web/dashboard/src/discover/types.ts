@@ -47,6 +47,8 @@ export interface DiscoverState {
   /** Fields shown as table columns; empty shows the document summary. */
   columns: string[];
   order: SortOrder;
+  /** Auto-refresh interval such as `30s`; `null` when off. */
+  refresh: string | null;
 }
 
 export type FieldType = 'string' | 'number' | 'boolean' | 'date' | 'ip' | 'object' | 'unknown';
