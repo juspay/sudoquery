@@ -60,9 +60,9 @@ impl TestConfig {
     }
 
     /// Builds the S3 key prefix the service must archive a group under:
-    /// `{tenant}/{workspace}/dt={date}/hour={hour}`.
-    pub fn expected_prefix(&self, tenant: &str, workspace: &str, date: &str, hour: u32) -> String {
-        format!("{tenant}/{workspace}/dt={date}/hour={hour}")
+    /// `{org}/{proj}/dt={date}/hour={hour}`.
+    pub fn expected_prefix(&self, org: &str, proj: &str, date: &str, hour: u32) -> String {
+        format!("{org}/{proj}/dt={date}/hour={hour}")
     }
 }
 
@@ -96,8 +96,8 @@ mod tests {
             source_id: None,
         };
 
-        let prefix = config.expected_prefix("tenant-a", "ws-1", "2026-09-23", 13);
+        let prefix = config.expected_prefix("org-a", "proj-1", "2026-09-23", 13);
 
-        assert_eq!(prefix, "tenant-a/ws-1/dt=2026-09-23/hour=13");
+        assert_eq!(prefix, "org-a/proj-1/dt=2026-09-23/hour=13");
     }
 }

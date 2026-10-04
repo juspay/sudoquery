@@ -94,14 +94,14 @@ export class Pusher {
   }
 
   private static buildHeaders(payload: BatchPayload): Record<string, string> | null {
-    const tenantId = Configuration.tenantId ?? payload.events[0]?.tenant_id ?? null;
+    const tenantId = Configuration.tenantId ?? payload.events[0]?.org_id ?? null;
 
     if (!tenantId) {
       console.error("Cannot send analytics batch: tenantId is required by the collector.");
       return null;
     }
 
-    const workspaceId = Configuration.workspaceId ?? payload.events[0]?.workspace_id ?? null;
+    const workspaceId = Configuration.workspaceId ?? payload.events[0]?.proj_id ?? null;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...Configuration.headers,

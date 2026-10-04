@@ -1,0 +1,85 @@
+{
+  "realm": "hyper-analytics",
+  "displayName": "Hyper Analytics",
+  "enabled": true,
+  "sslRequired": "none",
+  "roles": {
+    "realm": [
+      { "name": "super_admin", "description": "Full dashboard access" }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "hyper-analytics-ui",
+      "name": "Dashboard UI (src/config/api.ts default)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*"
+      ],
+      "webOrigins": ["+"],
+      "defaultClientScopes": ["web-origins", "acr", "profile", "roles", "email"]
+    },
+    {
+      "clientId": "hyper-analytics-app",
+      "name": "Dashboard UI (web/dashboard/.env.example client id)",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": true,
+      "standardFlowEnabled": true,
+      "directAccessGrantsEnabled": true,
+      "redirectUris": [
+        "http://localhost:5173/*",
+        "http://127.0.0.1:5173/*"
+      ],
+      "webOrigins": ["+"],
+      "defaultClientScopes": ["web-origins", "acr", "profile", "roles", "email"]
+    }
+  ],
+  "identityProviders": [
+    {
+      "alias": "google",
+      "displayName": "Google (local mock)",
+      "providerId": "oidc",
+      "enabled": true,
+      "trustEmail": true,
+      "storeToken": false,
+      "addReadTokenRoleOnCreate": false,
+      "firstBrokerLoginFlowAlias": "first broker login",
+      "updateProfileFirstLoginMode": "on",
+      "config": {
+        "clientId": "hyper-analytics-broker",
+        "clientSecret": "google-mock-broker-secret",
+        "clientAuthMethod": "client_secret_post",
+        "authorizationUrl": "http://localhost:8080/realms/google-mock/protocol/openid-connect/auth",
+        "tokenUrl": "http://localhost:8080/realms/google-mock/protocol/openid-connect/token",
+        "userInfoUrl": "http://localhost:8080/realms/google-mock/protocol/openid-connect/userinfo",
+        "jwksUrl": "http://localhost:8080/realms/google-mock/protocol/openid-connect/certs",
+        "issuer": "http://localhost:8080/realms/google-mock",
+        "logoutUrl": "http://localhost:8080/realms/google-mock/protocol/openid-connect/logout",
+        "defaultScope": "openid email profile",
+        "validateSignature": "true",
+        "useJwksUrl": "true",
+        "syncMode": "IMPORT"
+      }
+    }
+  ],
+  "users": [
+    {
+      "username": "admin",
+      "enabled": true,
+      "email": "admin@local.dev",
+      "emailVerified": true,
+      "firstName": "Local",
+      "lastName": "Admin",
+      "credentials": [
+        { "type": "password", "value": "admin-password", "temporary": false }
+      ],
+      "realmRoles": ["super_admin"]
+    }
+  ]
+}

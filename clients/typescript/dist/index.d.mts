@@ -40,8 +40,8 @@ type Event = {
     envelop_version: EnvelopVersion;
     id: string;
     name: string;
-    tenant_id: string;
-    workspace_id: string | null;
+    org_id: string;
+    proj_id: string | null;
     session_id: string | null;
     anon_id: string;
     actor_id: string | null;

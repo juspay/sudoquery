@@ -1,0 +1,47 @@
+{
+  "realm": "google-mock",
+  "displayName": "Google (local mock)",
+  "enabled": true,
+  "sslRequired": "none",
+  "loginWithEmailAllowed": true,
+  "clients": [
+    {
+      "clientId": "hyper-analytics-broker",
+      "name": "hyper-analytics broker client",
+      "description": "Used by the hyper-analytics realm to broker logins from this mock Google realm",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "standardFlowEnabled": true,
+      "secret": "google-mock-broker-secret",
+      "redirectUris": [
+        "http://localhost:8080/realms/hyper-analytics/broker/google/*"
+      ],
+      "defaultClientScopes": ["web-origins", "acr", "profile", "roles", "email"]
+    }
+  ],
+  "users": [
+    {
+      "username": "dev@gmail.com",
+      "enabled": true,
+      "email": "dev@gmail.com",
+      "emailVerified": true,
+      "firstName": "Dev",
+      "lastName": "Mockington",
+      "credentials": [
+        { "type": "password", "value": "dev-password", "temporary": false }
+      ]
+    },
+    {
+      "username": "qa@gmail.com",
+      "enabled": true,
+      "email": "qa@gmail.com",
+      "emailVerified": true,
+      "firstName": "Quinn",
+      "lastName": "Assurance",
+      "credentials": [
+        { "type": "password", "value": "qa-password", "temporary": false }
+      ]
+    }
+  ]
+}

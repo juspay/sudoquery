@@ -1,7 +1,7 @@
 # kafka-to-s3
 
 Archives canonical events from Kafka to S3 as zstd-compressed JSONL, segregated
-per tenant + workspace and partitioned by arrival date/hour. The downstream
+per org + project and partitioned by arrival date/hour. The downstream
 counterpart of the HTTP `event-collector` service: it consumes what the collector
 publishes and lands it in object storage.
 
@@ -29,21 +29,21 @@ log verbosity (defaults to `info`).
 ## S3 key layout
 
 ```
-{S3_PREFIX?}/{tenant_id}/{workspace_id}/dt=YYYY-MM-DD/hour=HH/{hash}.jsonl.zst
+{S3_PREFIX?}/{org_id}/{proj_id}/dt=YYYY-MM-DD/hour=HH/{hash}.jsonl.zst
 {S3_PREFIX?}/_quarantine/{hash}.jsonl.zst
 ```
 
 - `dt`/`hour` come from the event's `arrived_at` (UTC); if `arrived_at` is
   absent or unparseable the service falls back to `occured_at` and logs a
   warning. The hour is zero-padded (`hour=03`).
-- `workspace_id` absent routes the event to the literal `default` directory
+- `proj_id` absent routes the event to the literal `default` directory
   (with a warning).
 - `hash` is the first 16 lowercase hex chars of the sha256 of the uncompressed
   JSONL body. Identical content produces an identical key; different content
   produces a different key.
 - File content is the raw Kafka payload bytes, one event per line, in
   consumption order — events are never re-serialized.
-- One file per `(tenant, workspace, dt, hour)` per flush cycle, merged across
+- One file per `(org, proj, dt, hour)` per flush cycle, merged across
   all topics and partitions. Per-partition consumption order is preserved
   within a file; cross-partition ordering is not guaranteed — downstream
   consumers sort by `arrived_at` as needed.
@@ -56,7 +56,7 @@ log verbosity (defaults to `info`).
 
 ### Quarantine
 
-Events whose payload is not valid JSON, is missing `tenant_id`, or has no
+Events whose payload is not valid JSON, is missing `org_id`, or has no
 parseable `arrived_at`/`occured_at` are written (raw bytes verbatim, one object
 per event) to `_quarantine/`, logged as errors, and otherwise treated like any
 other event: they count toward the batch size and their offsets are committed

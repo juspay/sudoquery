@@ -22,10 +22,10 @@ const POLL_INTERVAL: Duration = Duration::from_secs(2);
 pub struct ArchivedEvent {
     /// The event's canonical `id`.
     pub id: uuid::Uuid,
-    /// Tenant the event was segregated under.
-    pub tenant_id: String,
-    /// Workspace the event was segregated under.
-    pub workspace_id: Option<String>,
+    /// Org the event was segregated under.
+    pub org_id: String,
+    /// Project the event was segregated under.
+    pub proj_id: Option<String>,
     /// Arrival time the event was segregated under (UTC).
     pub arrived_at: chrono::DateTime<chrono::Utc>,
 }

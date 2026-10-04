@@ -41,8 +41,8 @@ describe('Type Tests', () => {
         envelop_version: '1.0',
         id: '018f6a31-6f27-7c9c-8e21-cfc10f5ee879',
         name: 'page_view',
-        tenant_id: 'tenant-1',
-        workspace_id: 'workspace-1',
+        org_id: 'tenant-1',
+        proj_id: 'workspace-1',
         session_id: 'session-1',
         anon_id: 'anon-1',
         actor_id: 'user-1',
@@ -74,8 +74,8 @@ describe('Type Tests', () => {
         envelop_version: '1.0',
         id: '018f6a31-6f27-7c9c-8e21-cfc10f5ee879',
         name: 'anonymous_event',
-        tenant_id: 'tenant-1',
-        workspace_id: null,
+        org_id: 'tenant-1',
+        proj_id: null,
         session_id: null,
         anon_id: 'anon-1',
         actor_id: null,
@@ -87,7 +87,7 @@ describe('Type Tests', () => {
         system_properties: null,
       };
 
-      expect(event.workspace_id).toBeNull();
+      expect(event.proj_id).toBeNull();
       expect(event.actor_id).toBeNull();
     });
   });
@@ -98,8 +98,8 @@ describe('Type Tests', () => {
         envelop_version: '1.0',
         id: '018f6a31-6f27-7c9c-8e21-cfc10f5ee879',
         name: 'purchase',
-        tenant_id: 'tenant-1',
-        workspace_id: null,
+        org_id: 'tenant-1',
+        proj_id: null,
         session_id: 'session-1',
         anon_id: 'anon-1',
         actor_id: 'user-1',

@@ -1,7 +1,7 @@
 //! Black-box integration tests for the externally-run `kafka_to_s3` service.
 //!
 //! Every test serializes on [`serial`] (one shared topic, one shared service
-//! instance), isolates its S3 namespace behind a `unique_tenant` prefix, and
+//! instance), isolates its S3 namespace behind a `unique_org` prefix, and
 //! asserts on the objects the service archives. See the library docs for the
 //! contract under test and the `K2S_TEST_*` environment variables.
 //!
@@ -25,7 +25,7 @@ use std::time::Duration;
 use canonical_event::CanonicalEvent;
 use chrono::{DateTime, Utc};
 use kafka_to_s3_tests::config::TestConfig;
-use kafka_to_s3_tests::events::{event_id, make_event, unique_tenant};
+use kafka_to_s3_tests::events::{event_id, make_event, unique_org};
 use kafka_to_s3_tests::launcher::StubLauncher;
 use kafka_to_s3_tests::producer::{EventProducer, ProducedEvent, ensure_topic};
 use kafka_to_s3_tests::s3::{ArchiveStore, ArchivedEvent, is_hash_file_name};
@@ -67,10 +67,10 @@ async fn setup() -> TestHarness {
     }
 }
 
-/// A tenant/workspace/hour group the tests segregate events into.
+/// An org/proj/hour group the tests segregate events into.
 struct Group {
-    tenant: String,
-    workspace: String,
+    org: String,
+    proj: String,
     hour: u32,
 }
 
@@ -83,8 +83,8 @@ impl Group {
             .map(|i| {
                 let seq = seq_start + i;
                 make_event(
-                    &self.tenant,
-                    &self.workspace,
+                    &self.org,
+                    &self.proj,
                     base + chrono::Duration::seconds(seq as i64),
                     seq,
                 )
@@ -94,7 +94,7 @@ impl Group {
 
     /// The S3 prefix the service must archive this group under.
     fn prefix(&self, config: &TestConfig) -> String {
-        config.expected_prefix(&self.tenant, &self.workspace, DATE, self.hour)
+        config.expected_prefix(&self.org, &self.proj, DATE, self.hour)
     }
 }
 
@@ -108,8 +108,8 @@ fn hour_base(hour: u32) -> DateTime<Utc> {
 /// What the harness produced for one event, mirrored from the built event.
 struct ExpectedEvent {
     id: Uuid,
-    tenant_id: String,
-    workspace_id: String,
+    org_id: String,
+    proj_id: String,
     arrived_at: DateTime<Utc>,
 }
 
@@ -119,11 +119,11 @@ fn expected_of(events: &[CanonicalEvent]) -> Vec<ExpectedEvent> {
         .iter()
         .map(|event| ExpectedEvent {
             id: event_id(event),
-            tenant_id: event.tenant_id.clone(),
-            workspace_id: event
-                .workspace_id
+            org_id: event.org_id.clone(),
+            proj_id: event
+                .proj_id
                 .clone()
-                .expect("harness events always set workspace_id"),
+                .expect("harness events always set proj_id"),
             arrived_at: event
                 .arrived_at
                 .expect("harness events always set arrived_at"),
@@ -145,14 +145,14 @@ fn archived_ids(archived: &[ArchivedEvent]) -> HashSet<Uuid> {
 fn assert_event_matches(actual: &ArchivedEvent, expected: &ExpectedEvent) {
     assert_eq!(actual.id, expected.id, "archived event id mismatch");
     assert_eq!(
-        actual.tenant_id, expected.tenant_id,
-        "archived tenant_id mismatch for event {}",
+        actual.org_id, expected.org_id,
+        "archived org_id mismatch for event {}",
         expected.id
     );
     assert_eq!(
-        actual.workspace_id.as_deref(),
-        Some(expected.workspace_id.as_str()),
-        "archived workspace_id mismatch for event {}",
+        actual.proj_id.as_deref(),
+        Some(expected.proj_id.as_str()),
+        "archived proj_id mismatch for event {}",
         expected.id
     );
     assert_eq!(
@@ -255,19 +255,19 @@ async fn harness_connects_to_infrastructure() {
     setup().await;
 }
 
-/// One tenant+workspace, `n` events in hour 13: exactly one object appears
+/// One org+proj, `n` events in hour 13: exactly one object appears
 /// under the group prefix with a hash file name, holding all `n` events in
-/// production order with matching tenant/workspace/arrived_at.
+/// production order with matching org/proj/arrived_at.
 #[tokio::test]
-async fn flushes_exactly_n_events_for_single_tenant_workspace() {
+async fn flushes_exactly_n_events_for_single_org_proj() {
     let _guard = serial().await;
     let _service = StubLauncher.launch();
     let harness = setup().await;
     let n = harness.config.batch_size;
 
     let group = Group {
-        tenant: unique_tenant("k2s-flush-n"),
-        workspace: "ws-1".to_string(),
+        org: unique_org("k2s-flush-n"),
+        proj: "proj-1".to_string(),
         hour: HOUR_13,
     };
     let events = group.events(0, n);
@@ -292,26 +292,26 @@ async fn flushes_exactly_n_events_for_single_tenant_workspace() {
     assert_ordered_by_production(&archived, &expected, &produced);
 }
 
-/// `n` events across two tenant+workspace groups in one batch: each group
+/// `n` events across two org+proj groups in one batch: each group
 /// gets exactly one hash-named object under its own prefix holding exactly
 /// its own events; the union of both files covers all `n` ids without
 /// duplicates.
 #[tokio::test]
-async fn segregates_events_by_tenant_and_workspace() {
+async fn segregates_events_by_org_and_proj() {
     let _guard = serial().await;
     let _service = StubLauncher.launch();
     let harness = setup().await;
     let n = harness.config.batch_size;
 
-    let tenant = unique_tenant("k2s-segregate");
+    let org = unique_org("k2s-segregate");
     let ws1 = Group {
-        tenant: tenant.clone(),
-        workspace: "ws-1".to_string(),
+        org: org.clone(),
+        proj: "proj-1".to_string(),
         hour: HOUR_13,
     };
     let ws2 = Group {
-        tenant,
-        workspace: "ws-2".to_string(),
+        org,
+        proj: "proj-2".to_string(),
         hour: HOUR_13,
     };
     let events_ws1 = ws1.events(0, n / 2);
@@ -382,7 +382,7 @@ async fn segregates_events_by_tenant_and_workspace() {
     );
 }
 
-/// `n` events for one tenant+workspace, half in hour 13 and half in hour 14:
+/// `n` events for one org+proj, half in hour 13 and half in hour 14:
 /// each hour prefix gets exactly one hash-named object holding exactly that
 /// hour's events.
 #[tokio::test]
@@ -392,15 +392,15 @@ async fn segregates_events_by_arrived_at_hour() {
     let harness = setup().await;
     let n = harness.config.batch_size;
 
-    let tenant = unique_tenant("k2s-by-hour");
+    let org = unique_org("k2s-by-hour");
     let h13 = Group {
-        tenant: tenant.clone(),
-        workspace: "ws-1".to_string(),
+        org: org.clone(),
+        proj: "proj-1".to_string(),
         hour: HOUR_13,
     };
     let h14 = Group {
-        tenant,
-        workspace: "ws-1".to_string(),
+        org,
+        proj: "proj-1".to_string(),
         hour: HOUR_14,
     };
     let events_h13 = h13.events(0, n / 2);
@@ -466,8 +466,8 @@ async fn continues_consuming_after_flush() {
     let n = harness.config.batch_size;
 
     let group = Group {
-        tenant: unique_tenant("k2s-continue"),
-        workspace: "ws-1".to_string(),
+        org: unique_org("k2s-continue"),
+        proj: "proj-1".to_string(),
         hour: HOUR_13,
     };
     let prefix = group.prefix(harness.config);
@@ -566,8 +566,8 @@ async fn flushes_partial_batch_on_timeout() {
     let n = harness.config.batch_size;
 
     let group = Group {
-        tenant: unique_tenant("k2s-timeout"),
-        workspace: "ws-1".to_string(),
+        org: unique_org("k2s-timeout"),
+        proj: "proj-1".to_string(),
         hour: HOUR_13,
     };
     let events = group.events(0, n - 1);
@@ -605,7 +605,7 @@ async fn flushes_partial_batch_on_timeout() {
 /// slow: exercises the exact-n cycle followed by the 1-minute flush timer;
 /// run with -- --ignored
 ///
-/// `n + k` events (`k < n`) for one tenant: the count trigger flushes an
+/// `n + k` events (`k < n`) for one org: the count trigger flushes an
 /// `n`-line object immediately (exactly `n`, FIFO), the surplus `k` events
 /// stay buffered and flush as a `k`-line object when the timer fires. The
 /// two objects' id sets are disjoint and together cover all `n + k` ids.
@@ -623,8 +623,8 @@ async fn flushes_surplus_after_exact_n_cycle() {
     );
 
     let group = Group {
-        tenant: unique_tenant("k2s-surplus"),
-        workspace: "ws-1".to_string(),
+        org: unique_org("k2s-surplus"),
+        proj: "proj-1".to_string(),
         hour: HOUR_13,
     };
     let prefix = group.prefix(harness.config);
@@ -707,8 +707,8 @@ async fn attaches_provenance_metadata_to_archived_objects() {
     let n = harness.config.batch_size;
 
     let group = Group {
-        tenant: unique_tenant("k2s-metadata"),
-        workspace: "ws-1".to_string(),
+        org: unique_org("k2s-metadata"),
+        proj: "proj-1".to_string(),
         hour: HOUR_13,
     };
     let events = group.events(0, n);
@@ -784,8 +784,8 @@ async fn identical_content_reputs_stay_idempotent() {
     store.ensure_bucket().await;
 
     let group = Group {
-        tenant: unique_tenant("k2s-idempotent"),
-        workspace: "ws-1".to_string(),
+        org: unique_org("k2s-idempotent"),
+        proj: "proj-1".to_string(),
         hour: HOUR_13,
     };
     let events = group.events(0, 2);

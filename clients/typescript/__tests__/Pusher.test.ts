@@ -78,7 +78,7 @@ describe("Pusher", () => {
           expect.objectContaining({
             envelop_version: "1.0",
             name: "event_1",
-            tenant_id: "tenant-1",
+            org_id: "tenant-1",
             actor_id: "user_1",
             properties: { id: 1 },
           }),
@@ -324,7 +324,7 @@ describe("Pusher", () => {
       Configuration.setWorkspaceId("workspace-1");
 
       for (let i = 1; i <= 2; i++) {
-        Batcher.addToBatch(createMockEvent(i, { workspace_id: "workspace-1" }));
+        Batcher.addToBatch(createMockEvent(i, { proj_id: "workspace-1" }));
       }
 
       await Pusher.pushLogs();
@@ -351,7 +351,7 @@ describe("Pusher", () => {
     it("should not upload without tenantId", async () => {
       const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
       Configuration.setTenantId(null);
-      Batcher.addToBatch(createMockEvent(1, { tenant_id: "" }));
+      Batcher.addToBatch(createMockEvent(1, { org_id: "" }));
 
       const result = await Pusher.pushLogs();
 

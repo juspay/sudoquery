@@ -79,6 +79,29 @@ _Configuration._source = _Configuration.DEFAULT_SOURCE;
 _Configuration._sessionId = null;
 var Configuration = _Configuration;
 
+// src/Uuid.ts
+function generateUuid() {
+  const runtimeCrypto = getRuntimeCrypto();
+  if (runtimeCrypto && typeof runtimeCrypto.randomUUID === "function") {
+    return runtimeCrypto.randomUUID();
+  }
+  const bytes = new Uint8Array(16);
+  if (runtimeCrypto && typeof runtimeCrypto.getRandomValues === "function") {
+    runtimeCrypto.getRandomValues(bytes);
+  } else {
+    for (let i = 0; i < bytes.length; i++) {
+      bytes[i] = Math.floor(Math.random() * 256);
+    }
+  }
+  bytes[6] = bytes[6] & 15 | 64;
+  bytes[8] = bytes[8] & 63 | 128;
+  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0"));
+  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
+}
+function getRuntimeCrypto() {
+  return typeof globalThis !== "undefined" && "crypto" in globalThis ? globalThis.crypto : null;
+}
+
 // src/Session.ts
 var currentSessionId = null;
 function getSessionId() {
@@ -100,10 +123,7 @@ function getTimezone() {
   return Intl.DateTimeFormat().resolvedOptions().timeZone ?? null;
 }
 function generateId() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  return `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return generateUuid();
 }
 
 // src/Pusher.ts
@@ -182,12 +202,12 @@ var Pusher = class {
     }
   }
   static buildHeaders(payload) {
-    const tenantId = Configuration.tenantId ?? payload.events[0]?.tenant_id ?? null;
+    const tenantId = Configuration.tenantId ?? payload.events[0]?.org_id ?? null;
     if (!tenantId) {
       console.error("Cannot send analytics batch: tenantId is required by the collector.");
       return null;
     }
-    const workspaceId = Configuration.workspaceId ?? payload.events[0]?.workspace_id ?? null;
+    const workspaceId = Configuration.workspaceId ?? payload.events[0]?.proj_id ?? null;
     const headers = {
       "Content-Type": "application/json",
       ...Configuration.headers,
@@ -197,7 +217,7 @@ var Pusher = class {
       headers["x-workspace-id"] = workspaceId;
     }
     if (Configuration.token) {
-      headers["Authorization"] = `Bearer ${Configuration.token}`;
+      headers.Authorization = `Bearer ${Configuration.token}`;
     }
     return headers;
   }
@@ -278,11 +298,8 @@ SuperProperties.properties = {};
 // src/AnonymousId.ts
 var STORAGE_KEY = "hyper_analytics_anon_id";
 var AnonymousId = class {
-  /**
-   * Generates a new UUID v4 using crypto.randomUUID()
-   */
   static generateId() {
-    return crypto.randomUUID();
+    return generateUuid();
   }
   /**
    * Checks if running in browser environment
@@ -299,11 +316,10 @@ var AnonymousId = class {
    */
   static getOrCreate() {
     if (this.isBrowser()) {
-      let anonId = localStorage.getItem(STORAGE_KEY);
-      if (!anonId) {
-        anonId = this.generateId();
-        localStorage.setItem(STORAGE_KEY, anonId);
-      }
+      const storedAnonId = this.getFromStorage();
+      if (storedAnonId) return storedAnonId;
+      const anonId = this.generateId();
+      this.setInStorage(anonId);
       return anonId;
     } else {
       if (!this.inMemoryAnonId) {
@@ -320,7 +336,7 @@ var AnonymousId = class {
    */
   static reset() {
     if (this.isBrowser()) {
-      localStorage.removeItem(STORAGE_KEY);
+      this.removeFromStorage();
     } else {
       this.inMemoryAnonId = null;
     }
@@ -334,10 +350,31 @@ var AnonymousId = class {
    */
   static get() {
     if (this.isBrowser()) {
-      return localStorage.getItem(STORAGE_KEY);
+      return this.getFromStorage();
     } else {
       return this.inMemoryAnonId;
     }
+  }
+  static getFromStorage() {
+    try {
+      return localStorage.getItem(STORAGE_KEY);
+    } catch (_) {
+      return this.inMemoryAnonId;
+    }
+  }
+  static setInStorage(anonId) {
+    try {
+      localStorage.setItem(STORAGE_KEY, anonId);
+    } catch (_) {
+      this.inMemoryAnonId = anonId;
+    }
+  }
+  static removeFromStorage() {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch (_) {
+    }
+    this.inMemoryAnonId = null;
   }
 };
 // In-memory storage for Node.js environment
@@ -379,7 +416,6 @@ var SudoQuery = class {
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "hidden") {
-          this.stopPeriodicFlush();
           this.flush(true).catch((err) => console.error("Flush on pagehide error:", err));
         }
       });
@@ -390,12 +426,6 @@ var SudoQuery = class {
     this.flushTimer = setInterval(() => {
       this.flush(false).catch((err) => console.error("Periodic flush error:", err));
     }, intervalMs);
-  }
-  static stopPeriodicFlush() {
-    if (this.flushTimer !== null) {
-      clearInterval(this.flushTimer);
-      this.flushTimer = null;
-    }
   }
   /**
    * Check if the SDK has been initialized
@@ -472,8 +502,8 @@ var SudoQuery = class {
       envelop_version: "1.0",
       id: generateUuid(),
       name: eventName.toString(),
-      tenant_id: tenantId,
-      workspace_id: Configuration.workspaceId,
+      org_id: tenantId,
+      proj_id: Configuration.workspaceId,
       session_id: Configuration.sessionId ?? getSessionId(),
       anon_id: AnonymousId.getOrCreate(),
       actor_id: this.currentUser,
@@ -501,23 +531,6 @@ function mergeProperties(properties, defaults) {
 }
 function isJsonRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-function generateUuid() {
-  if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
-    return crypto.randomUUID();
-  }
-  const bytes = new Uint8Array(16);
-  if (typeof crypto !== "undefined" && typeof crypto.getRandomValues === "function") {
-    crypto.getRandomValues(bytes);
-  } else {
-    for (let i = 0; i < bytes.length; i++) {
-      bytes[i] = Math.floor(Math.random() * 256);
-    }
-  }
-  bytes[6] = bytes[6] & 15 | 64;
-  bytes[8] = bytes[8] & 63 | 128;
-  const hex = [...bytes].map((byte) => byte.toString(16).padStart(2, "0"));
-  return `${hex.slice(0, 4).join("")}-${hex.slice(4, 6).join("")}-${hex.slice(6, 8).join("")}-${hex.slice(8, 10).join("")}-${hex.slice(10, 16).join("")}`;
 }
 export {
   SudoQuery

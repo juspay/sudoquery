@@ -5,7 +5,7 @@ use tokio::sync::mpsc;
 
 fn event(id: u32) -> String {
     format!(
-        r#"{{"id":"{id}","tenant_id":"t1","workspace_id":"w1","occured_at":"2026-09-24T10:00:00Z","arrived_at":"2026-09-24T10:00:01Z"}}"#
+        r#"{{"id":"{id}","org_id":"o1","proj_id":"p1","occured_at":"2026-09-24T10:00:00Z","arrived_at":"2026-09-24T10:00:01Z"}}"#
     )
 }
 

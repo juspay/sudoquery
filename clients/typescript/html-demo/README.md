@@ -32,7 +32,7 @@ SudoQuery.init({
 });
 ```
 
-The local collector requires `tenantId`; the SDK writes it into each event as `tenant_id` and sends it as the `x-tenant-id` header.
+The local collector requires `tenantId`; the SDK writes it into each event as `org_id` and sends it as the `x-tenant-id` header.
 
 ## Event Shape
 
@@ -43,8 +43,8 @@ Tracked events are queued using the collector envelope:
   envelop_version: '1.0',
   id: 'uuid',
   name: 'event_name',
-  tenant_id: 'localclient',
-  workspace_id: null,
+  org_id: 'localclient',
+  proj_id: null,
   session_id: 'session-id',
   anon_id: 'anonymous-id',
   actor_id: 'user_id',

@@ -142,10 +142,10 @@ impl Batch {
 mod tests {
     use super::*;
 
-    fn key(tenant: &str, workspace: &str, dt: &str, hour: u32) -> GroupKey {
+    fn key(org: &str, proj: &str, dt: &str, hour: u32) -> GroupKey {
         GroupKey {
-            tenant: tenant.to_string(),
-            workspace: workspace.to_string(),
+            org: org.to_string(),
+            proj: proj.to_string(),
             dt: dt.to_string(),
             hour,
         }
@@ -167,8 +167,8 @@ mod tests {
     #[test]
     fn groups_entries_by_key_in_first_seen_order() {
         let mut buffer = Buffer::new();
-        let key_a = key("t1", "w1", "2026-09-24", 9);
-        let key_b = key("t2", "w1", "2026-09-24", 9);
+        let key_a = key("o1", "p1", "2026-09-24", 9);
+        let key_b = key("o2", "p1", "2026-09-24", 9);
         buffer.push(key_a.clone(), consumed("events", 0, 0, "a1"));
         buffer.push(key_b.clone(), consumed("events", 1, 5, "b1"));
         buffer.push(key_a.clone(), consumed("other", 0, 7, "a2"));
@@ -188,7 +188,7 @@ mod tests {
     #[test]
     fn take_n_dequeues_exact_fifo_and_keeps_surplus() {
         let mut buffer = Buffer::new();
-        let key = key("t", "w", "2026-09-24", 9);
+        let key = key("o", "p", "2026-09-24", 9);
         for i in 0..5 {
             buffer.push(key.clone(), consumed("events", 0, i, &format!("e{i}")));
         }
@@ -216,11 +216,11 @@ mod tests {
     fn take_n_beyond_len_takes_everything() {
         let mut buffer = Buffer::new();
         buffer.push(
-            key("t", "w", "2026-09-24", 9),
+            key("o", "p", "2026-09-24", 9),
             consumed("events", 0, 0, "e0"),
         );
         buffer.push(
-            key("t", "w", "2026-09-24", 9),
+            key("o", "p", "2026-09-24", 9),
             consumed("events", 0, 1, "e1"),
         );
 
@@ -232,7 +232,7 @@ mod tests {
     #[test]
     fn commit_map_uses_max_plus_one_from_dequeued_batch_only() {
         let mut buffer = Buffer::new();
-        let key = key("t", "w", "2026-09-24", 9);
+        let key = key("o", "p", "2026-09-24", 9);
         buffer.push(key.clone(), consumed("events", 0, 0, "e0"));
         buffer.push(key.clone(), consumed("events", 1, 10, "e1"));
         buffer.push(key.clone(), consumed("events", 0, 1, "e2"));
@@ -264,7 +264,7 @@ mod tests {
     fn quarantine_entries_count_toward_len_and_commits() {
         let mut buffer = Buffer::new();
         buffer.push(
-            key("t", "w", "2026-09-24", 9),
+            key("o", "p", "2026-09-24", 9),
             consumed("events", 0, 0, "ok"),
         );
         buffer.push_quarantine(consumed("events", 0, 1, "poison"));
@@ -294,7 +294,7 @@ mod tests {
         let payload = br#"{"id":"e","trailing whitespace":"kept"}  "#;
         let mut buffer = Buffer::new();
         buffer.push(
-            key("t", "w", "2026-09-24", 9),
+            key("o", "p", "2026-09-24", 9),
             Consumed {
                 topic: "events".to_string(),
                 partition: 3,

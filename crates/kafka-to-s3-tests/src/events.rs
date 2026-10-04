@@ -6,35 +6,30 @@ use chrono::{DateTime, Utc};
 /// Name given to every harness-produced event.
 pub const EVENT_NAME: &str = "archiver_test_event";
 
-/// Generates a tenant id unique to this call.
+/// Generates an org id unique to this call.
 ///
 /// The topic and bucket are shared across test runs, so every test derives
-/// its own S3 prefix namespace from a unique tenant; Kafka offsets are
+/// its own S3 prefix namespace from a unique org; Kafka offsets are
 /// correspondingly not assumed to start at 0.
-pub fn unique_tenant(prefix: &str) -> String {
+pub fn unique_org(prefix: &str) -> String {
     // `simple()` always renders 32 ASCII hex characters, so slicing at 8 is
     // safe.
     let suffix = uuid::Uuid::new_v4().simple().to_string();
     format!("{prefix}-{}", &suffix[..8])
 }
 
-/// Builds a canonical event for `tenant`/`workspace` arriving at `arrived_at`.
+/// Builds a canonical event for `org`/`proj` arriving at `arrived_at`.
 ///
 /// `seq` is an opaque marker stored in the event's `properties` and used to
-/// make the `anon_id` unique. The event always carries the intended tenant,
-/// workspace, and arrival time; the builder fills `envelop_version`,
+/// make the `anon_id` unique. The event always carries the intended org,
+/// proj, and arrival time; the builder fills `envelop_version`,
 /// `occured_at`, and the remaining optional fields with defaults.
-pub fn make_event(
-    tenant: &str,
-    workspace: &str,
-    arrived_at: DateTime<Utc>,
-    seq: u64,
-) -> CanonicalEvent {
+pub fn make_event(org: &str, proj: &str, arrived_at: DateTime<Utc>, seq: u64) -> CanonicalEvent {
     CanonicalEvent::builder()
         .id(uuid::Uuid::new_v4())
         .name(EVENT_NAME.to_string())
-        .tenant_id(tenant.to_string())
-        .workspace_id(Some(workspace.to_string()))
+        .org_id(org.to_string())
+        .proj_id(Some(proj.to_string()))
         .anon_id(format!("anon-{seq}"))
         .arrived_at(Some(arrived_at))
         .properties(Some(serde_json::json!({ "seq": seq })))

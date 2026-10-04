@@ -40,8 +40,8 @@ type Event = {
     envelop_version: EnvelopVersion;
     id: string;
     name: string;
-    tenant_id: string;
-    workspace_id: string | null;
+    org_id: string;
+    proj_id: string | null;
     session_id: string | null;
     anon_id: string;
     actor_id: string | null;
@@ -77,7 +77,6 @@ declare class SudoQuery {
     private static flushTimer;
     static init(config?: SudoQueryConfig): void;
     private static startPeriodicFlush;
-    private static stopPeriodicFlush;
     /**
      * Check if the SDK has been initialized
      */

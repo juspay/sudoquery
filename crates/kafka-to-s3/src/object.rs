@@ -34,11 +34,11 @@ pub fn compress(body: &[u8]) -> std::io::Result<Vec<u8>> {
     zstd::stream::encode_all(body, ZSTD_LEVEL)
 }
 
-/// `{S3_PREFIX?}/{tenant}/{workspace}/dt=YYYY-MM-DD/hour=HH/{hash}.jsonl.zst` (D4).
+/// `{S3_PREFIX?}/{org}/{proj}/dt=YYYY-MM-DD/hour=HH/{hash}.jsonl.zst` (D4).
 pub fn group_object_key(prefix: Option<&str>, group: &GroupKey, hash16: &str) -> String {
     let path = format!(
         "{}/{}/dt={}/hour={:02}/{}.jsonl.zst",
-        group.tenant, group.workspace, group.dt, group.hour, hash16
+        group.org, group.proj, group.dt, group.hour, hash16
     );
     match prefix {
         Some(prefix) => format!("{prefix}/{path}"),
@@ -114,10 +114,10 @@ mod tests {
         }
     }
 
-    fn group(tenant: &str, workspace: &str, dt: &str, hour: u32) -> GroupKey {
+    fn group(org: &str, proj: &str, dt: &str, hour: u32) -> GroupKey {
         GroupKey {
-            tenant: tenant.to_string(),
-            workspace: workspace.to_string(),
+            org: org.to_string(),
+            proj: proj.to_string(),
             dt: dt.to_string(),
             hour,
         }
@@ -155,12 +155,12 @@ mod tests {
     fn group_key_includes_prefix_when_present() {
         let key = group_object_key(
             Some("env=prod"),
-            &group("tenant-a", "ws-b", "2026-09-24", 3),
+            &group("org-a", "proj-b", "2026-09-24", 3),
             "0123456789abcdef",
         );
         assert_eq!(
             key,
-            "env=prod/tenant-a/ws-b/dt=2026-09-24/hour=03/0123456789abcdef.jsonl.zst"
+            "env=prod/org-a/proj-b/dt=2026-09-24/hour=03/0123456789abcdef.jsonl.zst"
         );
     }
 
@@ -168,12 +168,12 @@ mod tests {
     fn group_key_omits_prefix_when_absent() {
         let key = group_object_key(
             None,
-            &group("tenant-a", "default", "2026-09-24", 15),
+            &group("org-a", "default", "2026-09-24", 15),
             "0123456789abcdef",
         );
         assert_eq!(
             key,
-            "tenant-a/default/dt=2026-09-24/hour=15/0123456789abcdef.jsonl.zst"
+            "org-a/default/dt=2026-09-24/hour=15/0123456789abcdef.jsonl.zst"
         );
     }
 
@@ -182,7 +182,7 @@ mod tests {
         for (hour, expected) in [(0, "00"), (5, "05"), (9, "09"), (23, "23")] {
             let key = group_object_key(
                 None,
-                &group("t", "w", "2026-09-24", hour),
+                &group("o", "p", "2026-09-24", hour),
                 "x".repeat(16).as_str(),
             );
             assert!(key.contains(&format!("/hour={expected}/")), "{key}");
@@ -207,7 +207,7 @@ mod tests {
             entry("t", 0, 0, r#"{"id":"a"}"#),
             entry("t", 0, 1, r#"{"id":"b"}"#),
         ];
-        let group = group("t", "w", "2026-09-24", 9);
+        let group = group("o", "p", "2026-09-24", 9);
         let build = || {
             let body = jsonl_body(&entries);
             group_object_key(None, &group, &content_hash16(&body))

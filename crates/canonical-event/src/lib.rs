@@ -26,8 +26,8 @@ pub struct CanonicalEvent {
         serialize_with = "serialize_optional_utc_datetime_nanos"
     )]
     pub arrived_at: Option<chrono::DateTime<chrono::Utc>>,
-    pub tenant_id: String,
-    pub workspace_id: Option<String>,
+    pub org_id: String,
+    pub proj_id: Option<String>,
     pub session_id: Option<String>,
     pub anon_id: String,
     pub actor_id: Option<String>,
@@ -111,8 +111,8 @@ pub struct CanonicalEventBuilder {
     name: String,
     occured_at: Option<chrono::DateTime<chrono::Utc>>,
     arrived_at: Option<chrono::DateTime<chrono::Utc>>,
-    tenant_id: String,
-    workspace_id: Option<String>,
+    org_id: String,
+    proj_id: Option<String>,
     session_id: Option<String>,
     anon_id: String,
     actor_id: Option<String>,
@@ -150,13 +150,13 @@ impl CanonicalEventBuilder {
         self
     }
 
-    pub fn tenant_id(mut self, tenant_id: String) -> Self {
-        self.tenant_id = tenant_id;
+    pub fn org_id(mut self, org_id: String) -> Self {
+        self.org_id = org_id;
         self
     }
 
-    pub fn workspace_id(mut self, workspace_id: Option<String>) -> Self {
-        self.workspace_id = workspace_id;
+    pub fn proj_id(mut self, proj_id: Option<String>) -> Self {
+        self.proj_id = proj_id;
         self
     }
 
@@ -212,8 +212,8 @@ impl CanonicalEventBuilder {
             name: self.name,
             occured_at: self.occured_at.unwrap_or_else(chrono::Utc::now),
             arrived_at: self.arrived_at,
-            tenant_id: self.tenant_id,
-            workspace_id: self.workspace_id,
+            org_id: self.org_id,
+            proj_id: self.proj_id,
             session_id: self.session_id,
             anon_id: self.anon_id,
             actor_id: self.actor_id,

@@ -9,7 +9,7 @@
 //! model) from a Kafka topic and archives them to S3/MinIO as
 //! zstd-compressed JSONL. The harness produces events to Kafka, polls MinIO
 //! for archived objects, and asserts on object paths, contents, batching,
-//! provenance metadata, and tenant/workspace/hour segregation.
+//! provenance metadata, and org/proj/hour segregation.
 //!
 //! ## The service runs externally
 //!
@@ -28,10 +28,10 @@
 //!   events to work with. Surplus events carry into the next cycle; a
 //!   timeout cycle picks up the buffered remainder (fewer than `n`).
 //! - Events picked in one cycle are segregated into separate files per
-//!   tenant+workspace(+hour) group, so a single file may contain fewer than
+//!   org+proj(+hour) group, so a single file may contain fewer than
 //!   `n` events.
 //! - Object key format:
-//!   `{tenant}/{workspace}/dt=YYYY-MM-DD/hour=H/{sha256-16}.jsonl.zst`
+//!   `{org}/{proj}/dt=YYYY-MM-DD/hour=H/{sha256-16}.jsonl.zst`
 //!   where `dt`/`hour` derive from the event's `arrived_at` field (UTC) and
 //!   the file name is the sha256 of the file's uncompressed JSONL content,
 //!   truncated to the first 16 hex characters. Identical content therefore
@@ -40,7 +40,7 @@
 //! - Every archived object carries provenance S3 metadata: `source` (the
 //!   service's `SOURCE_ID`, when configured), `event-count`, and `ranges`
 //!   (`topic:partition:first:last` entries joined by `;`).
-//! - Events without a `workspace_id` are out of scope: every harness-produced
+//! - Events without a `proj_id` are out of scope: every harness-produced
 //!   event sets one.
 //!
 //! ## Environment variables
@@ -72,7 +72,7 @@
 //! ```
 //!
 //! Tests share one topic and one service instance, so they serialize on a
-//! global lock ([`serial`]) and each test uses a `unique_tenant` prefix to
+//! global lock ([`serial`]) and each test uses a `unique_org` prefix to
 //! isolate its S3 namespace. Kafka offsets are not assumed to start at 0.
 
 pub mod config;

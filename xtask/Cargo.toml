@@ -5,3 +5,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
+anyhow = "1"
+chrono = { workspace = true }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "migrate", "tls-rustls"] }
+tokio = { workspace = true }

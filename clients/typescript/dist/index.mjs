@@ -202,12 +202,12 @@ var Pusher = class {
     }
   }
   static buildHeaders(payload) {
-    const tenantId = Configuration.tenantId ?? payload.events[0]?.tenant_id ?? null;
+    const tenantId = Configuration.tenantId ?? payload.events[0]?.org_id ?? null;
     if (!tenantId) {
       console.error("Cannot send analytics batch: tenantId is required by the collector.");
       return null;
     }
-    const workspaceId = Configuration.workspaceId ?? payload.events[0]?.workspace_id ?? null;
+    const workspaceId = Configuration.workspaceId ?? payload.events[0]?.proj_id ?? null;
     const headers = {
       "Content-Type": "application/json",
       ...Configuration.headers,
@@ -502,8 +502,8 @@ var SudoQuery = class {
       envelop_version: "1.0",
       id: generateUuid(),
       name: eventName.toString(),
-      tenant_id: tenantId,
-      workspace_id: Configuration.workspaceId,
+      org_id: tenantId,
+      proj_id: Configuration.workspaceId,
       session_id: Configuration.sessionId ?? getSessionId(),
       anon_id: AnonymousId.getOrCreate(),
       actor_id: this.currentUser,

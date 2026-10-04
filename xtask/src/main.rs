@@ -1,3 +1,6 @@
+mod compose;
+mod db;
+
 use std::env;
 use std::path::PathBuf;
 use std::process::Command;
@@ -9,15 +12,19 @@ fn workspace_root() -> PathBuf {
         .to_path_buf()
 }
 
-fn cargo(args: &[&str]) {
-    let status = Command::new(env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
+fn run(program: &str, args: &[&str]) {
+    let status = Command::new(program)
         .args(args)
         .current_dir(workspace_root())
         .status()
-        .expect("failed to spawn cargo");
+        .unwrap_or_else(|err| panic!("failed to spawn {program}: {err}"));
     if !status.success() {
         std::process::exit(status.code().unwrap_or(1));
     }
+}
+
+fn cargo(args: &[&str]) {
+    run(&env::var("CARGO").unwrap_or_else(|_| "cargo".into()), args);
 }
 
 fn fmt(check: bool) {
@@ -49,16 +56,22 @@ fn ci() {
     test();
 }
 
-fn help() -> ! {
-    eprintln!(
-        "Usage: cargo xtask <TASK>
+const HELP: &str = "Usage: cargo xtask <TASK>
 
 Tasks:
   fmt [--check]   Format the workspace (check only with --check)
   clippy          Lint the workspace, warnings are errors
   test            Run all workspace tests
-  ci              fmt --check, clippy and test"
-    );
+  ci              fmt --check, clippy and test
+  db status       Check the database is up and all migrations are applied
+  db migration    Apply pending migrations (auto-baselines the pg_schema.sql base)
+  db migration add <name>  Create a new migration file
+  ls              List available tasks
+  ps              Show this repo's docker compose containers and status
+  setup [svc...]  Choose docker compose services to start";
+
+fn help() -> ! {
+    eprintln!("{HELP}");
     std::process::exit(2);
 }
 
@@ -69,6 +82,10 @@ fn main() {
         Some("clippy") => clippy(),
         Some("test") => test(),
         Some("ci") => ci(),
+        Some("ls") => println!("{HELP}"),
+        Some("ps") => compose::ps(),
+        Some("setup") => compose::setup(&args.collect::<Vec<String>>()),
+        Some("db") => db::main(args.collect()),
         _ => help(),
     }
 }

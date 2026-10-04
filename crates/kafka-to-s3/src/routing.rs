@@ -3,11 +3,11 @@
 use chrono::{DateTime, Timelike, Utc};
 use serde::Deserialize;
 
-/// S3 segregation key: one file per `(tenant, workspace, dt, hour)` per flush (D3).
+/// S3 segregation key: one file per `(org, proj, dt, hour)` per flush (D3).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GroupKey {
-    pub tenant: String,
-    pub workspace: String,
+    pub org: String,
+    pub proj: String,
     /// UTC bucket date, `YYYY-MM-DD`.
     pub dt: String,
     /// UTC bucket hour, 0-23.
@@ -26,8 +26,8 @@ pub enum Classification {
 pub enum QuarantineReason {
     /// Payload is not valid JSON.
     InvalidJson,
-    /// `tenant_id` is missing or empty.
-    MissingTenantId,
+    /// `org_id` is missing or empty.
+    MissingOrgId,
     /// Neither `arrived_at` nor `occured_at` is present and parseable (D6).
     MissingTimestamp,
 }
@@ -49,32 +49,32 @@ pub fn classify(payload: &[u8]) -> Classification {
             return Classification::Quarantined(QuarantineReason::InvalidJson);
         }
     };
-    let Some(tenant) = non_empty(raw.tenant_id) else {
+    let Some(org) = non_empty(raw.org_id) else {
         tracing::error!(
             bytes = payload.len(),
             preview = %preview(payload),
-            "quarantining payload: tenant_id missing"
+            "quarantining payload: org_id missing"
         );
-        return Classification::Quarantined(QuarantineReason::MissingTenantId);
+        return Classification::Quarantined(QuarantineReason::MissingOrgId);
     };
     let Some(bucket) = hour_bucket(raw.arrived_at.as_deref(), raw.occured_at.as_deref()) else {
         tracing::error!(
-            tenant,
+            org,
             bytes = payload.len(),
             "quarantining payload: no parseable arrived_at or occured_at"
         );
         return Classification::Quarantined(QuarantineReason::MissingTimestamp);
     };
-    let workspace = match non_empty(raw.workspace_id) {
-        Some(workspace) => workspace,
+    let proj = match non_empty(raw.proj_id) {
+        Some(proj) => proj,
         None => {
-            tracing::warn!(tenant, "workspace_id missing; routing to 'default' (D11)");
+            tracing::warn!(org, "proj_id missing; routing to 'default' (D11)");
             "default".to_string()
         }
     };
     Classification::Routed(GroupKey {
-        tenant,
-        workspace,
+        org,
+        proj,
         dt: bucket.format("%Y-%m-%d").to_string(),
         hour: bucket.hour(),
     })
@@ -87,8 +87,8 @@ pub fn classify(payload: &[u8]) -> Classification {
 struct RawRoutingMeta {
     arrived_at: Option<String>,
     occured_at: Option<String>,
-    tenant_id: Option<String>,
-    workspace_id: Option<String>,
+    org_id: Option<String>,
+    proj_id: Option<String>,
 }
 
 /// Resolve the hour-bucket timestamp: `arrived_at` UTC, else `occured_at` with a
@@ -131,14 +131,14 @@ mod tests {
     #[test]
     fn valid_event_routes_by_arrived_at() {
         let classification = classify_str(
-            r#"{"id":"e1","tenant_id":"merchant-1","workspace_id":"ws-9",
+            r#"{"id":"e1","org_id":"org-1","proj_id":"proj-9",
                 "occured_at":"garbage-timestamp","arrived_at":"2026-09-24T03:35:00Z"}"#,
         );
         let Classification::Routed(key) = classification else {
             panic!("expected routed, got {classification:?}");
         };
-        assert_eq!(key.tenant, "merchant-1");
-        assert_eq!(key.workspace, "ws-9");
+        assert_eq!(key.org, "org-1");
+        assert_eq!(key.proj, "proj-9");
         assert_eq!(key.dt, "2026-09-24");
         assert_eq!(key.hour, 3);
     }
@@ -146,7 +146,7 @@ mod tests {
     #[test]
     fn arrived_at_offset_is_converted_to_utc() {
         let classification = classify_str(
-            r#"{"tenant_id":"t","occured_at":"2026-09-24T10:00:00Z","arrived_at":"2026-09-24T09:05:00+05:30"}"#,
+            r#"{"org_id":"o","occured_at":"2026-09-24T10:00:00Z","arrived_at":"2026-09-24T09:05:00+05:30"}"#,
         );
         let Classification::Routed(key) = classification else {
             panic!("expected routed, got {classification:?}");
@@ -157,8 +157,7 @@ mod tests {
 
     #[test]
     fn absent_arrived_at_falls_back_to_occured_at() {
-        let classification =
-            classify_str(r#"{"tenant_id":"t","occured_at":"2026-01-02T23:59:59Z"}"#);
+        let classification = classify_str(r#"{"org_id":"o","occured_at":"2026-01-02T23:59:59Z"}"#);
         let Classification::Routed(key) = classification else {
             panic!("expected routed, got {classification:?}");
         };
@@ -169,7 +168,7 @@ mod tests {
     #[test]
     fn unparseable_arrived_at_falls_back_to_occured_at() {
         let classification = classify_str(
-            r#"{"tenant_id":"t","occured_at":"2026-01-02T23:59:59Z","arrived_at":"nope"}"#,
+            r#"{"org_id":"o","occured_at":"2026-01-02T23:59:59Z","arrived_at":"nope"}"#,
         );
         let Classification::Routed(key) = classification else {
             panic!("expected routed, got {classification:?}");
@@ -178,31 +177,29 @@ mod tests {
     }
 
     #[test]
-    fn missing_workspace_defaults() {
-        let classification =
-            classify_str(r#"{"tenant_id":"t","occured_at":"2026-01-02T23:59:59Z"}"#);
+    fn missing_proj_defaults() {
+        let classification = classify_str(r#"{"org_id":"o","occured_at":"2026-01-02T23:59:59Z"}"#);
         let Classification::Routed(key) = classification else {
             panic!("expected routed, got {classification:?}");
         };
-        assert_eq!(key.workspace, "default");
+        assert_eq!(key.proj, "default");
     }
 
     #[test]
-    fn missing_tenant_id_quarantines() {
+    fn missing_org_id_quarantines() {
         let classification = classify_str(r#"{"occured_at":"2026-01-02T23:59:59Z"}"#);
         assert_eq!(
             classification,
-            Classification::Quarantined(QuarantineReason::MissingTenantId)
+            Classification::Quarantined(QuarantineReason::MissingOrgId)
         );
     }
 
     #[test]
-    fn empty_tenant_id_quarantines() {
-        let classification =
-            classify_str(r#"{"tenant_id":"","occured_at":"2026-01-02T23:59:59Z"}"#);
+    fn empty_org_id_quarantines() {
+        let classification = classify_str(r#"{"org_id":"","occured_at":"2026-01-02T23:59:59Z"}"#);
         assert_eq!(
             classification,
-            Classification::Quarantined(QuarantineReason::MissingTenantId)
+            Classification::Quarantined(QuarantineReason::MissingOrgId)
         );
     }
 
@@ -225,9 +222,9 @@ mod tests {
     #[test]
     fn missing_or_unparseable_timestamps_quarantine() {
         for payload in [
-            r#"{"tenant_id":"t"}"#,
-            r#"{"tenant_id":"t","occured_at":"garbage"}"#,
-            r#"{"tenant_id":"t","arrived_at":"garbage","occured_at":"also-garbage"}"#,
+            r#"{"org_id":"o"}"#,
+            r#"{"org_id":"o","occured_at":"garbage"}"#,
+            r#"{"org_id":"o","arrived_at":"garbage","occured_at":"also-garbage"}"#,
         ] {
             assert_eq!(
                 classify_str(payload),
@@ -241,7 +238,7 @@ mod tests {
     fn unknown_fields_are_ignored() {
         let classification = classify_str(
             r#"{"envelop_version":"1.0","id":"x","name":"n","anon_id":"a",
-                "future_field":{"nested":[1,2,3]},"tenant_id":"t","workspace_id":"w",
+                "future_field":{"nested":[1,2,3]},"org_id":"o","proj_id":"p",
                 "occured_at":"2026-03-04T05:06:07Z","arrived_at":"2026-03-04T05:06:08Z"}"#,
         );
         let Classification::Routed(key) = classification else {
@@ -250,8 +247,8 @@ mod tests {
         assert_eq!(
             key,
             GroupKey {
-                tenant: "t".to_string(),
-                workspace: "w".to_string(),
+                org: "o".to_string(),
+                proj: "p".to_string(),
                 dt: "2026-03-04".to_string(),
                 hour: 5,
             }

@@ -61,7 +61,7 @@ SudoQuery.init({
 });
 ```
 
-**Important:** `tenantId` must be set before tracking events because the collector requires both a `tenant_id` event field and an `x-tenant-id` request header.
+**Important:** `tenantId` must be set before tracking events because the collector requires both an `org_id` event field and an `x-tenant-id` request header.
 
 This sets up:
 - A page visibility listener to automatically flush events when the user navigates away
@@ -196,8 +196,8 @@ type Event = {
   envelop_version: '1.0';
   id: string;
   name: string;
-  tenant_id: string;
-  workspace_id: string | null;
+  org_id: string;
+  proj_id: string | null;
   session_id: string | null;
   anon_id: string;
   actor_id: string | null;

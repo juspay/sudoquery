@@ -67,8 +67,8 @@ fn from_collector_event_with_system_properties(
         envelop_version,
         id,
         name,
-        tenant_id,
-        workspace_id,
+        org_id,
+        proj_id,
         session_id,
         anon_id,
         actor_id,
@@ -89,8 +89,8 @@ fn from_collector_event_with_system_properties(
         .name(name)
         .occured_at(occured_at)
         .arrived_at(None)
-        .tenant_id(tenant_id)
-        .workspace_id(workspace_id)
+        .org_id(org_id)
+        .proj_id(proj_id)
         .session_id(session_id)
         .anon_id(anon_id)
         .actor_id(actor_id)
@@ -254,8 +254,8 @@ mod tests {
             envelop_version: EnvelopVersion::V1,
             id: uuid::Uuid::new_v4(),
             name: "payment_submitted".to_string(),
-            tenant_id: "tenant-1".to_string(),
-            workspace_id: None,
+            org_id: "org-1".to_string(),
+            proj_id: None,
             session_id: None,
             anon_id: "anon-1".to_string(),
             actor_id: None,

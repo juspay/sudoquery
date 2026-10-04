@@ -146,7 +146,7 @@ describe('SudoQuery', () => {
         const batch = Batcher.fetchBatchToUpload();
         expect(batch?.[0]).toEqual(expect.objectContaining({
           name: 'event_name',
-          tenant_id: 'tenant-1',
+          org_id: 'tenant-1',
           properties,
         }));
       });
