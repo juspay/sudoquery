@@ -248,9 +248,9 @@ fn get_opensearch_url() -> String {
     std::env::var("OPENSEARCH_URL").unwrap_or_else(|_| "http://localhost:9200".to_string())
 }
 
-// Must name the index sink-opensearch writes to; `{tenant_id}` is filled in per request.
+// Must name the index sink-opensearch writes to; `{org_id}` is filled in per request.
 fn get_opensearch_index() -> String {
-    std::env::var("OPENSEARCH_INDEX").unwrap_or_else(|_| "events-{tenant_id}".to_string())
+    std::env::var("OPENSEARCH_INDEX").unwrap_or_else(|_| "events-{org_id}".to_string())
 }
 
 fn get_opensearch_credentials() -> Option<(String, String)> {

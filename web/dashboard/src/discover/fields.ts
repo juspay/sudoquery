@@ -35,7 +35,7 @@ const EVENT_FIELD_TYPES: Array<[string, FieldType]> = [
   ['correlation_id', 'string'],
   ['trace_id', 'string'],
   ['envelop_version', 'string'],
-  ['workspace_id', 'string'],
+  ['proj_id', 'string'],
   ['system_properties.geo.country', 'string'],
   ['system_properties.timezone', 'string'],
   ['system_properties.ip_address', 'ip'],

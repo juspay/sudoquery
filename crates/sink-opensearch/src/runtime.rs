@@ -95,7 +95,7 @@ pub trait Writer: Send + Sync + 'static {
     type Doc: Clone + Send + Sync + 'static;
 
     /// Turns a record's payload into a document, or rejects it. May look up
-    /// settings for the record, such as its tenant's index.
+    /// settings for the record, such as its org's index.
     fn prepare(
         &self,
         payload: Option<&[u8]>,

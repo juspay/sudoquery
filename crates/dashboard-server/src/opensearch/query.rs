@@ -15,7 +15,7 @@ const FORBIDDEN_KEYS: [&str; 3] = ["index", "_index", "wrapper"];
 const TIME_FIELDS: [&str; 2] = ["occured_at", "@timestamp"];
 
 /// Fields a `terms` aggregation may run on: the keyword and boolean fields of
-/// the index template, without the ones that name the tenancy or are unique
+/// the index template, without the ones that name the org or are unique
 /// per event. `properties` is a `flat_object`, which cannot be aggregated.
 pub const FACET_FIELDS: [&str; 11] = [
     "name",
@@ -73,7 +73,7 @@ impl SortOrder {
     }
 }
 
-/// Rejects a client query that names another index or another tenant.
+/// Rejects a client query that names another index or another org.
 ///
 /// This exists to answer such a query with an error rather than an empty
 /// result. Isolation itself comes from the filter `scoped_query` adds, which
@@ -91,11 +91,11 @@ fn walk(value: &Value, scope: &Scope) -> Result<(), RequestError> {
             if FORBIDDEN_KEYS.contains(&key.as_str()) {
                 return Err(RequestError::ForbiddenKey(key.clone()));
             }
-            if key == "tenant_id" {
-                return if names_tenant(child, &scope.tenant_id) {
+            if key == "org_id" {
+                return if names_org(child, &scope.org_id) {
                     Ok(())
                 } else {
-                    Err(RequestError::WrongTenant)
+                    Err(RequestError::WrongOrg)
                 };
             }
             walk(child, scope)
@@ -105,19 +105,19 @@ fn walk(value: &Value, scope: &Scope) -> Result<(), RequestError> {
     }
 }
 
-/// Whether a clause on `tenant_id` matches exactly `tenant_id`: the forms
+/// Whether a clause on `org_id` matches exactly `org_id`: the forms
 /// `"t"`, `["t"]`, `{"value": "t"}` and `{"query": "t"}`. Anything else, such
-/// as a range or a wildcard, could match other tenants.
-fn names_tenant(clause: &Value, tenant_id: &str) -> bool {
+/// as a range or a wildcard, could match other orgs.
+fn names_org(clause: &Value, org_id: &str) -> bool {
     match clause {
-        Value::String(value) => value == tenant_id,
+        Value::String(value) => value == org_id,
         Value::Array(values) => {
-            !values.is_empty() && values.iter().all(|value| value.as_str() == Some(tenant_id))
+            !values.is_empty() && values.iter().all(|value| value.as_str() == Some(org_id))
         }
         Value::Object(fields) => ["value", "query"]
             .iter()
             .filter_map(|key| fields.get(*key))
-            .any(|value| value.as_str() == Some(tenant_id)),
+            .any(|value| value.as_str() == Some(org_id)),
         _ => false,
     }
 }
@@ -168,8 +168,8 @@ fn range_is_bounded(range: &Value) -> bool {
 /// filters an endpoint adds on top, such as one session or a time range.
 pub fn scoped_query(client: Option<&Value>, scope: &Scope, narrowing: Vec<Value>) -> Value {
     let mut filter = vec![
-        json!({ "term": { "tenant_id": scope.tenant_id } }),
-        json!({ "term": { "workspace_id": scope.workspace_id } }),
+        json!({ "term": { "org_id": scope.org_id } }),
+        json!({ "term": { "proj_id": scope.proj_id } }),
     ];
     filter.extend(narrowing);
     let must = client.cloned().unwrap_or_else(|| json!({ "match_all": {} }));
@@ -316,24 +316,24 @@ pub fn facets_body(query: Value, field: &str, size: usize) -> Value {
     })
 }
 
-/// Removes the index name and the tenant id from text OpenSearch produced,
+/// Removes the index name and the org id from text OpenSearch produced,
 /// so an error shown to the client does not reveal how events are partitioned.
 pub fn redact(text: &str, index: &str, scope: &Scope) -> String {
     text.replace(index, "[index]")
-        .replace(&scope.tenant_id, "[redacted]")
+        .replace(&scope.org_id, "[redacted]")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    const TENANT: &str = "0198c0de-0000-7000-8000-000000000001";
-    const WORKSPACE: &str = "0198c0de-0000-7000-8000-000000000002";
+    const ORG: &str = "0198c0de-0000-7000-8000-000000000001";
+    const PROJ: &str = "0198c0de-0000-7000-8000-000000000002";
 
     fn scope() -> Scope {
         Scope {
-            tenant_id: TENANT.into(),
-            workspace_id: WORKSPACE.into(),
+            org_id: ORG.into(),
+            proj_id: PROJ.into(),
         }
     }
 
@@ -377,36 +377,32 @@ mod tests {
     }
 
     #[test]
-    fn the_projects_own_tenant_id_is_accepted() {
+    fn the_projects_own_org_id_is_accepted() {
         for query in [
-            json!({ "term": { "tenant_id": TENANT } }),
-            json!({ "term": { "tenant_id": { "value": TENANT, "boost": 2.0 } } }),
-            json!({ "terms": { "tenant_id": [TENANT] } }),
-            json!({ "match": { "tenant_id": { "query": TENANT, "operator": "and" } } }),
-            json!({ "bool": { "filter": [{ "term": { "tenant_id": TENANT } }] } }),
+            json!({ "term": { "org_id": ORG } }),
+            json!({ "term": { "org_id": { "value": ORG, "boost": 2.0 } } }),
+            json!({ "terms": { "org_id": [ORG] } }),
+            json!({ "match": { "org_id": { "query": ORG, "operator": "and" } } }),
+            json!({ "bool": { "filter": [{ "term": { "org_id": ORG } }] } }),
         ] {
             assert_eq!(check(query.clone()), Ok(()), "{query}");
         }
     }
 
     #[test]
-    fn another_tenant_id_is_rejected_at_any_depth() {
+    fn another_org_id_is_rejected_at_any_depth() {
         for query in [
-            json!({ "term": { "tenant_id": "someone-else" } }),
-            json!({ "term": { "tenant_id": { "value": "someone-else" } } }),
-            json!({ "terms": { "tenant_id": [TENANT, "someone-else"] } }),
-            json!({ "terms": { "tenant_id": [] } }),
-            json!({ "wildcard": { "tenant_id": { "value": "*" } } }),
-            json!({ "range": { "tenant_id": { "gte": "a" } } }),
+            json!({ "term": { "org_id": "someone-else" } }),
+            json!({ "term": { "org_id": { "value": "someone-else" } } }),
+            json!({ "terms": { "org_id": [ORG, "someone-else"] } }),
+            json!({ "terms": { "org_id": [] } }),
+            json!({ "wildcard": { "org_id": { "value": "*" } } }),
+            json!({ "range": { "org_id": { "gte": "a" } } }),
             json!({ "bool": { "should": [
-                { "bool": { "must_not": [{ "term": { "tenant_id": "someone-else" } }] } },
+                { "bool": { "must_not": [{ "term": { "org_id": "someone-else" } }] } },
             ]}}),
         ] {
-            assert_eq!(
-                check(query.clone()),
-                Err(RequestError::WrongTenant),
-                "{query}"
-            );
+            assert_eq!(check(query.clone()), Err(RequestError::WrongOrg), "{query}");
         }
     }
 
@@ -508,8 +504,8 @@ mod tests {
             json!({ "bool": {
                 "must": [{ "term": { "name": "checkout_viewed" } }],
                 "filter": [
-                    { "term": { "tenant_id": TENANT } },
-                    { "term": { "workspace_id": WORKSPACE } },
+                    { "term": { "org_id": ORG } },
+                    { "term": { "proj_id": PROJ } },
                 ],
             }})
         );
@@ -681,7 +677,7 @@ mod tests {
         assert_eq!(facet_size("name", None), Ok(DEFAULT_FACET_SIZE));
         assert_eq!(facet_size("system_properties.geo.country", Some(50)), Ok(50));
 
-        for field in ["tenant_id", "workspace_id", "id", "properties.plan", "occured_at", ""] {
+        for field in ["org_id", "proj_id", "id", "properties.plan", "occured_at", ""] {
             assert_eq!(
                 facet_size(field, None),
                 Err(RequestError::UnknownFacetField),
@@ -716,13 +712,13 @@ mod tests {
     }
 
     #[test]
-    fn redaction_hides_the_index_and_the_tenant() {
-        let index = format!("events-{TENANT}");
-        let text = format!("[{index}/xjCVa9zQ] failed to create query for tenant {TENANT}");
+    fn redaction_hides_the_index_and_the_org() {
+        let index = format!("events-{ORG}");
+        let text = format!("[{index}/xjCVa9zQ] failed to create query for org {ORG}");
 
         assert_eq!(
             redact(&text, &index, &scope()),
-            "[[index]/xjCVa9zQ] failed to create query for tenant [redacted]"
+            "[[index]/xjCVa9zQ] failed to create query for org [redacted]"
         );
     }
 }

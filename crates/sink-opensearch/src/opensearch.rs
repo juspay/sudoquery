@@ -3,8 +3,8 @@
 mod bulk;
 mod classify;
 mod document;
+mod org_index;
 mod response;
-mod tenant_index;
 
 use std::future::Future;
 
@@ -13,7 +13,7 @@ use bytes::BytesMut;
 use bulk::BulkClient;
 pub use bulk::BulkClientError;
 use document::BulkDoc;
-use tenant_index::TenantIndexes;
+use org_index::OrgIndexes;
 
 use crate::cac::Cac;
 use crate::config::OpenSearchConfig;
@@ -21,7 +21,7 @@ use crate::runtime::{ItemOutcome, Rejection, WriteError, Writer};
 
 pub struct OpenSearchWriter {
     client: BulkClient,
-    indexes: TenantIndexes,
+    indexes: OrgIndexes,
     max_doc_bytes: usize,
 }
 
@@ -33,7 +33,7 @@ impl OpenSearchWriter {
     ) -> Result<Self, BulkClientError> {
         Ok(Self {
             client: BulkClient::new(config)?,
-            indexes: TenantIndexes::new(cac),
+            indexes: OrgIndexes::new(cac),
             max_doc_bytes,
         })
     }
@@ -47,13 +47,10 @@ impl Writer for OpenSearchWriter {
         let event = &decoded.event;
         let index = self
             .indexes
-            .index_for(&event.tenant_id, event.workspace_id.as_deref())
+            .index_for(&event.org_id, event.proj_id.as_deref())
             .await
             .map_err(|reason| {
-                Rejection::new(
-                    "invalid_index",
-                    format!("tenant `{}`: {reason}", event.tenant_id),
-                )
+                Rejection::new("invalid_index", format!("org `{}`: {reason}", event.org_id))
             })?;
         document::build(&decoded, &index, self.max_doc_bytes)
     }

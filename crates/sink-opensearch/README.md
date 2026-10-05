@@ -38,8 +38,8 @@ The differences from the collector's file:
 
 - **One key per setting,** named `section.name`: `"batch.max_docs"`, `"opensearch.index"`, and so on. That way an override can change one setting without repeating a whole section.
 - **Unknown or misspelled keys** stop the sink at startup.
-- **Only `opensearch.index` is resolved per tenant,** for each event's `tenant_id` and `workspace_id`, so `[[overrides]]` on those dimensions change where a tenant's events go. Everything else is resolved once at startup with no tenant, and tenant overrides of it are ignored.
-- **Tenant overrides apply live.** The sink re-reads the file every 30 seconds and re-resolves each tenant's index at most every 30 seconds, so a tenant override applies within about a minute without a restart. Other settings need a restart.
+- **Only `opensearch.index` is resolved per org,** for each event's `org_id` and `proj_id`, so `[[overrides]]` on those dimensions change where an org's events go. Everything else is resolved once at startup with no org, and org overrides of it are ignored.
+- **Org overrides apply live.** The sink re-reads the file every 30 seconds and re-resolves each org's index at most every 30 seconds, so an org override applies within about a minute without a restart. Other settings need a restart.
 
 | Key | Default | Notes |
 |---|---|---|
@@ -47,7 +47,7 @@ The differences from the collector's file:
 | `kafka.group_id` | required | Consumer group |
 | `kafka.client_config` | `{}` | Raw librdkafka properties; `bootstrap.servers` is required. The sink always sets `group.id`, `enable.auto.commit=false` and `enable.auto.offset.store=false` |
 | `opensearch.url` | required | `http` or `https`; a path prefix is kept |
-| `opensearch.index` | required | Index, alias or data stream to write to. `{tenant_id}` is replaced with each event's tenant, e.g. `events-{tenant_id}`. Can be overridden per tenant; see [Tenancy](#tenancy) |
+| `opensearch.index` | required | Index, alias or data stream to write to. `{org_id}` is replaced with each event's org, e.g. `events-{org_id}`. Can be overridden per org; see [Per-org indexes](#per-org-indexes) |
 | `opensearch.request_timeout_ms` | `30000` | Per bulk request |
 | `batch.max_docs` | `1000` | Flush a partition's buffer at this many records |
 | `batch.max_bytes` | `5242880` | Flush at this many bytes; a bigger single document goes to the DLQ |
@@ -71,31 +71,31 @@ Environment variables override CAC:
 | `RUST_LOG` | Log filter (default `info`) |
 | `LOG_FORMAT` | `pretty` for human-readable logs; JSON otherwise |
 
-## Tenancy
+## Per-org indexes
 
-With `"opensearch.index" = "events-{tenant_id}"`, each tenant's events go to their own index (`events-merchant-1`, `events-merchant-2`, …). Tenants can't collide on field types, and each tenant's data can be kept, sized or deleted on its own.
+With `"opensearch.index" = "events-{org_id}"`, each org's events go to their own index (`events-merchant-1`, `events-merchant-2`, …). Orgs can't collide on field types, and each org's data can be kept, sized or deleted on its own.
 
-CAC overrides change the index for one tenant, or for one of its workspaces:
+CAC overrides change the index for one org, or for one of its projects:
 
 ```toml
-# A dedicated index for a big tenant.
+# A dedicated index for a big org.
 [[overrides]]
-_context_ = { tenant_id = "merchant-1" }
+_context_ = { org_id = "merchant-1" }
 "opensearch.index" = "events-merchant-1-dedicated"
 
-# Several small tenants in one shared index, to save shards. Queries on it
-# must filter by tenant_id.
+# Several small orgs in one shared index, to save shards. Queries on it
+# must filter by org_id.
 [[overrides]]
-_context_ = { tenant_id = "merchant-2" }
+_context_ = { org_id = "merchant-2" }
 "opensearch.index" = "events-shared"
 ```
 
-- **Invalid overrides:** if a tenant's configured index isn't a valid name, that tenant's events go to the DLQ as `invalid_index` and other tenants are unaffected. Fix the override and replay from the DLQ.
+- **Invalid overrides:** if an org's configured index isn't a valid name, that org's events go to the DLQ as `invalid_index` and other orgs are unaffected. Fix the override and replay from the DLQ.
 
-- **Tenant IDs are used as-is.** An ID that can't be part of an index name (uppercase letters, spaces, `\ / * ? " < > | , # :`, or a name over 255 bytes) sends the event to the DLQ as `invalid_tenant`. IDs are never lowercased or cleaned up, because two tenants could then end up in the same index.
+- **Org IDs are used as-is.** An ID that can't be part of an index name (uppercase letters, spaces, `\ / * ? " < > | , # :`, or a name over 255 bytes) sends the event to the DLQ as `invalid_org`. IDs are never lowercased or cleaned up, because two orgs could then end up in the same index.
 - **Keep every index name under `events-*`,** overrides included, so the [index template](#index-template) applies to it.
-- **Watch the shard count.** Every tenant costs at least one shard per index, plus replicas. Use one primary shard per tenant index, and roll over by size rather than by day, so small tenants don't pile up near-empty indexes.
-- **Query by exact name, not a wildcard.** `events-merchant-1*` also matches tenant `merchant-1-eu`. Query the tenant's own index, alias or data stream name.
+- **Watch the shard count.** Every org costs at least one shard per index, plus replicas. Use one primary shard per org index, and roll over by size rather than by day, so small orgs don't pile up near-empty indexes.
+- **Query by exact name, not a wildcard.** `events-merchant-1*` also matches org `merchant-1-eu`. Query the org's own index, alias or data stream name.
 
 ## Index template
 
@@ -111,7 +111,7 @@ _context_ = { tenant_id = "merchant-2" }
 **Event time is `occured_at`:** when the user did something, as reported by the client. `@timestamp` is an alias for it, so OpenSearch Dashboards and other tools that look for `@timestamp` sort and filter by when things happened, not when they arrived. For example, a phone that was offline for an hour still has its events placed where they happened. Choose `@timestamp` as the time field when creating an index pattern. `arrived_at`, the collector's clock, stays available for operational questions: what arrived recently, and ingestion lag (`arrived_at − occured_at`).
 
 Other field choices:
-- **Exact-match keywords:** `tenant_id`, `name`, `session_id` and the other IDs.
+- **Exact-match keywords:** `org_id`, `name`, `session_id` and the other IDs.
 - **Dates:** `occured_at` and `arrived_at`.
 - **`system_properties.ip_address`:** an `ip` field that ignores malformed values, so a junk `x-forwarded-for` header can't get an event rejected.
 
@@ -130,7 +130,7 @@ A template only applies to indexes created after it's installed. Existing indexe
 - **Exit codes:** 0 when everything consumed was written and committed before exiting; 1 on bad config, a fatal consumer error, or when the shutdown grace period ran out. Unwritten records are safe either way: their offsets were never committed.
 - **A partition stops moving:** look for `write failed; retrying` at error level. A missing index, a disk-full or read-only cluster block, bad credentials and rejected requests block the partition on purpose, so good data never lands in the DLQ; fix the cause and the sink resumes by itself.
 - **The DLQ can hold repeats:** a sink that crashes, or loses a partition, after dead-lettering a record but before committing its offset leaves that record to be dead-lettered again. Count unique `dlq.source.partition` + `dlq.source.offset` pairs, not messages.
-- **The DLQ topic:** each dead letter keeps the original key and payload bytes, with these headers: `dlq.source.topic`, `dlq.source.partition`, `dlq.source.offset`, `dlq.error.class` (`decode`, `invalid_tenant`, `invalid_index`, `too_large` or `rejected`), `dlq.error.reason`, `dlq.error.status` (HTTP status, when there is one), `dlq.attempts`, `dlq.failed_at`. To replay after a fix, run a sink with the DLQ as its topic.
+- **The DLQ topic:** each dead letter keeps the original key and payload bytes, with these headers: `dlq.source.topic`, `dlq.source.partition`, `dlq.source.offset`, `dlq.error.class` (`decode`, `invalid_org`, `invalid_index`, `too_large` or `rejected`), `dlq.error.reason`, `dlq.error.status` (HTTP status, when there is one), `dlq.attempts`, `dlq.failed_at`. To replay after a fix, run a sink with the DLQ as its topic.
 - **Consumer lag:** comes from Kafka (for MSK, the consumer-group lag metrics in CloudWatch), not from this service.
 
 ### Endpoints
@@ -161,7 +161,7 @@ The end-to-end tests cover:
 - a crash mid-stream
 - mapping conflicts going to the DLQ
 - an OpenSearch outage (the test pauses the `opensearch` container)
-- per-tenant indexes with a CAC override
+- per-org indexes with a CAC override
 - `properties` changing shape under the index template
 - events sent out of order being sorted by `occured_at`
 
@@ -171,12 +171,12 @@ Each test makes its own topics, index and consumer group; the template test inst
 
 [`scripts/loadtest-opensearch-sink.py`](../../scripts/loadtest-opensearch-sink.py) runs real sink processes against the local stack while they rebalance:
 
-1. It sends about 100,000 events over about 40 seconds. 5% of them are sent twice, like client retries, and 0.1% have an invalid tenant.
+1. It sends about 100,000 events over about 40 seconds. 5% of them are sent twice, like client retries, and 0.1% have an invalid org.
 2. Meanwhile four sink instances join, one is killed with `kill -9`, and one is stopped gracefully.
 
 It then checks:
 - every valid event is in OpenSearch exactly once
-- each tenant has its own index
+- each org has its own index
 - every bad event is in the DLQ
 - every offset is committed
 - graceful stops exit 0

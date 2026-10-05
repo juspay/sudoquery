@@ -5,9 +5,9 @@
 #   SINK_CONFIG=crates/sink-opensearch/cac.toml cargo run -p sink-opensearch
 #
 # Every setting is one `section.name` key, so a single setting can be
-# overridden. Everything is read once at startup with no tenant context,
+# overridden. Everything is read once at startup with no org context,
 # except `opensearch.index`, which is resolved per event for the event's
-# tenant_id and workspace_id. The file is re-read every 30 seconds, so tenant
+# org_id and proj_id. The file is re-read every 30 seconds, so org
 # overrides of `opensearch.index` apply without a restart; anything else needs
 # a restart.
 #
@@ -24,9 +24,9 @@
 "kafka.client_config" = { value = { "bootstrap.servers" = "localhost:19092" }, schema = { type = "object" } }
 
 "opensearch.url" = { value = "http://localhost:9200", schema = { type = "string" } }
-# Index, alias or data stream. `{tenant_id}` is replaced with each event's
-# tenant, so every tenant gets its own index. Override it per tenant below.
-"opensearch.index" = { value = "events-{tenant_id}", schema = { type = "string" } }
+# Index, alias or data stream. `{org_id}` is replaced with each event's
+# org, so every org gets its own index. Override it per org below.
+"opensearch.index" = { value = "events-{org_id}", schema = { type = "string" } }
 "opensearch.request_timeout_ms" = { value = 30000, schema = { type = "integer" } }
 
 # A partition's buffer is written once it holds max_docs records or max_bytes
@@ -51,17 +51,17 @@
 "server.addr" = { value = "0.0.0.0:9464", schema = { type = "string" } }
 
 [dimensions]
-tenant_id = { position = 1, schema = { type = "string" } }
-workspace_id = { position = 2, schema = { type = "string" } }
+org_id = { position = 1, schema = { type = "string" } }
+proj_id = { position = 2, schema = { type = "string" } }
 
-# Per-tenant index. For example, move one tenant to a dedicated index, and put
-# a group of small tenants in one shared index. Keep names under `events-*` so
+# Per-org index. For example, move one org to a dedicated index, and put
+# a group of small orgs in one shared index. Keep names under `events-*` so
 # index-template.json applies to them:
 #
 # [[overrides]]
-# _context_ = { tenant_id = "merchant-1" }
+# _context_ = { org_id = "merchant-1" }
 # "opensearch.index" = "events-merchant-1-dedicated"
 #
 # [[overrides]]
-# _context_ = { tenant_id = "merchant-2" }
+# _context_ = { org_id = "merchant-2" }
 # "opensearch.index" = "events-shared"

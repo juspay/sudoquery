@@ -37,8 +37,8 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 KAFKA = "localhost:19092"
 OPENSEARCH = "http://localhost:9200"
-TENANTS = [f"tenant-{i:02d}" for i in range(20)]
-BAD_TENANT = "Bad-Tenant"  # uppercase can't be part of an index name
+ORGS = [f"org-{i:02d}" for i in range(20)]
+BAD_ORG = "Bad-Org"  # uppercase can't be part of an index name
 BASE_PORT = 9480
 CONSUMED = "sink_records_consumed_total"
 CREATED = 'sink_docs_written_total{result="created"}'
@@ -117,7 +117,7 @@ def make_events(count, bad_ratio, rng):
             "envelop_version": "1.0",
             "id": str(uuid.UUID(int=rng.getrandbits(128), version=4)),
             "name": rng.choice(["page_viewed", "checkout_viewed", "payment_initiated"]),
-            "tenant_id": BAD_TENANT if bad else rng.choice(TENANTS),
+            "org_id": BAD_ORG if bad else rng.choice(ORGS),
             "anon_id": anon,
             "occured_at": (start + timedelta(milliseconds=i)).isoformat().replace("+00:00", "Z"),
             # Properties change shape between events on purpose.
@@ -154,8 +154,8 @@ def write_cac(path, names, port):
 "server.addr" = {{ value = "127.0.0.1:{port}", schema = {{ type = "string" }} }}
 
 [dimensions]
-tenant_id = {{ position = 1, schema = {{ type = "string" }} }}
-workspace_id = {{ position = 2, schema = {{ type = "string" }} }}
+org_id = {{ position = 1, schema = {{ type = "string" }} }}
+proj_id = {{ position = 2, schema = {{ type = "string" }} }}
 """
     )
 
@@ -233,7 +233,7 @@ def main():
     parser.add_argument("--events", type=int, default=100_000, help="unique events to send")
     parser.add_argument("--partitions", type=int, default=6)
     parser.add_argument("--duplicates", type=float, default=0.05, help="share of valid events sent twice")
-    parser.add_argument("--bad", type=float, default=0.001, help="share of events with an invalid tenant")
+    parser.add_argument("--bad", type=float, default=0.001, help="share of events with an invalid org")
     parser.add_argument("--pace", type=float, default=6.0, help="seconds between instance changes")
     parser.add_argument("--binary", type=Path, default=ROOT / "target/release/sink-opensearch")
     parser.add_argument("--seed", type=int, default=None)
@@ -249,7 +249,7 @@ def main():
         "topic": f"lt-{run}",
         "dlq": f"lt-{run}.dlq",
         "group": f"lt-{run}",
-        "index": f"events-lt-{run}-{{tenant_id}}",
+        "index": f"events-lt-{run}-{{org_id}}",
     }
     workdir = ROOT / "target" / "loadtest" / run
     workdir.mkdir(parents=True, exist_ok=True)
@@ -262,7 +262,7 @@ def main():
     chunks, resent = plan_chunks(events, args.duplicates, 60, rng)
     bad_count = sum(1 for _, _, bad in events if bad)
     sent = sum(len(chunk) for chunk in chunks)
-    print(f"sending {sent:,} messages: {args.events - bad_count:,} valid unique, {resent:,} resent, {bad_count:,} with an invalid tenant\n")
+    print(f"sending {sent:,} messages: {args.events - bad_count:,} valid unique, {resent:,} resent, {bad_count:,} with an invalid org\n")
 
     sinks = []
     for n in range(4):
@@ -375,8 +375,8 @@ def main():
     expected_docs = args.events - bad_count
     checks = [
         (f"OpenSearch holds each valid event exactly once: {docs:,} of {expected_docs:,}", docs == expected_docs),
-        (f"one index per tenant: {len(indexes)} of {len(TENANTS)}", len(indexes) == len(TENANTS)),
-        (f"each invalid-tenant event is in the DLQ: {dead_unique:,} of {bad_count:,}", dead_unique == bad_count),
+        (f"one index per org: {len(indexes)} of {len(ORGS)}", len(indexes) == len(ORGS)),
+        (f"each invalid-org event is in the DLQ: {dead_unique:,} of {bad_count:,}", dead_unique == bad_count),
         (f"every offset committed: {uncommitted:,} uncommitted across {len(offsets)} partitions",
          uncommitted == 0 and len(offsets) == args.partitions),
         ("graceful stops exited 0: " + ", ".join(f"{n}={exit_codes.get(n)}" for n in ("sink-1", "sink-3", "sink-4")),

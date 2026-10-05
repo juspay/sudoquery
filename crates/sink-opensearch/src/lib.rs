@@ -35,7 +35,7 @@ pub enum Error {
 
 /// Runs the sink until `shutdown` is cancelled, then writes out what it has
 /// buffered within the configured grace period. `config` holds the
-/// process-wide settings from `cac`; `cac` is kept to resolve each tenant's
+/// process-wide settings from `cac`; `cac` is kept to resolve each org's
 /// index.
 pub async fn run(
     config: Config,

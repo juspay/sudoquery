@@ -1,4 +1,4 @@
-//! Finds each tenant's index in CAC.
+//! Finds each org's index in CAC.
 
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard, PoisonError};
@@ -9,17 +9,17 @@ use tokio::time::Instant;
 use crate::cac::Cac;
 use crate::config::IndexTemplate;
 
-/// The CAC key resolved per tenant.
+/// The CAC key resolved per org.
 const INDEX_KEY: &str = "opensearch.index";
 
-/// How long a tenant's resolved index is reused before CAC is asked again.
+/// How long an org's resolved index is reused before CAC is asked again.
 /// A CAC change reaches the sink within the file's 30-second refresh plus this.
 const CACHE_TTL: Duration = Duration::from_secs(30);
 
 #[derive(Clone, PartialEq, Eq, Hash)]
-struct Tenant {
-    tenant_id: String,
-    workspace_id: Option<String>,
+struct Org {
+    org_id: String,
+    proj_id: Option<String>,
 }
 
 struct Cached {
@@ -27,12 +27,12 @@ struct Cached {
     resolved_at: Instant,
 }
 
-pub struct TenantIndexes {
+pub struct OrgIndexes {
     cac: Cac,
-    cache: Mutex<HashMap<Tenant, Cached>>,
+    cache: Mutex<HashMap<Org, Cached>>,
 }
 
-impl TenantIndexes {
+impl OrgIndexes {
     pub fn new(cac: Cac) -> Self {
         Self {
             cac,
@@ -40,27 +40,27 @@ impl TenantIndexes {
         }
     }
 
-    /// The tenant's `opensearch.index`, with CAC overrides for its
-    /// `tenant_id` and `workspace_id` applied. Fails when the configured value
+    /// The org's `opensearch.index`, with CAC overrides for its
+    /// `org_id` and `proj_id` applied. Fails when the configured value
     /// isn't a valid index template.
     pub async fn index_for(
         &self,
-        tenant_id: &str,
-        workspace_id: Option<&str>,
+        org_id: &str,
+        proj_id: Option<&str>,
     ) -> Result<IndexTemplate, String> {
-        let tenant = Tenant {
-            tenant_id: tenant_id.to_owned(),
-            workspace_id: workspace_id.map(str::to_owned),
+        let org = Org {
+            org_id: org_id.to_owned(),
+            proj_id: proj_id.map(str::to_owned),
         };
-        if let Some(cached) = self.lock().get(&tenant)
+        if let Some(cached) = self.lock().get(&org)
             && cached.resolved_at.elapsed() < CACHE_TTL
         {
             return cached.index.clone();
         }
 
-        let index = self.resolve(tenant_id, workspace_id).await;
+        let index = self.resolve(org_id, proj_id).await;
         self.lock().insert(
-            tenant,
+            org,
             Cached {
                 index: index.clone(),
                 resolved_at: Instant::now(),
@@ -69,14 +69,10 @@ impl TenantIndexes {
         index
     }
 
-    async fn resolve(
-        &self,
-        tenant_id: &str,
-        workspace_id: Option<&str>,
-    ) -> Result<IndexTemplate, String> {
+    async fn resolve(&self, org_id: &str, proj_id: Option<&str>) -> Result<IndexTemplate, String> {
         let value = self
             .cac
-            .resolve_for_tenant(INDEX_KEY, tenant_id, workspace_id)
+            .resolve_for_org(INDEX_KEY, org_id, proj_id)
             .await
             .map_err(|error| error.to_string())?
             .ok_or_else(|| format!("CAC has no `{INDEX_KEY}`"))?;
@@ -86,7 +82,7 @@ impl TenantIndexes {
         IndexTemplate::parse(template)
     }
 
-    fn lock(&self) -> MutexGuard<'_, HashMap<Tenant, Cached>> {
+    fn lock(&self) -> MutexGuard<'_, HashMap<Org, Cached>> {
         self.cache.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
@@ -97,49 +93,45 @@ mod tests {
 
     use super::*;
 
-    /// A CAC file where merchant-1 has a dedicated index and workspace eu of
+    /// A CAC file where merchant-1 has a dedicated index and project eu of
     /// merchant-2 has another.
     const CAC: &str = r#"
 [default-configs]
-"opensearch.index" = { value = "events-{tenant_id}", schema = { type = "string" } }
+"opensearch.index" = { value = "events-{org_id}", schema = { type = "string" } }
 
 [dimensions]
-tenant_id = { position = 1, schema = { type = "string" } }
-workspace_id = { position = 2, schema = { type = "string" } }
+org_id = { position = 1, schema = { type = "string" } }
+proj_id = { position = 2, schema = { type = "string" } }
 
 [[overrides]]
-_context_ = { tenant_id = "merchant-1" }
+_context_ = { org_id = "merchant-1" }
 "opensearch.index" = "events-merchant-1-dedicated"
 
 [[overrides]]
-_context_ = { tenant_id = "merchant-2", workspace_id = "eu" }
+_context_ = { org_id = "merchant-2", proj_id = "eu" }
 "opensearch.index" = "events-merchant-2-eu"
 
 [[overrides]]
-_context_ = { tenant_id = "broken" }
+_context_ = { org_id = "broken" }
 "opensearch.index" = "Not A Valid Index"
 "#;
 
-    async fn indexes() -> (TenantIndexes, PathBuf) {
+    async fn indexes() -> (OrgIndexes, PathBuf) {
         let path = std::env::temp_dir().join(format!(
             "sink-opensearch-cac-{}.toml",
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::write(&path, CAC).unwrap();
-        (TenantIndexes::new(Cac::load(&path).await.unwrap()), path)
+        (OrgIndexes::new(Cac::load(&path).await.unwrap()), path)
     }
 
-    async fn index_name(
-        indexes: &TenantIndexes,
-        tenant_id: &str,
-        workspace_id: Option<&str>,
-    ) -> String {
-        let template = indexes.index_for(tenant_id, workspace_id).await.unwrap();
-        template.render(tenant_id).unwrap().into_owned()
+    async fn index_name(indexes: &OrgIndexes, org_id: &str, proj_id: Option<&str>) -> String {
+        let template = indexes.index_for(org_id, proj_id).await.unwrap();
+        template.render(org_id).unwrap().into_owned()
     }
 
     #[tokio::test]
-    async fn tenants_without_an_override_use_the_default() {
+    async fn orgs_without_an_override_use_the_default() {
         let (indexes, path) = indexes().await;
 
         assert_eq!(
@@ -150,7 +142,7 @@ _context_ = { tenant_id = "broken" }
     }
 
     #[tokio::test]
-    async fn tenant_overrides_apply() {
+    async fn org_overrides_apply() {
         let (indexes, path) = indexes().await;
 
         assert_eq!(
@@ -165,7 +157,7 @@ _context_ = { tenant_id = "broken" }
     }
 
     #[tokio::test]
-    async fn workspace_overrides_apply() {
+    async fn proj_overrides_apply() {
         let (indexes, path) = indexes().await;
 
         assert_eq!(
@@ -180,7 +172,7 @@ _context_ = { tenant_id = "broken" }
     }
 
     #[tokio::test]
-    async fn an_invalid_override_is_an_error_for_that_tenant_only() {
+    async fn an_invalid_override_is_an_error_for_that_org_only() {
         let (indexes, path) = indexes().await;
 
         let error = indexes.index_for("broken", None).await.unwrap_err();

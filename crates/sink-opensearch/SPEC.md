@@ -92,12 +92,12 @@ A partition's batches are written strictly in order, and a batch's retries finis
 
 `_id` is the canonical event's `id` (UUID). The action is always `create`, so a replay gets a 409, which counts as success. `create` also works with data streams.
 
-The target comes from the CAC key `opensearch.index`, resolved for each event's `tenant_id` and `workspace_id`, so CAC overrides can move a tenant, or one of its workspaces, to another index. In the resolved value, `{tenant_id}` is replaced with the event's tenant: `events-{tenant_id}` gives each tenant its own index or data stream.
+The target comes from the CAC key `opensearch.index`, resolved for each event's `org_id` and `proj_id`, so CAC overrides can move an org, or one of its projects, to another index. In the resolved value, `{org_id}` is replaced with the event's org: `events-{org_id}` gives each org its own index or data stream.
 
-- **Checks:** the default's fixed parts are checked against OpenSearch's naming rules at startup. Each tenant's resolved value is checked when the tenant is first seen, and every full name is checked per event.
-- **Invalid tenant ID:** a tenant ID that can't form a valid name is dead-lettered as `invalid_tenant`. Tenant IDs are never lowercased or cleaned up, because that could put two tenants in one index.
-- **Invalid override:** a tenant whose override isn't a valid template is dead-lettered as `invalid_index`, without affecting other tenants.
-- **Caching:** resolved values are cached per tenant for 30 seconds, and the CAC file is re-read every 30 seconds, so a change applies within about a minute without a restart.
+- **Checks:** the default's fixed parts are checked against OpenSearch's naming rules at startup. Each org's resolved value is checked when the org is first seen, and every full name is checked per event.
+- **Invalid org ID:** an org ID that can't form a valid name is dead-lettered as `invalid_org`. Org IDs are never lowercased or cleaned up, because that could put two orgs in one index.
+- **Invalid override:** an org whose override isn't a valid template is dead-lettered as `invalid_index`, without affecting other orgs.
+- **Caching:** resolved values are cached per org for 30 seconds, and the CAC file is re-read every 30 seconds, so a change applies within about a minute without a restart.
 
 ### Event time
 
@@ -120,8 +120,8 @@ The classifier is a pure function with table tests.
 | Any other item 4xx: 404 index missing, 403 disk-full or read-only block, 401 | Retry the item and log at error. These are about the cluster, not the document; dead-lettering would send every event to the DLQ |
 | Unknown item status | Retry the item |
 | Payload empty or not a canonical event | DLQ, without a write |
-| `tenant_id` can't form a valid index name | DLQ (`invalid_tenant`), without a write |
-| The tenant's configured `opensearch.index` isn't a valid template | DLQ (`invalid_index`), without a write |
+| `org_id` can't form a valid index name | DLQ (`invalid_org`), without a write |
+| The org's configured `opensearch.index` isn't a valid template | DLQ (`invalid_index`), without a write |
 | Document larger than `batch.max_bytes` | DLQ, without a write |
 
 Retries never give up: capped exponential backoff with full jitter, `random(0, min(max, initial × 2^(attempt−1)))`. A partition whose writes keep failing stays blocked, and its paused consumption bounds memory.
@@ -136,7 +136,7 @@ A partition is paused when its buffer is full while its batch is in flight, and 
 
 - The producer is idempotent, which implies `acks=all`.
 - The key and payload are the original bytes.
-- Headers: `dlq.source.topic`, `dlq.source.partition`, `dlq.source.offset`, `dlq.error.class` (`decode`, `invalid_tenant`, `invalid_index`, `too_large`, `rejected`), `dlq.error.reason`, `dlq.error.status` when there is an HTTP status, `dlq.attempts`, `dlq.failed_at`.
+- Headers: `dlq.source.topic`, `dlq.source.partition`, `dlq.source.offset`, `dlq.error.class` (`decode`, `invalid_org`, `invalid_index`, `too_large`, `rejected`), `dlq.error.reason`, `dlq.error.status` when there is an HTTP status, `dlq.attempts`, `dlq.failed_at`.
 - A record is resolved only after Kafka confirms the dead letter. If the DLQ is unavailable, the partition stays blocked.
 - The DLQ is at-least-once too. When a partition moves or a sink crashes after a record was dead-lettered but before its offset was committed, the next owner dead-letters it again. Replaying is still safe, because document IDs deduplicate.
 - To replay after a fix, run a sink with the DLQ as its topic.
@@ -153,7 +153,7 @@ A fatal consumer error skips the drain: in-flight batches are cancelled, complet
 
 ## Configuration
 
-See [README.md](README.md#configuration). Settings come from a CAC (Superposition) file with one `section.name` key per setting and `tenant_id` and `workspace_id` dimensions, loaded the same way as the collector's `cac.toml`. Environment overrides use the collector's variable names. Unknown keys are rejected, and values are validated at startup: index naming rules, URL scheme, DLQ topic not consumed, and both or neither credential. Process-wide settings are resolved once with no tenant; `opensearch.index` is resolved per tenant.
+See [README.md](README.md#configuration). Settings come from a CAC (Superposition) file with one `section.name` key per setting and `org_id` and `proj_id` dimensions, loaded the same way as the collector's `cac.toml`. Environment overrides use the collector's variable names. Unknown keys are rejected, and values are validated at startup: index naming rules, URL scheme, DLQ topic not consumed, and both or neither credential. Process-wide settings are resolved once with no org; `opensearch.index` is resolved per org.
 
 ## Observability
 
@@ -176,7 +176,7 @@ See [README.md](README.md#configuration). Settings come from a CAC (Superpositio
 | OpenSearch paused, more events produced, then unpaused | Every event indexed; committed offsets equal end offsets |
 | `properties` changing shape (number, string, object, new keys) under `index-template.json` | Every event indexed, none rejected; `properties` is a `flat_object`; exact and nested property searches work |
 | Events sent in a different order from when they happened | Sorting and range queries on `@timestamp` follow `occured_at` |
-| Events from three tenants with `opensearch.index = "…-{tenant_id}"`, and a CAC override giving one tenant a dedicated index | Each valid tenant's index holds exactly its events; the overridden tenant is only in its dedicated index; the tenant with uppercase letters goes to the DLQ as `invalid_tenant` |
+| Events from three orgs with `opensearch.index = "…-{org_id}"`, and a CAC override giving one org a dedicated index | Each valid org's index holds exactly its events; the overridden org is only in its dedicated index; the org with uppercase letters goes to the DLQ as `invalid_org` |
 
 ## Deferred
 
@@ -185,7 +185,7 @@ Cut from the original spec for v1, with the reason:
 | Item | Why it was cut | Revisit when |
 |---|---|---|
 | Public library API: `Transform` and `BulkClient` traits, builder, `examples/` | One internal caller, and the input is always our own JSON. wiremock covers what `BulkClient` existed for | Another team needs a custom transform |
-| Routing mini-language beyond `{tenant_id}`: field or date placeholders, ID strategies, `index`/`update`/`delete` actions, tombstones, external versioning | Events are immutable, keyed by UUID and never tombstoned; per-tenant indexes are the only routing needed | Session documents need upserts, or indexes need another dimension |
+| Routing mini-language beyond `{org_id}`: field or date placeholders, ID strategies, `index`/`update`/`delete` actions, tombstones, external versioning | Events are immutable, keyed by UUID and never tombstoned; per-org indexes are the only routing needed | Session documents need upserts, or indexes need another dimension |
 | One record → many documents, with an out-of-order offset tracker | One record is one document; in-order completion makes the tracker trivial | A topic needs fan-out |
 | `max_attempts`, `on_exhausted`, `dlq.enabled` | One behaviour: retryable errors block, permanent errors go to the DLQ | Blocking proves too costly in practice |
 | 413 batch halving | Batches are capped at `max_bytes` when built, and oversized documents are dead-lettered up front | The cluster's request limit is below `max_bytes` |

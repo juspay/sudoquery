@@ -25,20 +25,20 @@ const MAX_ERROR_TEXT: usize = 512;
 /// Sort key of an event: `[occured_at, id]`.
 const EVENT_KEY_LEN: usize = 2;
 
-/// What a project may read: the events of its organization (the tenant) that
-/// were sent for the project itself (the workspace).
+/// What a project may read: the events of its organization (`org_id`) that
+/// were sent for the project itself (`proj_id`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Scope {
-    pub tenant_id: String,
-    pub workspace_id: String,
+    pub org_id: String,
+    pub proj_id: String,
 }
 
 impl Scope {
-    /// `None` when the project has no organization, and therefore no tenant.
+    /// `None` when the project has no organization, and therefore no `org_id`.
     pub fn for_project(project: &db::Project) -> Option<Self> {
         Some(Self {
-            tenant_id: project.organization_id?.to_string(),
-            workspace_id: project.id.to_string(),
+            org_id: project.organization_id?.to_string(),
+            proj_id: project.id.to_string(),
         })
     }
 }
@@ -52,8 +52,8 @@ pub enum RequestError {
     #[error("`query` must not contain `{0}`")]
     ForbiddenKey(String),
 
-    #[error("`query` filters on a `tenant_id` this project cannot read")]
-    WrongTenant,
+    #[error("`query` filters on an `org_id` this project cannot read")]
+    WrongOrg,
 
     #[error("`query` must include a `range` on `occured_at` with a lower and an upper bound")]
     MissingTimeRange,
@@ -93,7 +93,7 @@ pub enum OpenSearchError {
     Decode(String),
 }
 
-/// An event as the API returns it: a `CanonicalEvent` without `tenant_id`,
+/// An event as the API returns it: a `CanonicalEvent` without `org_id`,
 /// which stays internal.
 #[derive(Debug, Serialize)]
 #[serde(transparent)]
@@ -103,7 +103,7 @@ impl Event {
     fn new(event: &CanonicalEvent) -> Result<Self, OpenSearchError> {
         match serde_json::to_value(event) {
             Ok(Value::Object(mut fields)) => {
-                fields.remove("tenant_id");
+                fields.remove("org_id");
                 Ok(Self(fields))
             }
             Ok(_) => Err(decode_error("an event must serialize to an object")),
@@ -162,7 +162,7 @@ struct Target<'a> {
 impl Target<'_> {
     /// Text from OpenSearch, safe to show to the client.
     fn redact(&self, text: &str) -> String {
-        // Redact before cutting, or a cut could leave half a tenant id.
+        // Redact before cutting, or a cut could leave half an org id.
         excerpt(&query::redact(text, &self.index, self.scope)).to_owned()
     }
 }
@@ -176,7 +176,7 @@ pub struct OpenSearch {
 }
 
 impl OpenSearch {
-    /// `index_template` names the index to read; `{tenant_id}` in it is
+    /// `index_template` names the index to read; `{org_id}` in it is
     /// replaced per request, as `sink-opensearch` does when writing.
     pub fn new(
         url: &str,
@@ -267,8 +267,8 @@ impl OpenSearch {
 
         let event = CanonicalEvent::deserialize(&reply["_source"]).map_err(decode_error)?;
         // `_doc` takes no query, so the scope is checked on the document.
-        let in_scope = event.tenant_id == scope.tenant_id
-            && event.workspace_id.as_deref() == Some(scope.workspace_id.as_str());
+        let in_scope = event.org_id == scope.org_id
+            && event.proj_id.as_deref() == Some(scope.proj_id.as_str());
         if !in_scope {
             return Ok(None);
         }
@@ -395,7 +395,7 @@ impl OpenSearch {
 
     fn target<'a>(&self, scope: &'a Scope) -> Target<'a> {
         Target {
-            index: self.index_template.replace("{tenant_id}", &scope.tenant_id),
+            index: self.index_template.replace("{org_id}", &scope.org_id),
             scope,
         }
     }
@@ -583,14 +583,14 @@ mod tests {
 
     use super::*;
 
-    const TENANT: &str = "0198c0de-0000-7000-8000-000000000001";
-    const WORKSPACE: &str = "0198c0de-0000-7000-8000-000000000002";
+    const ORG: &str = "0198c0de-0000-7000-8000-000000000001";
+    const PROJ: &str = "0198c0de-0000-7000-8000-000000000002";
     const INDEX: &str = "events-0198c0de-0000-7000-8000-000000000001";
 
     fn scope() -> Scope {
         Scope {
-            tenant_id: TENANT.into(),
-            workspace_id: WORKSPACE.into(),
+            org_id: ORG.into(),
+            proj_id: PROJ.into(),
         }
     }
 
@@ -598,7 +598,7 @@ mod tests {
         OpenSearch::new(
             &server.uri(),
             None,
-            "events-{tenant_id}".into(),
+            "events-{org_id}".into(),
             Duration::from_secs(2),
         )
         .unwrap()
@@ -616,14 +616,14 @@ mod tests {
     }
 
     /// A stored event, the way `sink-opensearch` writes it.
-    fn source(n: u32, workspace: &str) -> Value {
+    fn source(n: u32, proj: &str) -> Value {
         json!({
             "envelop_version": "1.0",
             "id": format!("00000000-0000-4000-8000-{n:012}"),
             "name": "checkout_viewed",
             "occured_at": format!("2026-09-29T09:50:{n:02}Z"),
-            "tenant_id": TENANT,
-            "workspace_id": workspace,
+            "org_id": ORG,
+            "proj_id": proj,
             "session_id": "session-1",
             "anon_id": "anon-1",
             "properties": { "plan": "pro" },
@@ -631,7 +631,7 @@ mod tests {
     }
 
     fn hit(n: u32) -> Value {
-        let source = source(n, WORKSPACE);
+        let source = source(n, PROJ);
         json!({ "_id": source["id"], "_source": source, "sort": [n, source["id"]] })
     }
 
@@ -709,15 +709,15 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn events_are_returned_without_their_tenant_id() {
+    async fn events_are_returned_without_their_org_id() {
         let server = MockServer::start().await;
         accept_any_query(&server).await;
         mount(&server, "POST", "_search", hits(&[1])).await;
 
         let page = search(&server, &request(None)).await;
 
-        let mut expected = source(1, WORKSPACE);
-        expected.as_object_mut().unwrap().remove("tenant_id");
+        let mut expected = source(1, PROJ);
+        expected.as_object_mut().unwrap().remove("org_id");
         assert_eq!(items(&page), json!([expected]));
     }
 
@@ -827,16 +827,16 @@ mod tests {
     #[tokio::test]
     async fn a_query_refused_locally_never_reaches_opensearch() {
         let server = MockServer::start().await;
-        let other_tenant = request(Some(json!({ "term": { "tenant_id": "someone-else" } })));
+        let other_org = request(Some(json!({ "term": { "org_id": "someone-else" } })));
 
         let error = client(&server)
-            .search_events(&scope(), &other_tenant, None, SortOrder::Desc)
+            .search_events(&scope(), &other_org, None, SortOrder::Desc)
             .await
             .unwrap_err();
 
         assert!(matches!(
             error,
-            OpenSearchError::Request(RequestError::WrongTenant)
+            OpenSearchError::Request(RequestError::WrongOrg)
         ));
         assert!(requested_paths(&server).await.is_empty());
     }
@@ -913,7 +913,7 @@ mod tests {
     #[tokio::test]
     async fn get_event_returns_a_document_in_scope() {
         let server = MockServer::start().await;
-        let found = json!({ "found": true, "_source": source(1, WORKSPACE) });
+        let found = json!({ "found": true, "_source": source(1, PROJ) });
         mount(
             &server,
             "GET",
@@ -930,17 +930,17 @@ mod tests {
 
         let event = serde_json::to_value(event).unwrap();
         assert_eq!(event["id"], "00000000-0000-4000-8000-000000000001");
-        assert!(event.get("tenant_id").is_none());
+        assert!(event.get("org_id").is_none());
     }
 
     #[tokio::test]
     async fn get_event_hides_documents_outside_the_scope() {
-        let mut other_tenant = source(1, WORKSPACE);
-        other_tenant["tenant_id"] = json!("someone-else");
-        let mut no_workspace = source(1, WORKSPACE);
-        no_workspace.as_object_mut().unwrap().remove("workspace_id");
+        let mut other_org = source(1, PROJ);
+        other_org["org_id"] = json!("someone-else");
+        let mut no_proj = source(1, PROJ);
+        no_proj.as_object_mut().unwrap().remove("proj_id");
 
-        for stored in [source(1, "another-workspace"), other_tenant, no_workspace] {
+        for stored in [source(1, "another-proj"), other_org, no_proj] {
             let server = MockServer::start().await;
             let found = json!({ "found": true, "_source": stored });
             mount(
@@ -1170,7 +1170,7 @@ mod tests {
         let client = OpenSearch::new(
             &format!("{}/search/", server.uri()),
             Some(("dashboard".into(), "hunter2".into())),
-            "events-{tenant_id}".into(),
+            "events-{org_id}".into(),
             Duration::from_secs(2),
         )
         .unwrap();
@@ -1194,8 +1194,8 @@ mod tests {
         assert_eq!(
             Scope::for_project(&project),
             Some(Scope {
-                tenant_id: organization.to_string(),
-                workspace_id: project.id.to_string(),
+                org_id: organization.to_string(),
+                proj_id: project.id.to_string(),
             })
         );
 
@@ -1382,7 +1382,7 @@ mod tests {
         let server = MockServer::start().await;
         let bounded = bounded_query();
         let cases = [
-            ("tenant_id", Some(&bounded), None, RequestError::UnknownFacetField),
+            ("org_id", Some(&bounded), None, RequestError::UnknownFacetField),
             ("properties.plan", Some(&bounded), None, RequestError::UnknownFacetField),
             ("name", Some(&bounded), Some(51), RequestError::InvalidFacetSize),
             ("name", None, None, RequestError::MissingTimeRange),
@@ -1434,14 +1434,14 @@ mod tests {
         );
     }
 
-    /// A real OpenSearch holding one index shared by two workspaces of a
-    /// tenant, plus an event of another tenant.
+    /// A real OpenSearch holding one index shared by two projects of an
+    /// org, plus an event of another org.
     struct Live {
         http: reqwest::Client,
         url: String,
         index: String,
         client: OpenSearch,
-        tenant: String,
+        org: String,
     }
 
     impl Live {
@@ -1449,19 +1449,19 @@ mod tests {
         async fn start() -> Self {
             let url = std::env::var("OPENSEARCH_URL")
                 .unwrap_or_else(|_| "http://localhost:9200".to_string());
-            let tenant = uuid::Uuid::new_v4().to_string();
+            let org = uuid::Uuid::new_v4().to_string();
             let live = Self {
                 http: reqwest::Client::new(),
                 client: OpenSearch::new(
                     &url,
                     None,
-                    "events-{tenant_id}".into(),
+                    "events-{org_id}".into(),
                     Duration::from_secs(10),
                 )
                 .unwrap(),
-                index: format!("events-{tenant}"),
+                index: format!("events-{org}"),
                 url,
-                tenant,
+                org,
             };
 
             let template = std::fs::read_to_string(concat!(
@@ -1489,10 +1489,10 @@ mod tests {
             );
         }
 
-        fn scope(&self, workspace: &str) -> Scope {
+        fn scope(&self, proj: &str) -> Scope {
             Scope {
-                tenant_id: self.tenant.clone(),
-                workspace_id: workspace.into(),
+                org_id: self.org.clone(),
+                proj_id: proj.into(),
             }
         }
 
@@ -1500,8 +1500,8 @@ mod tests {
         /// minute, and returns its id.
         async fn index(
             &self,
-            tenant: &str,
-            workspace: &str,
+            org: &str,
+            proj: &str,
             session: Option<&str>,
             second: u32,
             name: &str,
@@ -1511,8 +1511,8 @@ mod tests {
             let event = CanonicalEvent::builder()
                 .name(name.into())
                 .occured_at(Utc.with_ymd_and_hms(2026, 9, 1, 10, 0, second).unwrap())
-                .tenant_id(tenant.into())
-                .workspace_id(Some(workspace.into()))
+                .org_id(org.into())
+                .proj_id(Some(proj.into()))
                 .session_id(session.map(Into::into))
                 .anon_id("anon-1".into())
                 .properties(Some(json!({ "plan": "pro" })))
@@ -1589,12 +1589,12 @@ mod tests {
     #[tokio::test]
     #[ignore = "needs a running OpenSearch"]
     async fn live_opensearch_pages_and_isolates_projects() {
-        const A: &str = "workspace-a";
-        const B: &str = "workspace-b";
+        const A: &str = "proj-a";
+        const B: &str = "proj-b";
         let live = Live::start().await;
-        let tenant = live.tenant.clone();
+        let org = live.org.clone();
 
-        // Workspace A: two sessions and one event outside any session. Two
+        // Project A: two sessions and one event outside any session. Two
         // events share a timestamp, which only the `id` tie-breaker orders.
         let mut a_ids = Vec::new();
         for (session, second, name) in [
@@ -1606,12 +1606,12 @@ mod tests {
             (Some("s2"), 4, "click"),
             (None, 5, "click"),
         ] {
-            a_ids.push(live.index(&tenant, A, session, second, name).await);
+            a_ids.push(live.index(&org, A, session, second, name).await);
         }
-        // Workspace B reuses session id `s1`; another tenant shares the index.
-        let b_id = live.index(&tenant, B, Some("s3"), 6, "click").await;
-        live.index(&tenant, B, Some("s1"), 7, "page_view").await;
-        let foreign_id = live.index("other-tenant", A, Some("s1"), 8, "page_view").await;
+        // Project B reuses session id `s1`; another org shares the index.
+        let b_id = live.index(&org, B, Some("s3"), 6, "click").await;
+        live.index(&org, B, Some("s1"), 7, "page_view").await;
+        let foreign_id = live.index("other-org", A, Some("s1"), 8, "page_view").await;
         live.send(Method::POST, "_refresh", None).await;
         let (a, b) = (live.scope(A), live.scope(B));
 
@@ -1621,8 +1621,8 @@ mod tests {
         let times = column(&events, "occured_at");
         assert_eq!(pages, 3);
         assert!(times.windows(2).all(|pair| pair[0] >= pair[1]), "{times:?}");
-        assert!(events.iter().all(|event| event.get("tenant_id").is_none()));
-        assert!(events.iter().all(|event| event["workspace_id"] == A));
+        assert!(events.iter().all(|event| event.get("org_id").is_none()));
+        assert!(events.iter().all(|event| event["proj_id"] == A));
         found.sort();
         a_ids.sort();
         assert_eq!(found, a_ids);
@@ -1641,11 +1641,11 @@ mod tests {
         assert_eq!(live.client.count(&a, Some(&page_views)).await.unwrap(), 3);
         assert_eq!(live.client.count(&b, None).await.unwrap(), 2);
 
-        // Get: only documents of the project's own tenant and workspace.
+        // Get: only documents of the project's own org and project.
         let own = live.client.get_event(&a, &a_ids[0]).await.unwrap();
         let own = serde_json::to_value(own.expect("A reads its own event")).unwrap();
         assert_eq!(own["id"], a_ids[0].as_str());
-        assert!(own.get("tenant_id").is_none());
+        assert!(own.get("org_id").is_none());
         for id in [b_id.as_str(), foreign_id.as_str(), "no-such-document"] {
             assert!(live.client.get_event(&a, id).await.unwrap().is_none());
         }
@@ -1745,19 +1745,19 @@ mod tests {
         let times = column(&events, "occured_at");
         assert!(times.windows(2).all(|pair| pair[0] <= pair[1]), "{times:?}");
 
-        // An invalid query is refused without revealing the tenant.
+        // An invalid query is refused without revealing the org.
         let bad_date = json!({ "range": { "occured_at": { "gte": "not-a-date" } } });
         let error = live.client.count(&a, Some(&bad_date)).await.unwrap_err();
         let OpenSearchError::Request(RequestError::InvalidQuery(reason)) = error else {
             panic!("expected an invalid query, got {error:?}");
         };
         assert!(reason.contains("not-a-date"), "{reason}");
-        assert!(!reason.contains(&tenant), "{reason}");
+        assert!(!reason.contains(&org), "{reason}");
 
-        // A tenant with no index yet has no events.
+        // An org with no index yet has no events.
         let nobody = Scope {
-            tenant_id: uuid::Uuid::new_v4().to_string(),
-            workspace_id: A.into(),
+            org_id: uuid::Uuid::new_v4().to_string(),
+            proj_id: A.into(),
         };
         assert_eq!(live.client.count(&nobody, None).await.unwrap(), 0);
 

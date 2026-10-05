@@ -284,7 +284,7 @@ mod tests {
             .with_timezone(&chrono::Utc);
         let canonical_event = CanonicalEvent::builder()
             .name("payment_initiated".into())
-            .tenant_id("merchant-1".into())
+            .org_id("merchant-1".into())
             .anon_id("anon-42".into())
             .arrived_at(Some(arrived_at))
             .properties(Some(serde_json::json!({ "amount": 100 })))
@@ -308,7 +308,7 @@ mod tests {
     #[test]
     fn deserializes_without_optional_fields() {
         let decoded: CanonicalEvent = serde_json::from_str(
-            r#"{"envelop_version":"1.0","id":"0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c","name":"checkout_viewed","tenant_id":"merchant-1","anon_id":"anon-42","occured_at":"2026-09-02T10:29:00Z"}"#,
+            r#"{"envelop_version":"1.0","id":"0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c","name":"checkout_viewed","org_id":"merchant-1","anon_id":"anon-42","occured_at":"2026-09-02T10:29:00Z"}"#,
         )
         .unwrap();
 

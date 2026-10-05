@@ -119,8 +119,8 @@ impl Stack {
 "shutdown.grace_ms" = {{ value = 10000, schema = {{ type = "integer" }} }}
 
 [dimensions]
-tenant_id = {{ position = 1, schema = {{ type = "string" }} }}
-workspace_id = {{ position = 2, schema = {{ type = "string" }} }}
+org_id = {{ position = 1, schema = {{ type = "string" }} }}
+proj_id = {{ position = 2, schema = {{ type = "string" }} }}
 {overrides}
 "#,
             topic = names.topic,
@@ -445,7 +445,7 @@ fn events(count: usize) -> Vec<(String, Vec<u8>, String)> {
         .map(|i| {
             let event = CanonicalEvent::builder()
                 .name("payment_initiated".into())
-                .tenant_id("merchant-1".into())
+                .org_id("merchant-1".into())
                 .anon_id(format!("anon-{}", i % 50))
                 .properties(Some(json!({ "amount": i })))
                 .build();
@@ -554,7 +554,7 @@ async fn documents_that_cannot_be_indexed_go_to_the_dlq() {
         };
         let event = CanonicalEvent::builder()
             .name("payment_initiated".into())
-            .tenant_id("merchant-1".into())
+            .org_id("merchant-1".into())
             .anon_id(format!("anon-{i}"))
             .properties(Some(json!({ "amount": amount })))
             .build();
@@ -641,18 +641,18 @@ async fn an_opensearch_outage_blocks_writes_and_then_recovers() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "needs the local stack: docker compose -f tests/docker-compose.yml up -d redpanda opensearch"]
-async fn each_tenant_gets_its_own_index() {
+async fn each_org_gets_its_own_index() {
     let _serial = serial().await;
     let stack = Stack::from_env();
     let names = Names::unique();
     stack.create_topics(&names).await;
 
     let mut records = Vec::new();
-    for (tenant, count) in [("merchant-a", 50), ("merchant-b", 30), ("Merchant-C", 5)] {
+    for (org, count) in [("merchant-a", 50), ("merchant-b", 30), ("Merchant-C", 5)] {
         for i in 0..count {
             let event = CanonicalEvent::builder()
                 .name("payment_initiated".into())
-                .tenant_id(tenant.into())
+                .org_id(org.into())
                 .anon_id(format!("anon-{i}"))
                 .build();
             records.push((format!("anon-{i}"), serde_json::to_vec(&event).unwrap()));
@@ -660,15 +660,15 @@ async fn each_tenant_gets_its_own_index() {
     }
     stack.produce(&names.topic, &records).await;
 
-    // Every tenant gets `<index>-<tenant>`, except merchant-b, which CAC
+    // Every org gets `<index>-<org>`, except merchant-b, which CAC
     // moves to a dedicated index.
-    let template = format!("{}-{{tenant_id}}", names.index);
+    let template = format!("{}-{{org_id}}", names.index);
     let merchant_a = format!("{}-merchant-a", names.index);
     let merchant_b = format!("{}-merchant-b-dedicated", names.index);
     let overrides = format!(
         r#"
 [[overrides]]
-_context_ = {{ tenant_id = "merchant-b" }}
+_context_ = {{ org_id = "merchant-b" }}
 "opensearch.index" = "{merchant_b}"
 "#
     );
@@ -682,12 +682,12 @@ _context_ = {{ tenant_id = "merchant-b" }}
     );
 
     // Uppercase can't be part of an index name, and the sink never rewrites
-    // tenant IDs, so these go to the DLQ.
+    // org IDs, so these go to the DLQ.
     let letters = stack.read_topic(&names.dlq, 5).await;
     for letter in &letters {
         assert_eq!(
             header(letter, "dlq.error.class").as_deref(),
-            Some("invalid_tenant")
+            Some("invalid_org")
         );
     }
 
@@ -723,7 +723,7 @@ async fn properties_can_change_shape_without_rejections() {
     for i in 0..40 {
         let event = CanonicalEvent::builder()
             .name("checkout_viewed".into())
-            .tenant_id("merchant-a".into())
+            .org_id("merchant-a".into())
             .anon_id(format!("anon-{i}"))
             .properties(Some(shapes[i % shapes.len()].clone()))
             .build();
@@ -731,7 +731,7 @@ async fn properties_can_change_shape_without_rejections() {
     }
     stack.produce(&names.topic, &records).await;
 
-    let template = format!("{}-{{tenant_id}}", names.index);
+    let template = format!("{}-{{org_id}}", names.index);
     let index = format!("{}-merchant-a", names.index);
     let sink = RunningSink::start(stack.sink_with(&names, 100, &template, "").await);
     stack.wait_for_count(&index, 40).await;
@@ -740,7 +740,7 @@ async fn properties_can_change_shape_without_rejections() {
     let mapping = stack.get(&format!("{index}/_mapping")).await;
     let fields = &mapping[&index]["mappings"]["properties"];
     assert_eq!(fields["properties"]["type"], "flat_object");
-    assert_eq!(fields["tenant_id"]["type"], "keyword");
+    assert_eq!(fields["org_id"]["type"], "keyword");
     assert_eq!(fields["occured_at"]["type"], "date");
 
     let premium = json!({ "term": { "properties.plan": "premium" } });
@@ -802,7 +802,7 @@ async fn events_are_timed_by_when_they_happened() {
     for (name, occured_at, arrived_at) in events {
         let event = CanonicalEvent::builder()
             .name(name.into())
-            .tenant_id("merchant-a".into())
+            .org_id("merchant-a".into())
             .anon_id("anon-1".into())
             .occured_at(at(occured_at))
             .arrived_at(Some(at(arrived_at)))
@@ -811,7 +811,7 @@ async fn events_are_timed_by_when_they_happened() {
     }
     stack.produce(&names.topic, &records).await;
 
-    let template = format!("{}-{{tenant_id}}", names.index);
+    let template = format!("{}-{{org_id}}", names.index);
     let index = format!("{}-merchant-a", names.index);
     let sink = RunningSink::start(stack.sink_with(&names, 100, &template, "").await);
     stack.wait_for_count(&index, 3).await;

@@ -89,9 +89,9 @@ pub struct KafkaConfig {
 #[serde(deny_unknown_fields)]
 pub struct OpenSearchConfig {
     pub url: String,
-    /// Where documents are written. `{tenant_id}` is replaced with each
-    /// event's tenant, giving every tenant its own index or data stream.
-    /// This is the default; CAC overrides can change it per tenant.
+    /// Where documents are written. `{org_id}` is replaced with each
+    /// event's org, giving every org its own index or data stream.
+    /// This is the default; CAC overrides can change it per org.
     pub index: IndexTemplate,
     #[serde(default = "default_request_timeout_ms")]
     pub request_timeout_ms: u64,
@@ -127,46 +127,42 @@ impl fmt::Debug for Secret {
     }
 }
 
-const TENANT_PLACEHOLDER: &str = "{tenant_id}";
+const ORG_PLACEHOLDER: &str = "{org_id}";
 
-/// An index, alias or data stream name, optionally containing `{tenant_id}`,
-/// e.g. `events-{tenant_id}`.
+/// An index, alias or data stream name, optionally containing `{org_id}`,
+/// e.g. `events-{org_id}`.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "String")]
 pub struct IndexTemplate(String);
 
 impl IndexTemplate {
     /// Checks the fixed parts of the template against OpenSearch's naming
-    /// rules. Each tenant's name is checked again when its events arrive.
+    /// rules. Each org's name is checked again when its events arrive.
     pub fn parse(template: &str) -> Result<Self, String> {
-        if template
-            .replace(TENANT_PLACEHOLDER, "")
-            .contains(['{', '}'])
-        {
+        if template.replace(ORG_PLACEHOLDER, "").contains(['{', '}']) {
             return Err(format!(
-                "`opensearch.index` `{template}`: the only placeholder is `{TENANT_PLACEHOLDER}`"
+                "`opensearch.index` `{template}`: the only placeholder is `{ORG_PLACEHOLDER}`"
             ));
         }
-        let sample = template.replace(TENANT_PLACEHOLDER, "tenant");
+        let sample = template.replace(ORG_PLACEHOLDER, "org");
         validate_index_name(&sample)
             .map_err(|reason| format!("`opensearch.index` `{template}` {reason}"))?;
         Ok(Self(template.to_owned()))
     }
 
-    /// The index for one tenant's events. Fails if the tenant can't be part of
-    /// an index name, e.g. it has uppercase letters or a comma. Tenant IDs are
-    /// never rewritten, because two tenants could then share an index.
-    pub fn render(&self, tenant_id: &str) -> Result<Cow<'_, str>, String> {
-        if !self.0.contains(TENANT_PLACEHOLDER) {
+    /// The index for one org's events. Fails if the org can't be part of
+    /// an index name, e.g. it has uppercase letters or a comma. Org IDs are
+    /// never rewritten, because two orgs could then share an index.
+    pub fn render(&self, org_id: &str) -> Result<Cow<'_, str>, String> {
+        if !self.0.contains(ORG_PLACEHOLDER) {
             return Ok(Cow::Borrowed(&self.0));
         }
-        if tenant_id.is_empty() {
-            return Err("tenant_id is empty".to_owned());
+        if org_id.is_empty() {
+            return Err("org_id is empty".to_owned());
         }
-        let index = self.0.replace(TENANT_PLACEHOLDER, tenant_id);
-        validate_index_name(&index).map_err(|reason| {
-            format!("tenant_id `{tenant_id}` gives index `{index}`, which {reason}")
-        })?;
+        let index = self.0.replace(ORG_PLACEHOLDER, org_id);
+        validate_index_name(&index)
+            .map_err(|reason| format!("org_id `{org_id}` gives index `{index}`, which {reason}"))?;
         Ok(Cow::Owned(index))
     }
 }
@@ -682,8 +678,8 @@ mod tests {
     }
 
     #[test]
-    fn index_can_be_per_tenant() {
-        let config = config_with(&[("opensearch.index", json!("events-{tenant_id}"))]).unwrap();
+    fn index_can_be_per_org() {
+        let config = config_with(&[("opensearch.index", json!("events-{org_id}"))]).unwrap();
 
         assert_eq!(
             config.opensearch.index.render("merchant-1").unwrap(),
@@ -694,27 +690,27 @@ mod tests {
     #[test]
     fn index_template_checks_its_fixed_parts() {
         for (index, needle) in [
-            ("Events-{tenant_id}", "not a valid index name"),
-            ("_{tenant_id}", "not a valid index name"),
-            ("events-{tenant}", "the only placeholder is `{tenant_id}`"),
-            ("events-{date}-{tenant_id}", "the only placeholder"),
+            ("Events-{org_id}", "not a valid index name"),
+            ("_{org_id}", "not a valid index name"),
+            ("events-{org}", "the only placeholder is `{org_id}`"),
+            ("events-{date}-{org_id}", "the only placeholder"),
         ] {
             assert_rejected(config_with(&[("opensearch.index", json!(index))]), needle);
         }
     }
 
     #[test]
-    fn fixed_index_ignores_the_tenant() {
+    fn fixed_index_ignores_the_org() {
         let template = IndexTemplate::parse("events").unwrap();
 
         assert_eq!(template.render("Anything, really").unwrap(), "events");
     }
 
     #[test]
-    fn tenants_that_cannot_form_an_index_name_are_refused() {
-        let template = IndexTemplate::parse("events-{tenant_id}").unwrap();
+    fn orgs_that_cannot_form_an_index_name_are_refused() {
+        let template = IndexTemplate::parse("events-{org_id}").unwrap();
 
-        for tenant in [
+        for org in [
             "",
             "Merchant-1",
             "a,b",
@@ -723,10 +719,7 @@ mod tests {
             "a/b",
             &"x".repeat(250),
         ] {
-            assert!(
-                template.render(tenant).is_err(),
-                "`{tenant}` should be refused"
-            );
+            assert!(template.render(org).is_err(), "`{org}` should be refused");
         }
         assert_eq!(template.render("m_1.eu").unwrap(), "events-m_1.eu");
     }
@@ -790,7 +783,7 @@ mod tests {
         assert_eq!(config.kafka.topics, vec!["events.generic"]);
         assert_eq!(
             config.opensearch.index,
-            IndexTemplate::parse("events-{tenant_id}").unwrap()
+            IndexTemplate::parse("events-{org_id}").unwrap()
         );
         cac.close().await;
     }

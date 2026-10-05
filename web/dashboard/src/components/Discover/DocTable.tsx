@@ -20,7 +20,7 @@ import { HAIRLINE, monoSx, overlineSx } from './styles';
 /** Fields shown first in the document summary, when present. */
 const SUMMARY_FIRST = ['name', 'session_id', 'anon_id', 'actor_id', 'source'];
 /** Fields the summary leaves out: shown elsewhere or the same on every row. */
-const SUMMARY_SKIP = new Set([TIME_FIELD, 'workspace_id', 'envelop_version']);
+const SUMMARY_SKIP = new Set([TIME_FIELD, 'proj_id', 'envelop_version']);
 
 const TIME_WIDTH = 200;
 const COLUMN_MIN_WIDTH = 160;

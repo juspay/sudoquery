@@ -68,7 +68,7 @@ pub fn decode(payload: Option<&[u8]>) -> Result<Decoded<'_>, Rejection> {
     Ok(Decoded { event, source })
 }
 
-/// Builds the event's `create` operation into its tenant's index, with the
+/// Builds the event's `create` operation into its org's index, with the
 /// event's `id` as the document ID so a replay can't create a duplicate.
 pub fn build(
     decoded: &Decoded<'_>,
@@ -76,8 +76,8 @@ pub fn build(
     max_bytes: usize,
 ) -> Result<BulkDoc, Rejection> {
     let index = index
-        .render(&decoded.event.tenant_id)
-        .map_err(|reason| Rejection::new("invalid_tenant", reason))?;
+        .render(&decoded.event.org_id)
+        .map_err(|reason| Rejection::new("invalid_org", reason))?;
     let id = decoded.event.id().to_string();
     let action = serde_json::to_vec(&Action {
         create: Target {
@@ -121,9 +121,9 @@ mod tests {
         event_for("merchant-1")
     }
 
-    fn event_for(tenant: &str) -> String {
+    fn event_for(org: &str) -> String {
         format!(
-            r#"{{"envelop_version":"1.0","id":"{ID}","name":"payment_initiated","tenant_id":"{tenant}","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z","properties":{{"amount":100}}}}"#
+            r#"{{"envelop_version":"1.0","id":"{ID}","name":"payment_initiated","org_id":"{org}","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z","properties":{{"amount":100}}}}"#
         )
     }
 
@@ -200,27 +200,27 @@ mod tests {
     }
 
     #[test]
-    fn writes_each_tenant_to_its_own_index() {
-        let template = index("events-{tenant_id}");
+    fn writes_each_org_to_its_own_index() {
+        let template = index("events-{org_id}");
 
-        for tenant in ["merchant-1", "merchant-2"] {
-            let payload = event_for(tenant);
+        for org in ["merchant-1", "merchant-2"] {
+            let payload = event_for(org);
             let doc = prepare(Some(payload.as_bytes()), &template, 1024).unwrap();
 
             let action: serde_json::Value = serde_json::from_str(&lines(&doc)[0]).unwrap();
-            assert_eq!(action["create"]["_index"], format!("events-{tenant}"));
+            assert_eq!(action["create"]["_index"], format!("events-{org}"));
         }
     }
 
     #[test]
-    fn rejects_tenants_that_cannot_form_an_index_name() {
-        let template = index("events-{tenant_id}");
+    fn rejects_orgs_that_cannot_form_an_index_name() {
+        let template = index("events-{org_id}");
 
-        for tenant in ["Merchant-1", "", "a,b", "a*"] {
-            let payload = event_for(tenant);
+        for org in ["Merchant-1", "", "a,b", "a*"] {
+            let payload = event_for(org);
             let rejection = prepare(Some(payload.as_bytes()), &template, 1024).unwrap_err();
 
-            assert_eq!(rejection.class, "invalid_tenant", "tenant `{tenant}`");
+            assert_eq!(rejection.class, "invalid_org", "org `{org}`");
         }
     }
 }

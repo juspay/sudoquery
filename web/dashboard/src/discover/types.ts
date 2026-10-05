@@ -1,4 +1,4 @@
-/** An event as the API returns it: a canonical event without its tenant. */
+/** An event as the API returns it: a canonical event without its `org_id`. */
 export type EventDoc = Record<string, unknown>;
 
 export type QueryLanguage = 'dql' | 'lucene';
