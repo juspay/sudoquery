@@ -103,34 +103,6 @@ PROJECTS_LIST=$(curl -s -X GET "$BASE_URL/projects" \
 
 echo "Projects: $PROJECTS_LIST"
 
-# Step 7: Test ingestion with project token
-echo ""
-echo "=== Step 7: Test Ingestion with Project Token ==="
-INGEST_RESPONSE=$(curl -s -X POST "$BASE_URL/push_batch" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $PROJECT_TOKEN" \
-  -d '{
-    "session": {
-      "device_type": "desktop",
-      "platform": "web",
-      "browser": "chrome",
-      "country": "US",
-      "city": "San Francisco",
-      "user_agent": "Mozilla/5.0"
-    },
-    "events": [
-      {
-        "event_id": "550e8400-e29b-41d4-a716-446655440000",
-        "event_name": "page_view",
-        "event_timestamp": 1709500800000,
-        "user_id": "user123",
-        "properties": "{\"page\": \"/home\"}"
-      }
-    ]
-  }')
-
-echo "Ingest Response: $INGEST_RESPONSE"
-
 # Step 8: Get current user info
 echo ""
 echo "=== Step 8: Get Current User Info (/me) ==="
@@ -142,13 +114,8 @@ echo "Current User: $ME_RESPONSE"
 # Step 9: Test invalid token
 echo ""
 echo "=== Step 9: Test Invalid Token ==="
-INVALID_RESPONSE=$(curl -s -X POST "$BASE_URL/push_batch" \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer invalid-token" \
-  -d '{
-    "session": {"device_type": "desktop", "platform": "web", "browser": "chrome", "country": "US", "city": "SF", "user_agent": "test"},
-    "events": []
-  }')
+INVALID_RESPONSE=$(curl -s -X GET "$BASE_URL/projects" \
+  -H "Authorization: Bearer invalid-token")
 
 echo "Invalid Token Response: $INVALID_RESPONSE"
 

@@ -15,7 +15,6 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod clickhouse;
 mod db;
 mod entities;
-mod ingest;
 mod keycloak;
 mod middleware;
 mod models;
@@ -59,11 +58,15 @@ async fn health_check(State(s): State<AppState>) -> impl IntoResponse {
     };
 
     // Test Redpanda (Kafka) connection
-    let kafka_status = match s
-        .kafka_producer
-        .client()
-        .fetch_metadata(None, std::time::Duration::from_secs(5))
-    {
+    let kafka_probe: Result<FutureProducer, rdkafka::error::KafkaError> = ClientConfig::new()
+        .set("bootstrap.servers", get_kafka_broker_url())
+        .create();
+    let kafka_status = match kafka_probe.and_then(|producer| {
+        producer
+            .client()
+            .fetch_metadata(None, std::time::Duration::from_secs(3))
+            .map(|_| ())
+    }) {
         Ok(_) => "connected",
         Err(e) => {
             tracing::error!("Health check: Redpanda/Kafka connection failed: {}", e);
@@ -85,7 +88,7 @@ async fn get_events_today_count(
 ) -> impl IntoResponse {
     let timezone = project.timezone.as_deref().unwrap_or("Asia/Kolkata");
     let query = format!(
-        "SELECT count() as count FROM events_v1 WHERE toDate(event_timestamp, '{}') = toDate(now('{}'))",
+        "SELECT count() as count FROM events_v2 WHERE toDate(event_timestamp, '{}') = toDate(now('{}'))",
         timezone, timezone
     );
     match clickhouse::execute_project_query(
@@ -112,7 +115,7 @@ async fn get_events(
     State(s): State<AppState>,
     ProjectAccess { project, .. }: ProjectAccess,
 ) -> impl IntoResponse {
-    let query = "SELECT event_name FROM events_v1 GROUP BY event_name";
+    let query = "SELECT event_name FROM events_v2 GROUP BY event_name";
     match clickhouse::execute_project_query(
         &s.clickhouse_url,
         project.id,
@@ -151,10 +154,10 @@ async fn get_event_props(
         FROM \
         ( \
             SELECT * \
-            FROM events_v1 \
+            FROM events_v2 \
             WHERE event_name = '{}' \
         ) \
-        ARRAY JOIN mapKeys(properties) AS key",
+        ARRAY JOIN JSONAllPaths(properties) AS key",
         event_name
     );
 
@@ -366,13 +369,6 @@ async fn main() {
         &keycloak_realm,
     );
 
-    let kafka_broker_url = get_kafka_broker_url();
-    let kafka_producer: FutureProducer = ClientConfig::new()
-        .set("bootstrap.servers", &kafka_broker_url)
-        .set("message.timeout.ms", "5000")
-        .create()
-        .expect("Failed to create Kafka producer");
-
     // Initialize SeaORM connection
     let db_conn = Database::connect(&database_url)
         .await
@@ -396,7 +392,6 @@ async fn main() {
         keycloak_url,
         keycloak_realm,
         temp_password,
-        kafka_producer,
         clickhouse_url,
         clickhouse_admin_url,
         clickhouse_admin_user,
@@ -407,8 +402,6 @@ async fn main() {
 
     let api_routes = Router::new()
         .route("/health", get(health_check))
-        .route("/push_batch", post(ingest::push_batch))
-        .route("/push_batches", post(ingest::push_batches))
         .route("/events", get(get_events))
         .route("/events/today/count", get(get_events_today_count))
         .route("/event_props", get(get_event_props))

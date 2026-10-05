@@ -82,8 +82,50 @@ services:
       - keycloak_data:/opt/keycloak/data
       - ./keycloak/import:/opt/keycloak/data/import:ro
 
+  # Host port 19000 (not 9000) for native TCP — minio already holds 9000.
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    restart: unless-stopped
+    environment:
+      REDPANDA_BROKER_LIST: "redpanda:9092"
+      CLICKHOUSE_USER: "default"
+      CLICKHOUSE_PASSWORD: "OeTMIwYfwg7qwa1idy4cO3Is"
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
+      # schema.sql is idempotent (IF NOT EXISTS throughout), so re-apply on
+      # every start — also covers volumes created before this mount existed
+      CLICKHOUSE_ALWAYS_RUN_INITDB_SCRIPTS: "1"
+    ports:
+      - "8123:8123"
+      - "19000:9000"
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./ckh/schema.sql:/docker-entrypoint-initdb.d/01_schema.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  chproxy:
+    image: contentsquareplatform/chproxy:v1.30.0
+    restart: unless-stopped
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./ckh/config/chproxy.yml:/config/chproxy.yml:ro
+    command: ["-config", "/config/chproxy.yml"]
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+
 volumes:
   postgres_data:
   redpanda_data:
   minio_data:
   keycloak_data:
+  clickhouse_data:

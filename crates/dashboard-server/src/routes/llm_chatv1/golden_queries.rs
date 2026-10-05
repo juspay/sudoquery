@@ -81,7 +81,7 @@ const GOLDEN_QUERIES: &[GoldenQuery] = &[
         query: r#"SELECT
     toDate(event_timestamp) AS date,
     count() AS event_count
-FROM events_v1
+FROM events_v2
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
 GROUP BY date
@@ -113,7 +113,7 @@ ORDER BY date"#,
         query: r#"SELECT
     event_name,
     count() AS count
-FROM events_v1
+FROM events_v2
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
 GROUP BY event_name
@@ -144,9 +144,9 @@ LIMIT 20"#,
         description: "Event counts grouped by platform",
         use_case: "When user asks about platform distribution, platform usage, or breakdown by platform",
         query: r#"SELECT
-    platform,
+    toString(properties.platform) AS platform,
     count() AS event_count
-FROM events_v1
+FROM events_v2
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
     AND platform != ''
@@ -177,9 +177,9 @@ ORDER BY event_count DESC"#,
         description: "Event counts grouped by device type",
         use_case: "When user asks about device breakdown, mobile vs desktop, or device type usage",
         query: r#"SELECT
-    device_type,
+    toString(properties.device_type) AS device_type,
     count() AS event_count
-FROM events_v1
+FROM events_v2
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
     AND device_type != ''
@@ -210,9 +210,9 @@ ORDER BY event_count DESC"#,
         description: "Event counts grouped by browser",
         use_case: "When user asks about browser distribution, browser usage, or which browsers are used",
         query: r#"SELECT
-    browser,
+    toString(properties.browser) AS browser,
     count() AS event_count
-FROM events_v1
+FROM events_v2
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
     AND browser != ''
@@ -246,7 +246,7 @@ LIMIT 10"#,
         query: r#"SELECT
     country,
     count() AS event_count
-FROM events_v1
+FROM events_v2
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
     AND country IS NOT NULL
@@ -276,7 +276,7 @@ LIMIT 20"#,
         query: r#"SELECT
     toHour(event_timestamp) AS hour,
     count() AS event_count
-FROM events_v1
+FROM events_v2
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
 GROUP BY hour
@@ -308,7 +308,7 @@ ORDER BY hour"#,
         query: r#"SELECT
     toStartOfWeek(event_timestamp) AS week,
     count() AS event_count
-FROM events_v1
+FROM events_v2
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
 GROUP BY week
@@ -340,7 +340,7 @@ ORDER BY week"#,
         query: r#"SELECT
     formatDateTime(event_timestamp, '%Y-%m') AS month,
     count() AS event_count
-FROM events_v1
+FROM events_v2
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
 GROUP BY month
@@ -371,7 +371,7 @@ ORDER BY month"#,
         use_case: "When user asks about a specific event count, how many times an event occurred",
         query: r#"SELECT
     count() AS event_count
-FROM events_v1
+FROM events_v2
 WHERE event_name = '{event_name}'
     AND event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'"#,
@@ -384,11 +384,11 @@ WHERE event_name = '{event_name}'
         description: "Count of unique users within a date range",
         use_case: "When user asks for unique users, distinct users, or how many users",
         query: r#"SELECT
-    uniqExact(user_id) AS unique_users
-FROM user_events_v1
+    uniqExact(actor_id) AS unique_users
+FROM user_events_v2
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
-    AND user_id != ''"#,
+    AND actor_id != ''"#,
         tags: &["users", "unique", "distinct", "count"],
         chart_config: None,
     },
@@ -399,11 +399,11 @@ WHERE event_timestamp >= '{start_date}'
         use_case: "When user asks for DAU, daily active users, or users per day",
         query: r#"SELECT
     toDate(event_timestamp) AS date,
-    uniqExact(user_id) AS unique_users
-FROM user_events_v1
+    uniqExact(actor_id) AS unique_users
+FROM user_events_v2
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
-    AND user_id != ''
+    AND actor_id != ''
 GROUP BY date
 ORDER BY date"#,
         tags: &["dau", "users", "daily", "active"],
@@ -449,8 +449,8 @@ WITH
                     event_name = 'add_to_cart',
                     event_name = 'purchase'
                 ) AS level
-            FROM default.user_events_v1
-            GROUP BY user_id
+            FROM default.user_events_v2
+            GROUP BY actor_id
         )
         WHERE level > 0
         GROUP BY level
@@ -481,9 +481,9 @@ ORDER BY level ASC;
         description: "Top cities by event count",
         use_case: "When user asks about top cities, city breakdown, or where events are coming from",
         query: r#"SELECT
-    city,
+    toString(properties.city) AS city,
     count() AS event_count
-FROM events_v1
+FROM events_v2
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
     AND city != ''
@@ -510,7 +510,7 @@ LIMIT 20"#,
         description: "List of distinct event names in the database",
         use_case: "When user wants to know what events are available, event types, or event catalog",
         query: r#"SELECT DISTINCT event_name
-FROM events_v1
+FROM events_v2
 ORDER BY event_name
 LIMIT 100"#,
         tags: &["events", "catalog", "list", "available"],
@@ -524,7 +524,7 @@ LIMIT 100"#,
         query: r#"SELECT
     toString(properties.{property_name}) AS property_value,
     count() AS count
-FROM events_v1
+FROM events_v2
 WHERE event_name = '{event_name}'
     AND event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
@@ -562,7 +562,7 @@ LIMIT 30"#,
         name: "Mean Reciprocal Rank",
         description: "Calculate reciprocal rank for a specific event",
         use_case: "When user asks about ranking, reciprocal rank, or position of an event in a ranking",
-        query: r#"SELECT avg(1.0 / properties.{property_name}::Float64) AS mrr FROM events_v1 WHERE event_name = '{event_name}' AND properties.{property_name} IS NOT NULL AND event_timestamp >= '{start_date}' AND event_timestamp <= '{end_date}'"#,
+        query: r#"SELECT avg(1.0 / properties.{property_name}::Float64) AS mrr FROM events_v2 WHERE event_name = '{event_name}' AND properties.{property_name} IS NOT NULL AND event_timestamp >= '{start_date}' AND event_timestamp <= '{end_date}'"#,
         tags: &["ranking", "reciprocal-rank"],
         chart_config: None,
     },
@@ -583,9 +583,9 @@ LIMIT 30"#,
 FROM (
     SELECT
         (lead(event_timestamp) OVER w) - event_timestamp AS time_gap
-    FROM user_events_v1
+    FROM user_events_v2
     WHERE event_name = '{event_name}' AND proj_id = '{proj_id}'
-    WINDOW w AS (PARTITION BY user_id ORDER BY event_timestamp)
+    WINDOW w AS (PARTITION BY actor_id ORDER BY event_timestamp)
 )
 WHERE time_gap IS NOT NULL
 GROUP BY gap_bucket
@@ -633,9 +633,9 @@ ORDER BY gap_bucket"#,
 FROM (
     SELECT
         editDistance(properties.{property_name}, lead(properties.{property_name}) OVER w) AS edit_dist
-    FROM user_events_v1
+    FROM user_events_v2
     WHERE event_name = '{event_name}' AND proj_id = '{proj_id}'
-    WINDOW w AS (PARTITION BY user_id ORDER BY event_timestamp)
+    WINDOW w AS (PARTITION BY actor_id ORDER BY event_timestamp)
 )
 WHERE edit_dist IS NOT NULL
 GROUP BY similarity_bucket
@@ -683,7 +683,7 @@ ORDER BY similarity_bucket"#,
     count() AS event_count
 FROM (
     SELECT 1 / properties.{property_name} AS inv_position
-    FROM user_events_v1
+    FROM user_events_v2
     WHERE event_name = '{event_name}' AND proj_id = '{proj_id}'
         AND properties.{property_name} IS NOT NULL
 )

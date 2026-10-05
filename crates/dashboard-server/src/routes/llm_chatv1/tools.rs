@@ -362,50 +362,62 @@ pub fn get_database_schema_value(table_name: Option<&str>) -> serde_json::Value 
     let schema = json!({
         "tables": [
             {
-                "name": "user_events_v1",
+                "name": "user_events_v2",
                 "description": "Optimised table for user behavior analytics and run time session creations, cohorts creation",
                 "columns": [
-                    { "name": "event_id", "type": "UUID" },
-                    { "name": "user_id", "type": "String" },
+                    { "name": "proj_id", "type": "UUID" },
+                    { "name": "org_id", "type": "LowCardinality(String)" },
+                    { "name": "actor_id", "type": "String" },
                     { "name": "anon_id", "type": "String" },
+                    { "name": "session_id", "type": "String" },
+                    { "name": "event_id", "type": "UUID" },
                     { "name": "event_name", "type": "LowCardinality(String)" },
                     { "name": "event_timestamp", "type": "DateTime64(3)" },
-                    { "name": "event_date", "type": "Date" },
-                    { "name": "event_hour", "type": "DateTime" },
+                    { "name": "arrived_at", "type": "Nullable(DateTime64(3))" },
+                    { "name": "source", "type": "LowCardinality(String)" },
+                    { "name": "correlation_id", "type": "String" },
+                    { "name": "trace_id", "type": "String" },
+                    { "name": "authenticated", "type": "Nullable(Bool)" },
                     { "name": "properties", "type": "JSON" },
-                    { "name": "device_type", "type": "LowCardinality(String)" },
-                    { "name": "platform", "type": "LowCardinality(String)" },
-                    { "name": "browser", "type": "LowCardinality(String)" },
                     { "name": "country", "type": "LowCardinality(Nullable(FixedString(2)))" },
-                    { "name": "city", "type": "String" },
-                    { "name": "user_agent", "type": "String" },
+                    { "name": "timezone", "type": "LowCardinality(Nullable(String))" },
+                    { "name": "ip_address", "type": "Nullable(String)" },
                     { "name": "inserted_at", "type": "DateTime" },
-                    { "name": "version", "type": "String" }
+                    { "name": "updated_at", "type": "DateTime" },
+                    { "name": "is_deleted", "type": "UInt8" }
                 ],
-                "orderBy": ["user_id", "event_timestamp", "event_name", "event_id"],
-                "partitionBy": "toYYYYMM(event_date)"
+                "orderBy": ["proj_id", "actor_id", "event_timestamp", "event_id"],
+                "partitionBy": "toYYYYMM(event_timestamp)",
+                "notes": "The acting user is actor_id. Property values are read from the JSON column, e.g. toString(properties.foo) or properties.foo.:String for strings and properties.foo::Float64 for numerics. Legacy v1 columns (user_id, event_date, event_hour, device_type, platform, browser, city, user_agent, version) no longer exist."
             },
             {
-                "name": "events_v1",
-                "description": "Optimised for event analytics. Use this table for event-related queries (event names, event properties, event counts) as event_name is the primary sort key.",
+                "name": "events_v2",
+                "description": "Optimised for event analytics. Use this table for event-related queries (event names, event properties, event counts) as event_name is in the sort key.",
                 "columns": [
+                    { "name": "proj_id", "type": "UUID" },
+                    { "name": "org_id", "type": "LowCardinality(String)" },
+                    { "name": "actor_id", "type": "String" },
+                    { "name": "anon_id", "type": "String" },
+                    { "name": "session_id", "type": "String" },
                     { "name": "event_id", "type": "UUID" },
                     { "name": "event_name", "type": "LowCardinality(String)" },
                     { "name": "event_timestamp", "type": "DateTime64(3)" },
-                    { "name": "event_date", "type": "Date" },
-                    { "name": "event_hour", "type": "DateTime" },
+                    { "name": "arrived_at", "type": "Nullable(DateTime64(3))" },
+                    { "name": "source", "type": "LowCardinality(String)" },
+                    { "name": "correlation_id", "type": "String" },
+                    { "name": "trace_id", "type": "String" },
+                    { "name": "authenticated", "type": "Nullable(Bool)" },
                     { "name": "properties", "type": "JSON" },
-                    { "name": "device_type", "type": "LowCardinality(String)" },
-                    { "name": "platform", "type": "LowCardinality(String)" },
-                    { "name": "browser", "type": "LowCardinality(String)" },
                     { "name": "country", "type": "LowCardinality(Nullable(FixedString(2)))" },
-                    { "name": "city", "type": "String" },
-                    { "name": "user_agent", "type": "String" },
+                    { "name": "timezone", "type": "LowCardinality(Nullable(String))" },
+                    { "name": "ip_address", "type": "Nullable(String)" },
                     { "name": "inserted_at", "type": "DateTime" },
-                    { "name": "version", "type": "String" }
+                    { "name": "updated_at", "type": "DateTime" },
+                    { "name": "is_deleted", "type": "UInt8" }
                 ],
-                "orderBy": ["event_name", "event_timestamp", "event_id"],
-                "partitionBy": "toYYYYMM(event_date)"
+                "orderBy": ["proj_id", "event_name", "event_timestamp", "event_id"],
+                "partitionBy": "toYYYYMM(event_timestamp)",
+                "notes": "Property values are read from the JSON column, e.g. toString(properties.foo) or properties.foo.:String for strings and properties.foo::Float64 for numerics. Legacy v1 columns (user_id, event_date, event_hour, device_type, platform, browser, city, user_agent, version) no longer exist."
             },
             {
                 "name": "event_schema_catalog",
@@ -414,8 +426,7 @@ pub fn get_database_schema_value(table_name: Option<&str>) -> serde_json::Value 
                     { "name": "proj_id", "type": "UUID" },
                     { "name": "event_name", "type": "String" },
                     { "name": "property", "type": "String" },
-                    { "name": "type", "type": "String" },
-                    { "name": "description", "type": "String" }
+                    { "name": "type", "type": "String" }
                 ],
                 "orderBy": ["proj_id", "event_name", "property", "type"]
             }

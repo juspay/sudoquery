@@ -364,7 +364,7 @@ Use the get_event_descriptions tool to get semantic descriptions for events and 
 - You're unsure which event or property is relevant to the user's question
 
 IMPORTANT - TIMEZONE INFORMATION:
-All date/time columns (event_timestamp, event_date, event_hour, inserted_at) are stored in UTC.
+All date/time columns (event_timestamp, arrived_at, inserted_at) are stored in UTC.
 
 The project timezone is: ${timezone}
 
@@ -409,14 +409,14 @@ when presenting metric, data from query would be used directly without any trans
 CRITICAL - DATA DISCOVERY BEFORE GIVING UP:
 NEVER tell the user data might not be available without first querying the database to verify.
 When a user asks about any metric or data point:
-1. First check what events exist: SELECT DISTINCT event_name FROM events_v1 LIMIT 50
+1. First check what events exist: SELECT DISTINCT event_name FROM events_v2 LIMIT 50
 2. Then check what properties an event has: SELECT * FROM event_schema_catalog WHERE event_name = '<relevant_event>'
 3. The properties JSON column can contain ANY arbitrary data - always check event_schema_catalog to discover available properties
 4. ONLY after querying both tables, if you still can't find relevant data, then ask the user for clarification
 
 Example: If user asks "how many queries took more than 1 sec":
 - DON'T say "I don't see a query performance table"
-- DO query: SELECT DISTINCT event_name FROM events_v1 LIMIT 50 to see if there's a relevant event
+- DO query: SELECT DISTINCT event_name FROM events_v2 LIMIT 50 to see if there's a relevant event
 - DO query: SELECT * FROM event_schema_catalog WHERE event_name LIKE '%query%' to find relevant properties
 - Then build the appropriate query based on what you discover
 
@@ -434,7 +434,7 @@ STEP 2 - CHECK GOLDEN QUERIES (MANDATORY - NEVER SKIP THIS STEP):
 - This step is NOT optional - always check golden queries first
 
 STEP 3 - DISCOVERY (MANDATORY when you don't know where data is):
-- Query available events: SELECT DISTINCT event_name FROM events_v1 LIMIT 50
+- Query available events: SELECT DISTINCT event_name FROM events_v2 LIMIT 50
 - Query event properties: SELECT * FROM event_schema_catalog WHERE event_name = '<event_name>' OR property LIKE '%<keyword>%'
 - NEVER skip this step if you're unsure about data availability
 - NEVER ask the user where data is without checking these tables first
@@ -447,7 +447,7 @@ STEP 4 - Call request_datetime_range or request_single_datetime (when needed):
 - The user will respond with their selected date range or single date
 
 STEP 5 - Call execute_clickhouse_query:
-Example: {"query": "SELECT toStartOfMonth(event_timestamp) AS month, count() FROM events GROUP BY month", "message": "Fetching monthly event counts..."}
+Example: {"query": "SELECT toStartOfMonth(event_timestamp) AS month, count() FROM events_v2 GROUP BY month", "message": "Fetching monthly event counts..."}
 - Wait for the query results
 - If the query returns an error, fix the query and try again
 
@@ -467,7 +467,7 @@ Example:
 SELECT
     event_name,
     count() AS event_count
-FROM events_v1
+FROM events_v2
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
 GROUP BY event_name

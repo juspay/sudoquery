@@ -73,7 +73,7 @@ pub async fn execute_tool(
             match event_name {
                 Some(name) => {
                     let query = format!(
-                        "SELECT event_name, property, type, description FROM event_schema_catalog WHERE event_name = '{}'",
+                        "SELECT event_name, property, type FROM event_schema_catalog WHERE event_name = '{}'",
                         name
                     );
                     match clickhouse::execute_project_query(

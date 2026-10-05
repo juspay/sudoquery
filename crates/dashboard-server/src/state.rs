@@ -1,4 +1,3 @@
-use rdkafka::producer::FutureProducer;
 use reqwest::Client;
 use sea_orm::DatabaseConnection;
 use sqlx::PgPool;
@@ -17,7 +16,6 @@ pub struct AppState {
     pub keycloak_url: String,
     pub keycloak_realm: String,
     pub temp_password: String,
-    pub kafka_producer: FutureProducer,
     pub clickhouse_url: String,
     pub clickhouse_admin_url: String,
     pub clickhouse_admin_user: String,
