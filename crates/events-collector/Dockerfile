@@ -1,5 +1,9 @@
 # syntax=docker/dockerfile:1
 
+# The build context is the workspace root, because cargo needs the whole
+# workspace (Cargo.toml, Cargo.lock, crates/, xtask/):
+#   docker build -f crates/events-collector/Dockerfile .
+
 FROM rust:1-bookworm AS builder
 
 WORKDIR /app

@@ -18,6 +18,6 @@ jobs:
       - uses: ./.github/actions/build-push-image
         with:
           image: kafka-to-s3
-          dockerfile: kafka_to_s3.Dockerfile
+          dockerfile: crates/kafka-to-s3/Dockerfile
           context: .
           github-token: ${{ secrets.GITHUB_TOKEN }}

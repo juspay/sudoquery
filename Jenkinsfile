@@ -47,7 +47,7 @@ pipeline {
 
         stage('Build workspace') {
             steps {
-                sh "docker build --target builder ."
+                sh "docker build -f crates/events-collector/Dockerfile --target builder ."
             }
         }
 
@@ -55,7 +55,7 @@ pipeline {
             steps {
                 script {
                     for (String svc : SERVICES) {
-                        sh "docker build -t ${env.IMAGE_REPO}:${svc}-${env.COMMIT_ID} ."
+                        sh "docker build -f crates/events-collector/Dockerfile -t ${env.IMAGE_REPO}:${svc}-${env.COMMIT_ID} ."
                         if (env.NEXT_VERSION?.trim()) {
                             sh "docker tag ${env.IMAGE_REPO}:${svc}-${env.COMMIT_ID} ${env.IMAGE_REPO}:${svc}-${env.NEXT_VERSION}"
                         }
