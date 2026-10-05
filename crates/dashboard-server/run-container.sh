@@ -4,9 +4,10 @@ set -e
 IMAGE_NAME="hyper-analytics-dashboard"
 CONTAINER_NAME="hyper-analytics-dashboard-server"
 
-# Build the image
+# Build the image. The context is the workspace root: the crate depends on
+# crates/canonical-event.
 echo "Building container image..."
-podman build -t "$IMAGE_NAME" .
+podman build -f Dockerfile -t "$IMAGE_NAME" ../..
 
 # Stop and remove existing container if running
 if podman ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then

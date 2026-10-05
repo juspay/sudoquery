@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 axum = "0.8"
 axum-extra = { version = "0.10", features = ["typed-header"] }
+canonical-event = { path = "../canonical-event" }
 clickhouse = { version = "0.13.3", features = ["uuid", "inserter"] }
 chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1", features = ["full"] }

@@ -40,6 +40,9 @@ const InvitationsSettingsPage = lazy(() => import('../pages/settings/Invitations
 const ProjectSettingsPage = lazy(() => import('../pages/settings/ProjectSettingsPage'));
 const OrganizationSettingsPage = lazy(() => import('../pages/settings/OrganizationSettingsPage'));
 const SQLConsole = lazy(() => import('../pages/SQLConsole'));
+const DiscoverPage = lazy(() => import('../pages/DiscoverPage'));
+const SessionsPage = lazy(() => import('../pages/SessionsPage'));
+const SessionDetailPage = lazy(() => import('../pages/SessionDetailPage'));
 
 function PageLoader() {
   return <LoadingSkeleton variant="page" />;
@@ -88,6 +91,9 @@ export function AppRoutes() {
           <Route path="metrics" element={<MetricsPage />} />
           <Route path="events-schema" element={<EventSchemaPage />} />
           <Route path="sql-console" element={<SQLConsole />} />
+          <Route path="discover" element={<DiscoverPage />} />
+          <Route path="discover/sessions" element={<SessionsPage />} />
+          <Route path="discover/sessions/:sessionId" element={<SessionDetailPage />} />
           <Route path="settings" element={<SettingsLayout />}>
             <Route index element={<Navigate to="account" replace />} />
             <Route path="account" element={<AccountSettingsPage />} />

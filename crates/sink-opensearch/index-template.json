@@ -1,0 +1,40 @@
+{
+  "index_patterns": ["events-*"],
+  "priority": 100,
+  "template": {
+    "settings": {
+      "number_of_shards": 1
+    },
+    "mappings": {
+      "properties": {
+        "@timestamp": { "type": "alias", "path": "occured_at" },
+        "envelop_version": { "type": "keyword" },
+        "id": { "type": "keyword" },
+        "name": { "type": "keyword" },
+        "occured_at": { "type": "date" },
+        "arrived_at": { "type": "date" },
+        "org_id": { "type": "keyword" },
+        "proj_id": { "type": "keyword" },
+        "session_id": { "type": "keyword" },
+        "anon_id": { "type": "keyword" },
+        "actor_id": { "type": "keyword" },
+        "source": { "type": "keyword" },
+        "correlation_id": { "type": "keyword" },
+        "trace_id": { "type": "keyword" },
+        "authenticated": { "type": "boolean" },
+        "properties": { "type": "flat_object" },
+        "system_properties": {
+          "properties": {
+            "geo": {
+              "properties": {
+                "country": { "type": "keyword" }
+              }
+            },
+            "timezone": { "type": "keyword" },
+            "ip_address": { "type": "ip", "ignore_malformed": true }
+          }
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,28 @@
+[package]
+name = "sink-opensearch"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { workspace = true }
+bytes = "1.12.1"
+canonical-event = { path = "../canonical-event" }
+chrono = { workspace = true }
+futures = { workspace = true }
+metrics = "0.24.6"
+metrics-exporter-prometheus = { version = "0.18.3", default-features = false }
+rand = "0.9"
+rdkafka = { workspace = true }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+superposition_provider = { workspace = true }
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tokio-util = "0.7.19"
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter"] }
+uuid = { workspace = true }
+
+[dev-dependencies]
+wiremock = "0.6.5"

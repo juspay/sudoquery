@@ -12,6 +12,8 @@ const ROUTE_LABELS: Record<string, string> = {
   project: 'Project',
   members: 'Members',
   account: 'Account',
+  discover: 'Discover',
+  sessions: 'Sessions',
 };
 
 export function BreadcrumbBar() {

@@ -4,6 +4,7 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { FileTextIcon } from '../icons/animated/FileTextIcon';
 import { LayoutGridIcon } from '../icons/animated/LayoutGridIcon';
 import { MessageCircleIcon } from '../icons/animated/MessageCircleIcon';
+import { SearchIcon } from '../icons/animated/SearchIcon';
 import { SettingsIcon } from '../icons/animated/SettingsIcon';
 import { TerminalIcon } from '../icons/animated/TerminalIcon';
 import type { AnimatedIconHandle } from '../icons/animated/types';
@@ -158,6 +159,13 @@ export function SideNav() {
         label="Dashboard"
         isAdmin={isAdmin}
         isActive={location.pathname === '/app/dashboard'}
+      />
+      <NavItem
+        to="/app/discover"
+        icon={SearchIcon}
+        label="Discover"
+        isAdmin={isAdmin}
+        isActive={location.pathname.startsWith('/app/discover')}
       />
       <NavItem
         to="/app/sql-console"

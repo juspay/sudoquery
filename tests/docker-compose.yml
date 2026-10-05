@@ -17,7 +17,7 @@ services:
       - --advertise-kafka-addr
       - internal://redpanda:9092,external://${REDPANDA_ADVERTISE_HOST:-localhost}:${REDPANDA_ADVERTISE_PORT:-19092}
     volumes:
-      - /home/sridatta/rp_data:/var/lib/redpanda
+      - redpanda-data:/var/lib/redpanda/data
     ports:
       - "19092:19092"
 
@@ -70,3 +70,84 @@ services:
     ports:
       - "4566:4566"
 
+  opensearch:
+    image: opensearchproject/opensearch:2.19.1
+    container_name: opensearch
+    restart: always
+    environment:
+      discovery.type: single-node
+      DISABLE_SECURITY_PLUGIN: "true"
+      DISABLE_INSTALL_DEMO_CONFIG: "true"
+      OPENSEARCH_JAVA_OPTS: "-Xms512m -Xmx512m"
+      # A nearly full Docker disk would otherwise block index creation and writes.
+      cluster.routing.allocation.disk.threshold_enabled: "false"
+    ports:
+      - "9200:9200"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  # Installs the index template for events-* indexes: field types, with
+  # `properties` as a flat_object.
+  opensearch-init:
+    image: curlimages/curl:8.10.1
+    container_name: opensearch-init
+    restart: "no"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    volumes:
+      - ../crates/sink-opensearch/index-template.json:/index-template.json:ro
+    command:
+      - -sSf
+      - -X
+      - PUT
+      - http://opensearch:9200/_index_template/events
+      - -H
+      - "Content-Type: application/json"
+      - --data-binary
+      - "@/index-template.json"
+
+  # Web UI for OpenSearch: http://localhost:5601
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:2.19.1
+    container_name: opensearch-dashboards
+    restart: always
+    environment:
+      OPENSEARCH_HOSTS: '["http://opensearch:9200"]'
+      DISABLE_SECURITY_DASHBOARDS_PLUGIN: "true"
+    ports:
+      - "5601:5601"
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:5601/api/status || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+
+  # Creates the `events-*` index pattern, timed by @timestamp (occured_at),
+  # makes it the default, and opens Discover on the last 7 days.
+  opensearch-dashboards-init:
+    image: curlimages/curl:8.10.1
+    container_name: opensearch-dashboards-init
+    restart: "no"
+    depends_on:
+      opensearch-dashboards:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        curl -sSf -X POST 'http://opensearch-dashboards:5601/api/saved_objects/index-pattern/events?overwrite=true' \
+          -H 'osd-xsrf: true' -H 'Content-Type: application/json' \
+          -d '{"attributes":{"title":"events-*","timeFieldName":"@timestamp"}}'
+        curl -sSf -X POST 'http://opensearch-dashboards:5601/api/opensearch-dashboards/settings' \
+          -H 'osd-xsrf: true' -H 'Content-Type: application/json' \
+          -d '{"changes":{"defaultIndex":"events","timepicker:timeDefaults":"{\"from\":\"now-7d\",\"to\":\"now\"}"}}'
+
+volumes:
+  redpanda-data:
