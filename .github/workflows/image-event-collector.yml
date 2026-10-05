@@ -1,0 +1,23 @@
+name: Image event-collector
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build and push event-collector
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/build-push-image
+        with:
+          image: event-collector
+          dockerfile: crates/events-collector/Dockerfile
+          context: .
+          github-token: ${{ secrets.GITHUB_TOKEN }}

@@ -1,5 +1,9 @@
 # syntax=docker/dockerfile:1
 
+# The build context is the workspace root, because cargo needs the whole
+# workspace (Cargo.toml, Cargo.lock, crates/, xtask/):
+#   docker build -f crates/events-collector/Dockerfile .
+
 FROM rust:1-bookworm AS builder
 
 WORKDIR /app
@@ -16,8 +20,9 @@ RUN apt-get update \
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY xtask ./xtask
 
-RUN cargo build --release --locked -p kafka-to-s3
+RUN cargo build --release --locked -p event-collector
 
 FROM debian:bookworm-slim AS runtime
 
@@ -31,6 +36,9 @@ RUN apt-get update \
 
 WORKDIR /app
 
-COPY --from=builder /app/target/release/kafka-to-s3 /usr/local/bin/kafka-to-s3
+COPY --from=builder /app/target/release/event-collector /usr/local/bin/event-collector
+COPY cac.toml ./cac.toml
 
-CMD ["kafka-to-s3"]
+EXPOSE 3000
+
+CMD ["event-collector"]

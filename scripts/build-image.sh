@@ -5,7 +5,7 @@ ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 IMAGE="${1:-event-collector:local}"
 
 docker build \
-  --file "${ROOT_DIR}/Dockerfile" \
+  --file "${ROOT_DIR}/crates/events-collector/Dockerfile" \
   --tag "${IMAGE}" \
   "${ROOT_DIR}"
 
