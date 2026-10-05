@@ -1,0 +1,23 @@
+name: Image sink-opensearch
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build and push sink-opensearch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/build-push-image
+        with:
+          image: sink-opensearch
+          dockerfile: crates/sink-opensearch/Dockerfile
+          context: .
+          github-token: ${{ secrets.GITHUB_TOKEN }}

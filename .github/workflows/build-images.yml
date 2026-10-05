@@ -1,0 +1,33 @@
+# Builds every deployable image and pushes it to GHCR as
+# ghcr.io/<owner>/<repo>/<image>:{sha-<short commit>,<branch>}.
+# Each image has its own workflow (image-*.yml); this one runs them all.
+name: Build images
+
+on:
+  push:
+    branches: [sudoquery-monorepo-impl]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-images-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  event-collector:
+    uses: ./.github/workflows/image-event-collector.yml
+
+  kafka-to-s3:
+    uses: ./.github/workflows/image-kafka-to-s3.yml
+
+  dashboard-server:
+    uses: ./.github/workflows/image-dashboard-server.yml
+
+  sink-opensearch:
+    uses: ./.github/workflows/image-sink-opensearch.yml
+
+  web-dashboard:
+    uses: ./.github/workflows/image-web-dashboard.yml
