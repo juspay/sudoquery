@@ -12,6 +12,7 @@ COPY Cargo.toml Cargo.lock ./
 
 # Copy Rust source
 COPY crates ./crates
+COPY xtask ./xtask
 
 RUN apt-get update && apt-get install -y \
     build-essential \

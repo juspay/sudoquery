@@ -16,8 +16,9 @@ RUN apt-get update \
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY xtask ./xtask
 
-RUN cargo build --release --locked
+RUN cargo build --release --locked -p event-collector
 
 FROM debian:bookworm-slim AS runtime
 

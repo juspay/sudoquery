@@ -16,6 +16,7 @@ RUN apt-get update \
 
 COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
+COPY xtask ./xtask
 
 RUN cargo build --release --locked -p kafka-to-s3
 
