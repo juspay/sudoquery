@@ -279,7 +279,7 @@ pub fn get_tools(chat_type: &ChatType) -> serde_json::Value {
                 "properties": {
                     "query_tool_call_id": {
                         "type": "string",
-                        "description": "Previous query tool call id. Query from this toolcall will be used to run and show data in dashboard.",
+                        "description": "The exact `id` of the previous execute_clickhouse_query tool call (an opaque string like \"call_a0e23bdc96334e17927ecb53\"). Copy it verbatim from that tool call - never compose it yourself (it is NOT \"functions.<name>:<number>\"). The query from that tool call will be executed to run and show data in the dashboard.",
                     },
                     "label":{
                         "Title": "string",
