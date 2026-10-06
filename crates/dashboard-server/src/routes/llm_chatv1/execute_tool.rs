@@ -53,7 +53,11 @@ pub async fn execute_tool(
             )
             .await
             {
-                Ok(result) => {
+                Ok(mut result) => {
+                    // LLMs can't see transport-level tool_call_id fields; expose it in the content.
+                    if let Some(obj) = result.as_object_mut() {
+                        obj.insert("tool_call_id".to_string(), json!(tool_call_id));
+                    }
                     if let Ok(mut map) = QUERY_RESULTS.lock() {
                         map.insert(tool_call_id.to_string(), result.clone());
                     }
