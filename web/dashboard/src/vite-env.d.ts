@@ -15,3 +15,8 @@ interface ImportMetaEnv {
 interface ImportMeta {
   readonly env: ImportMetaEnv;
 }
+
+interface Window {
+  /** Runtime VITE_* settings from /env-config.js; see src/config/env.ts. */
+  readonly __ENV__?: Readonly<Record<string, string>>;
+}

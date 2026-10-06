@@ -22,9 +22,11 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # Vite bakes these in at build time. Set them as repository variables
+      # Build-time defaults, baked in by Vite. Set them as repository variables
       # (Settings → Secrets and variables → Actions → Variables); unset ones
-      # fall back to the defaults in web/dashboard/src/config/api.ts.
+      # fall back to the defaults in web/dashboard/src/config/api.ts. A
+      # container's own VITE_* environment variables override these at start
+      # (see web/dashboard/env-config.sh).
       - uses: ./.github/actions/build-push-image
         with:
           image: web-dashboard

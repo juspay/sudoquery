@@ -1,6 +1,7 @@
+import { getEnv } from './env';
+
 const getEnvVar = (key: string, defaultValue: string): string => {
-  const value = import.meta.env[key];
-  return value ?? defaultValue;
+  return getEnv(key) ?? defaultValue;
 };
 
 export const API_CONFIG = {

@@ -1,9 +1,10 @@
 import { SudoQuery } from 'sudo-query';
+import { getEnv } from '../config/env';
 
 // Initialize analytics with configuration from environment
 export const initAnalytics = () => {
-  const token = import.meta.env.VITE_ANALYTICS_TOKEN;
-  const flushInterval = parseInt(import.meta.env.VITE_ANALYTICS_FLUSH_INTERVAL || '5000', 10);
+  const token = getEnv('VITE_ANALYTICS_TOKEN');
+  const flushInterval = parseInt(getEnv('VITE_ANALYTICS_FLUSH_INTERVAL') ?? '5000', 10);
 
   SudoQuery.init({
     token,
