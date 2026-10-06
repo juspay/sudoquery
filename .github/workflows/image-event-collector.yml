@@ -10,14 +10,34 @@ permissions:
 
 jobs:
   build:
-    name: Build and push event-collector
-    runs-on: ubuntu-latest
+    name: Build and push event-collector (${{ matrix.platform }})
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
 
       - uses: ./.github/actions/build-push-image
         with:
           image: event-collector
+          platform: ${{ matrix.platform }}
           dockerfile: crates/events-collector/Dockerfile
           context: .
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  merge:
+    name: Push event-collector manifest
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/merge-image
+        with:
+          image: event-collector
           github-token: ${{ secrets.GITHUB_TOKEN }}

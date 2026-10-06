@@ -10,14 +10,34 @@ permissions:
 
 jobs:
   build:
-    name: Build and push kafka-to-s3
-    runs-on: ubuntu-latest
+    name: Build and push kafka-to-s3 (${{ matrix.platform }})
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
 
       - uses: ./.github/actions/build-push-image
         with:
           image: kafka-to-s3
+          platform: ${{ matrix.platform }}
           dockerfile: crates/kafka-to-s3/Dockerfile
           context: .
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  merge:
+    name: Push kafka-to-s3 manifest
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/merge-image
+        with:
+          image: kafka-to-s3
           github-token: ${{ secrets.GITHUB_TOKEN }}

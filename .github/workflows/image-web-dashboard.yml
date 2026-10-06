@@ -10,8 +10,15 @@ permissions:
 
 jobs:
   build:
-    name: Build and push web-dashboard
-    runs-on: ubuntu-latest
+    name: Build and push web-dashboard (${{ matrix.platform }})
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
 
@@ -21,6 +28,7 @@ jobs:
       - uses: ./.github/actions/build-push-image
         with:
           image: web-dashboard
+          platform: ${{ matrix.platform }}
           dockerfile: web/dashboard/Dockerfile
           context: web/dashboard
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -35,3 +43,15 @@ jobs:
             VITE_ANALYTICS_TOKEN=${{ vars.VITE_ANALYTICS_TOKEN }}
             VITE_ANALYTICS_FLUSH_INTERVAL=${{ vars.VITE_ANALYTICS_FLUSH_INTERVAL }}
             VITE_MAINTENANCE_MODE=${{ vars.VITE_MAINTENANCE_MODE }}
+
+  merge:
+    name: Push web-dashboard manifest
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/merge-image
+        with:
+          image: web-dashboard
+          github-token: ${{ secrets.GITHUB_TOKEN }}
