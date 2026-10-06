@@ -4,13 +4,20 @@
 //! named `section.name`, e.g. `batch.max_docs` or `opensearch.index`. The file
 //! path comes from `SINK_CONFIG` (default `cac.toml`).
 //!
-//! Endpoints and credentials can be overridden from the environment, using the
-//! same Kafka variable names as the event collector:
+//! Every setting can also come from the environment, and the environment wins
+//! over the file. The variable is the key in upper case with `.` replaced by
+//! `_`, e.g. `BATCH_MAX_DOCS` for `batch.max_docs` (see `ENV_SETTINGS`):
 //!
-//! - `KAFKA_BOOTSTRAP_SERVERS`: overrides `kafka.client_config["bootstrap.servers"]`
-//! - `KAFKA_CLIENT_CONFIG`: JSON object merged into `kafka.client_config`;
-//!   `KAFKA_BOOTSTRAP_SERVERS` still wins over it
-//! - `OPENSEARCH_URL`: overrides `opensearch.url`
+//! - numbers are written as they are: `BATCH_MAX_DOCS=500`
+//! - `KAFKA_TOPICS` is comma-separated: `events.a,events.b`
+//! - `KAFKA_CLIENT_CONFIG` is a JSON object merged into `kafka.client_config`
+//! - `OPENSEARCH_INDEX` applies to every org, so CAC overrides of
+//!   `opensearch.index` are ignored while it is set
+//!
+//! Besides those, using the same names as the event collector and dashboard:
+//!
+//! - `KAFKA_BOOTSTRAP_SERVERS`: overrides `kafka.client_config["bootstrap.servers"]`,
+//!   winning over `KAFKA_CLIENT_CONFIG` too
 //! - `OPENSEARCH_USERNAME` / `OPENSEARCH_PASSWORD`: basic auth credentials,
 //!   accepted only from the environment
 //!
@@ -31,12 +38,66 @@ use crate::cac::{Cac, CacError};
 const CONFIG_PATH_ENV: &str = "SINK_CONFIG";
 const DEFAULT_CONFIG_PATH: &str = "cac.toml";
 const KAFKA_BOOTSTRAP_SERVERS_ENV: &str = "KAFKA_BOOTSTRAP_SERVERS";
-const KAFKA_CLIENT_CONFIG_ENV: &str = "KAFKA_CLIENT_CONFIG";
-const OPENSEARCH_URL_ENV: &str = "OPENSEARCH_URL";
 const OPENSEARCH_USERNAME_ENV: &str = "OPENSEARCH_USERNAME";
 const OPENSEARCH_PASSWORD_ENV: &str = "OPENSEARCH_PASSWORD";
 
 const BOOTSTRAP_SERVERS: &str = "bootstrap.servers";
+
+/// The CAC key resolved per org.
+pub(crate) const INDEX_KEY: &str = "opensearch.index";
+
+/// How a variable's text becomes a setting's value.
+#[derive(Clone, Copy, Debug)]
+enum EnvKind {
+    /// Taken as it is.
+    Text,
+    /// A whole number, e.g. `1000`.
+    Number,
+    /// Comma-separated, e.g. `events.a,events.b`.
+    List,
+    /// A JSON object of strings, merged into the file's object key by key.
+    Object,
+}
+
+/// Every setting, with the variable that overrides it.
+const ENV_SETTINGS: &[(&str, &str, EnvKind)] = &[
+    ("kafka.topics", "KAFKA_TOPICS", EnvKind::List),
+    ("kafka.group_id", "KAFKA_GROUP_ID", EnvKind::Text),
+    (
+        "kafka.client_config",
+        "KAFKA_CLIENT_CONFIG",
+        EnvKind::Object,
+    ),
+    ("opensearch.url", "OPENSEARCH_URL", EnvKind::Text),
+    (INDEX_KEY, "OPENSEARCH_INDEX", EnvKind::Text),
+    (
+        "opensearch.request_timeout_ms",
+        "OPENSEARCH_REQUEST_TIMEOUT_MS",
+        EnvKind::Number,
+    ),
+    ("batch.max_docs", "BATCH_MAX_DOCS", EnvKind::Number),
+    ("batch.max_bytes", "BATCH_MAX_BYTES", EnvKind::Number),
+    ("batch.linger_ms", "BATCH_LINGER_MS", EnvKind::Number),
+    (
+        "batch.max_in_flight",
+        "BATCH_MAX_IN_FLIGHT",
+        EnvKind::Number,
+    ),
+    (
+        "retry.initial_backoff_ms",
+        "RETRY_INITIAL_BACKOFF_MS",
+        EnvKind::Number,
+    ),
+    (
+        "retry.max_backoff_ms",
+        "RETRY_MAX_BACKOFF_MS",
+        EnvKind::Number,
+    ),
+    ("dlq.topic", "DLQ_TOPIC", EnvKind::Text),
+    ("commit.interval_ms", "COMMIT_INTERVAL_MS", EnvKind::Number),
+    ("shutdown.grace_ms", "SHUTDOWN_GRACE_MS", EnvKind::Number),
+    ("server.addr", "SERVER_ADDR", EnvKind::Text),
+];
 
 #[derive(Debug, thiserror::Error)]
 pub enum ConfigError {
@@ -51,6 +112,9 @@ pub enum ConfigError {
         key: &'static str,
         source: serde_json::Error,
     },
+
+    #[error("invalid `{key}` environment variable: {message}")]
+    EnvValue { key: &'static str, message: String },
 
     #[error("invalid config: {0}")]
     Invalid(String),
@@ -95,6 +159,10 @@ pub struct OpenSearchConfig {
     pub index: IndexTemplate,
     #[serde(default = "default_request_timeout_ms")]
     pub request_timeout_ms: u64,
+    /// Set when `index` came from `OPENSEARCH_INDEX`: it then applies to
+    /// every org, and CAC overrides of `opensearch.index` are ignored.
+    #[serde(skip)]
+    pub index_from_env: bool,
     #[serde(skip)]
     pub username: Option<String>,
     #[serde(skip)]
@@ -303,24 +371,70 @@ fn default_request_timeout_ms() -> u64 {
 /// Values read from the environment that take priority over the config file.
 #[derive(Debug, Default)]
 pub struct EnvOverrides {
+    /// Settings by CAC key, e.g. `batch.max_docs` from `BATCH_MAX_DOCS`.
+    pub settings: Map<String, Value>,
     pub kafka_bootstrap_servers: Option<String>,
-    pub kafka_client_config: Option<HashMap<String, String>>,
-    pub opensearch_url: Option<String>,
     pub opensearch_username: Option<String>,
     pub opensearch_password: Option<String>,
 }
 
 impl EnvOverrides {
     pub fn from_env() -> Result<Self, ConfigError> {
+        Self::from_lookup(|name| std::env::var(name).ok())
+    }
+
+    /// Reads the overrides through `lookup`, which returns a variable's value.
+    fn from_lookup(lookup: impl Fn(&str) -> Option<String>) -> Result<Self, ConfigError> {
+        let get = |name: &str| {
+            lookup(name)
+                .map(|value| value.trim().to_owned())
+                .filter(|value| !value.is_empty())
+        };
+
+        let mut settings = Map::new();
+        for &(key, name, kind) in ENV_SETTINGS {
+            if let Some(raw) = get(name) {
+                settings.insert(key.to_owned(), env_value(name, kind, &raw)?);
+            }
+        }
+
         Ok(Self {
-            kafka_bootstrap_servers: non_empty_env(KAFKA_BOOTSTRAP_SERVERS_ENV),
-            kafka_client_config: non_empty_env(KAFKA_CLIENT_CONFIG_ENV)
-                .map(|raw| parse_json_map(KAFKA_CLIENT_CONFIG_ENV, &raw))
-                .transpose()?,
-            opensearch_url: non_empty_env(OPENSEARCH_URL_ENV),
-            opensearch_username: non_empty_env(OPENSEARCH_USERNAME_ENV),
-            opensearch_password: non_empty_env(OPENSEARCH_PASSWORD_ENV),
+            settings,
+            kafka_bootstrap_servers: get(KAFKA_BOOTSTRAP_SERVERS_ENV),
+            opensearch_username: get(OPENSEARCH_USERNAME_ENV),
+            opensearch_password: get(OPENSEARCH_PASSWORD_ENV),
         })
+    }
+}
+
+fn env_value(name: &'static str, kind: EnvKind, raw: &str) -> Result<Value, ConfigError> {
+    match kind {
+        EnvKind::Text => Ok(Value::String(raw.to_owned())),
+        EnvKind::Number => raw
+            .parse::<u64>()
+            .map(Value::from)
+            .map_err(|_| ConfigError::EnvValue {
+                key: name,
+                message: format!("expected a whole number, got `{raw}`"),
+            }),
+        EnvKind::List => Ok(raw
+            .split(',')
+            .map(|item| Value::String(item.trim().to_owned()))
+            .collect()),
+        EnvKind::Object => Ok(parse_json_map(name, raw)?
+            .into_iter()
+            .map(|(key, value)| (key, Value::String(value)))
+            .collect()),
+    }
+}
+
+/// Puts an environment value over the file's: objects are merged key by key,
+/// anything else replaces the file's value.
+fn override_setting(values: &mut Map<String, Value>, key: String, value: Value) {
+    let current = values.entry(key).or_insert(Value::Null);
+    match (current, value) {
+        (Value::Object(current), Value::Object(entries)) => current.extend(entries),
+        (current, value) => *current = value,
     }
 }
 
@@ -336,39 +450,36 @@ impl Config {
         Self::from_cac(cac.resolve_defaults().await?, EnvOverrides::from_env()?)
     }
 
-    /// Builds the config from resolved CAC keys such as `batch.max_docs`.
+    /// Builds the config from resolved CAC keys such as `batch.max_docs`,
+    /// with the environment's values taking priority.
     pub fn from_cac(
-        values: Map<String, Value>,
+        mut values: Map<String, Value>,
         overrides: EnvOverrides,
     ) -> Result<Self, ConfigError> {
-        let mut config: Self = serde_json::from_value(nest(values)?)?;
-        config.apply(overrides);
-        config.validate()?;
-        Ok(config)
-    }
-
-    fn apply(&mut self, overrides: EnvOverrides) {
         let EnvOverrides {
+            settings,
             kafka_bootstrap_servers,
-            kafka_client_config,
-            opensearch_url,
             opensearch_username,
             opensearch_password,
         } = overrides;
 
-        if let Some(client_config) = kafka_client_config {
-            self.kafka.client_config.extend(client_config);
+        let index_from_env = settings.contains_key(INDEX_KEY);
+        for (key, value) in settings {
+            override_setting(&mut values, key, value);
         }
+
+        let mut config: Self = serde_json::from_value(nest(values)?)?;
         if let Some(bootstrap_servers) = kafka_bootstrap_servers {
-            self.kafka
+            config
+                .kafka
                 .client_config
                 .insert(BOOTSTRAP_SERVERS.to_owned(), bootstrap_servers);
         }
-        if let Some(url) = opensearch_url {
-            self.opensearch.url = url;
-        }
-        self.opensearch.username = opensearch_username;
-        self.opensearch.password = opensearch_password.map(Secret);
+        config.opensearch.index_from_env = index_from_env;
+        config.opensearch.username = opensearch_username;
+        config.opensearch.password = opensearch_password.map(Secret);
+        config.validate()?;
+        Ok(config)
     }
 
     fn validate(&self) -> Result<(), ConfigError> {
@@ -534,6 +645,15 @@ mod tests {
         Config::from_cac(values, EnvOverrides::default())
     }
 
+    fn env(vars: &[(&str, &str)]) -> Result<EnvOverrides, ConfigError> {
+        let vars: HashMap<&str, &str> = vars.iter().copied().collect();
+        EnvOverrides::from_lookup(|name| vars.get(name).map(|value| (*value).to_owned()))
+    }
+
+    fn config_from_env(vars: &[(&str, &str)]) -> Result<Config, ConfigError> {
+        Config::from_cac(minimal(), env(vars)?)
+    }
+
     fn assert_invalid(result: Result<Config, ConfigError>, needle: &str) {
         match result {
             Err(ConfigError::Invalid(message)) => assert!(
@@ -594,19 +714,16 @@ mod tests {
 
     #[test]
     fn env_overrides_take_priority() {
-        let config = Config::from_cac(
-            minimal(),
-            EnvOverrides {
-                kafka_bootstrap_servers: Some("env-broker:9092".into()),
-                kafka_client_config: Some(HashMap::from([
-                    ("bootstrap.servers".into(), "json-broker:9092".into()),
-                    ("security.protocol".into(), "SSL".into()),
-                ])),
-                opensearch_url: Some("https://search.internal:443".into()),
-                opensearch_username: Some("sink".into()),
-                opensearch_password: Some("hunter2".into()),
-            },
-        )
+        let config = config_from_env(&[
+            ("KAFKA_BOOTSTRAP_SERVERS", "env-broker:9092"),
+            (
+                "KAFKA_CLIENT_CONFIG",
+                r#"{"bootstrap.servers": "json-broker:9092", "security.protocol": "SSL"}"#,
+            ),
+            ("OPENSEARCH_URL", "https://search.internal:443"),
+            ("OPENSEARCH_USERNAME", "sink"),
+            ("OPENSEARCH_PASSWORD", "hunter2"),
+        ])
         .unwrap();
 
         let client_config = &config.kafka.client_config;
@@ -621,15 +738,103 @@ mod tests {
     }
 
     #[test]
+    fn every_setting_can_come_from_the_environment() {
+        let config = config_from_env(&[
+            ("KAFKA_TOPICS", "events.a, events.b"),
+            ("KAFKA_GROUP_ID", "env-group"),
+            ("KAFKA_CLIENT_CONFIG", r#"{"security.protocol": "SSL"}"#),
+            ("OPENSEARCH_URL", "https://search.internal"),
+            ("OPENSEARCH_INDEX", "events-env-{org_id}"),
+            ("OPENSEARCH_REQUEST_TIMEOUT_MS", "2000"),
+            ("BATCH_MAX_DOCS", "10"),
+            ("BATCH_MAX_BYTES", "2048"),
+            ("BATCH_LINGER_MS", "50"),
+            ("BATCH_MAX_IN_FLIGHT", "2"),
+            ("RETRY_INITIAL_BACKOFF_MS", "5"),
+            ("RETRY_MAX_BACKOFF_MS", "500"),
+            ("DLQ_TOPIC", "events.env.dlq"),
+            ("COMMIT_INTERVAL_MS", "700"),
+            ("SHUTDOWN_GRACE_MS", "900"),
+            ("SERVER_ADDR", "127.0.0.1:9000"),
+        ])
+        .unwrap();
+
+        assert_eq!(config.kafka.topics, vec!["events.a", "events.b"]);
+        assert_eq!(config.kafka.group_id, "env-group");
+        // Merged into the file's client config, not replacing it.
+        assert_eq!(
+            config.kafka.client_config["bootstrap.servers"],
+            "cac-broker:9092"
+        );
+        assert_eq!(config.kafka.client_config["security.protocol"], "SSL");
+        assert_eq!(config.opensearch.url, "https://search.internal");
+        assert_eq!(
+            config.opensearch.index,
+            IndexTemplate::parse("events-env-{org_id}").unwrap()
+        );
+        assert!(config.opensearch.index_from_env);
+        assert_eq!(config.opensearch.request_timeout_ms, 2000);
+        assert_eq!(config.batch.max_docs, 10);
+        assert_eq!(config.batch.max_bytes, 2048);
+        assert_eq!(config.batch.linger_ms, 50);
+        assert_eq!(config.batch.max_in_flight, 2);
+        assert_eq!(config.retry.initial_backoff_ms, 5);
+        assert_eq!(config.retry.max_backoff_ms, 500);
+        assert_eq!(config.dlq.topic, "events.env.dlq");
+        assert_eq!(config.commit.interval_ms, 700);
+        assert_eq!(config.shutdown.grace_ms, 900);
+        assert_eq!(config.server.addr, "127.0.0.1:9000".parse().unwrap());
+    }
+
+    #[test]
+    fn env_names_are_the_keys_in_upper_case() {
+        for (key, name, _) in ENV_SETTINGS {
+            assert_eq!(*name, key.to_uppercase().replace('.', "_"));
+        }
+    }
+
+    #[test]
+    fn the_index_from_the_file_is_not_pinned() {
+        let config = config_from_env(&[("BATCH_MAX_DOCS", "10")]).unwrap();
+
+        assert!(!config.opensearch.index_from_env);
+    }
+
+    #[test]
+    fn empty_env_values_are_ignored() {
+        let config = config_from_env(&[("BATCH_MAX_DOCS", "  "), ("DLQ_TOPIC", "")]).unwrap();
+
+        assert_eq!(config.batch.max_docs, 1000);
+        assert_eq!(config.dlq.topic, "events.generic.dlq");
+    }
+
+    #[test]
+    fn env_numbers_must_be_whole_numbers() {
+        for value in ["ten", "-1", "1.5"] {
+            let error = env(&[("BATCH_MAX_DOCS", value)]).unwrap_err();
+
+            assert!(
+                error.to_string().contains("BATCH_MAX_DOCS"),
+                "expected the variable in `{error}`"
+            );
+        }
+    }
+
+    #[test]
+    fn env_values_are_validated_like_file_values() {
+        assert_invalid(
+            config_from_env(&[("DLQ_TOPIC", "events.generic")]),
+            "dead letters",
+        );
+        assert_invalid(config_from_env(&[("KAFKA_TOPICS", "a,,b")]), "kafka.topics");
+    }
+
+    #[test]
     fn debug_output_hides_the_password() {
-        let config = Config::from_cac(
-            minimal(),
-            EnvOverrides {
-                opensearch_username: Some("sink".into()),
-                opensearch_password: Some("hunter2".into()),
-                ..EnvOverrides::default()
-            },
-        )
+        let config = config_from_env(&[
+            ("OPENSEARCH_USERNAME", "sink"),
+            ("OPENSEARCH_PASSWORD", "hunter2"),
+        ])
         .unwrap();
 
         assert!(!format!("{config:?}").contains("hunter2"));
@@ -734,15 +939,10 @@ mod tests {
 
     #[test]
     fn username_requires_password() {
-        let result = Config::from_cac(
-            minimal(),
-            EnvOverrides {
-                opensearch_username: Some("sink".into()),
-                ..EnvOverrides::default()
-            },
+        assert_invalid(
+            config_from_env(&[("OPENSEARCH_USERNAME", "sink")]),
+            "OPENSEARCH_PASSWORD",
         );
-
-        assert_invalid(result, "OPENSEARCH_PASSWORD");
     }
 
     #[test]
@@ -763,9 +963,9 @@ mod tests {
 
     #[test]
     fn invalid_client_config_json_names_the_variable() {
-        let error = parse_json_map(KAFKA_CLIENT_CONFIG_ENV, "not-json").unwrap_err();
+        let error = env(&[("KAFKA_CLIENT_CONFIG", "not-json")]).unwrap_err();
 
-        assert!(error.to_string().contains(KAFKA_CLIENT_CONFIG_ENV));
+        assert!(error.to_string().contains("KAFKA_CLIENT_CONFIG"));
     }
 
     #[tokio::test]
@@ -774,11 +974,14 @@ mod tests {
             .await
             .unwrap();
 
-        let config = Config::from_cac(
-            cac.resolve_defaults().await.unwrap(),
-            EnvOverrides::default(),
-        )
-        .unwrap();
+        let values = cac.resolve_defaults().await.unwrap();
+        for key in values.keys() {
+            assert!(
+                ENV_SETTINGS.iter().any(|(setting, _, _)| setting == key),
+                "`{key}` has no environment variable in ENV_SETTINGS"
+            );
+        }
+        let config = Config::from_cac(values, EnvOverrides::default()).unwrap();
 
         assert_eq!(config.kafka.topics, vec!["events.generic"]);
         assert_eq!(

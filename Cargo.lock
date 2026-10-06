@@ -5147,6 +5147,7 @@ dependencies = [
  "bytes",
  "canonical-event",
  "chrono",
+ "dotenvy",
  "futures",
  "metrics",
  "metrics-exporter-prometheus",

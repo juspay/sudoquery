@@ -38,7 +38,8 @@ WORKDIR /app
 
 COPY --from=builder /app/target/release/sink-opensearch /usr/local/bin/sink-opensearch
 # Default SINK_CONFIG path. It points at the local stack; override it with
-# SINK_CONFIG, or KAFKA_BOOTSTRAP_SERVERS / OPENSEARCH_URL.
+# SINK_CONFIG, or any setting's environment variable (OPENSEARCH_URL,
+# KAFKA_BOOTSTRAP_SERVERS, BATCH_MAX_DOCS, ...).
 COPY crates/sink-opensearch/cac.toml ./cac.toml
 
 # /health and /metrics (server.addr in cac.toml)

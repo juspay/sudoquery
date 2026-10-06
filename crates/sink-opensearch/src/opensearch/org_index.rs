@@ -7,10 +7,7 @@ use std::time::Duration;
 use tokio::time::Instant;
 
 use crate::cac::Cac;
-use crate::config::IndexTemplate;
-
-/// The CAC key resolved per org.
-const INDEX_KEY: &str = "opensearch.index";
+use crate::config::{INDEX_KEY, IndexTemplate};
 
 /// How long an org's resolved index is reused before CAC is asked again.
 /// A CAC change reaches the sink within the file's 30-second refresh plus this.
@@ -29,25 +26,31 @@ struct Cached {
 
 pub struct OrgIndexes {
     cac: Cac,
+    /// The index from `OPENSEARCH_INDEX`, used for every org instead of CAC.
+    pinned: Option<IndexTemplate>,
     cache: Mutex<HashMap<Org, Cached>>,
 }
 
 impl OrgIndexes {
-    pub fn new(cac: Cac) -> Self {
+    pub fn new(cac: Cac, pinned: Option<IndexTemplate>) -> Self {
         Self {
             cac,
+            pinned,
             cache: Mutex::new(HashMap::new()),
         }
     }
 
     /// The org's `opensearch.index`, with CAC overrides for its
-    /// `org_id` and `proj_id` applied. Fails when the configured value
-    /// isn't a valid index template.
+    /// `org_id` and `proj_id` applied, unless the index is pinned. Fails
+    /// when the configured value isn't a valid index template.
     pub async fn index_for(
         &self,
         org_id: &str,
         proj_id: Option<&str>,
     ) -> Result<IndexTemplate, String> {
+        if let Some(pinned) = &self.pinned {
+            return Ok(pinned.clone());
+        }
         let org = Org {
             org_id: org_id.to_owned(),
             proj_id: proj_id.map(str::to_owned),
@@ -122,7 +125,7 @@ _context_ = { org_id = "broken" }
             uuid::Uuid::new_v4().simple()
         ));
         std::fs::write(&path, CAC).unwrap();
-        (OrgIndexes::new(Cac::load(&path).await.unwrap()), path)
+        (OrgIndexes::new(Cac::load(&path).await.unwrap(), None), path)
     }
 
     async fn index_name(indexes: &OrgIndexes, org_id: &str, proj_id: Option<&str>) -> String {
@@ -167,6 +170,25 @@ _context_ = { org_id = "broken" }
         assert_eq!(
             index_name(&indexes, "merchant-2", Some("us")).await,
             "events-merchant-2"
+        );
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_pinned_index_ignores_org_overrides() {
+        let (indexes, path) = indexes().await;
+        let indexes = OrgIndexes {
+            pinned: Some(IndexTemplate::parse("events-env-{org_id}").unwrap()),
+            ..indexes
+        };
+
+        assert_eq!(
+            index_name(&indexes, "merchant-1", None).await,
+            "events-env-merchant-1"
+        );
+        assert_eq!(
+            index_name(&indexes, "merchant-2", Some("eu")).await,
+            "events-env-merchant-2"
         );
         std::fs::remove_file(path).unwrap();
     }
