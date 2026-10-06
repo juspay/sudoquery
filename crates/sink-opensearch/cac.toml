@@ -11,9 +11,14 @@
 # overrides of `opensearch.index` apply without a restart; anything else needs
 # a restart.
 #
-# KAFKA_BOOTSTRAP_SERVERS, KAFKA_CLIENT_CONFIG and OPENSEARCH_URL override the
-# values below. OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD are read only from
-# the environment.
+# Every key below can be overridden from the environment, and the environment
+# wins: the variable is the key in upper case with `.` replaced by `_`, e.g.
+# BATCH_MAX_DOCS for "batch.max_docs". KAFKA_TOPICS is comma-separated, and
+# KAFKA_CLIENT_CONFIG is a JSON object merged into "kafka.client_config".
+# OPENSEARCH_INDEX applies to every org, so the org overrides at the bottom are
+# ignored while it is set. KAFKA_BOOTSTRAP_SERVERS overrides
+# "bootstrap.servers". OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD are read
+# only from the environment.
 
 [default-configs]
 # Topics to consume. Every payload must be a canonical event.

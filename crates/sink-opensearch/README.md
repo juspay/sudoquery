@@ -41,32 +41,35 @@ The differences from the collector's file:
 - **Only `opensearch.index` is resolved per org,** for each event's `org_id` and `proj_id`, so `[[overrides]]` on those dimensions change where an org's events go. Everything else is resolved once at startup with no org, and org overrides of it are ignored.
 - **Org overrides apply live.** The sink re-reads the file every 30 seconds and re-resolves each org's index at most every 30 seconds, so an org override applies within about a minute without a restart. Other settings need a restart.
 
-| Key | Default | Notes |
-|---|---|---|
-| `kafka.topics` | required | Topics to consume |
-| `kafka.group_id` | required | Consumer group |
-| `kafka.client_config` | `{}` | Raw librdkafka properties; `bootstrap.servers` is required. The sink always sets `group.id`, `enable.auto.commit=false` and `enable.auto.offset.store=false` |
-| `opensearch.url` | required | `http` or `https`; a path prefix is kept |
-| `opensearch.index` | required | Index, alias or data stream to write to. `{org_id}` is replaced with each event's org, e.g. `events-{org_id}`. Can be overridden per org; see [Per-org indexes](#per-org-indexes) |
-| `opensearch.request_timeout_ms` | `30000` | Per bulk request |
-| `batch.max_docs` | `1000` | Flush a partition's buffer at this many records |
-| `batch.max_bytes` | `5242880` | Flush at this many bytes; a bigger single document goes to the DLQ |
-| `batch.linger_ms` | `1000` | Longest a record waits before its buffer is flushed |
-| `batch.max_in_flight` | `8` | Concurrent bulk requests across all partitions |
-| `retry.initial_backoff_ms` | `100` | Exponential backoff with full jitter |
-| `retry.max_backoff_ms` | `30000` | |
-| `dlq.topic` | required | Must exist, and must not be in `kafka.topics` |
-| `commit.interval_ms` | `5000` | Periodic offset commit |
-| `shutdown.grace_ms` | `25000` | Time to finish writing after SIGTERM; keep it below the orchestrator's termination grace period |
-| `server.addr` | `0.0.0.0:9464` | `/health` and `/metrics` |
+Every key can also be set from the environment, and **the environment wins over the file.** The variable is the key in upper case with `.` replaced by `_`. Empty values count as unset.
 
-Environment variables override CAC:
+A `.env` file in the working directory, or the nearest parent directory that has one, is loaded at startup. Variables already set in the environment win over it, and a malformed `.env` stops the sink.
+
+| Key | Variable | Default | Notes |
+|---|---|---|---|
+| `kafka.topics` | `KAFKA_TOPICS` | required | Topics to consume. In the variable, comma-separated: `events.a,events.b` |
+| `kafka.group_id` | `KAFKA_GROUP_ID` | required | Consumer group |
+| `kafka.client_config` | `KAFKA_CLIENT_CONFIG` | `{}` | Raw librdkafka properties; `bootstrap.servers` is required. The sink always sets `group.id`, `enable.auto.commit=false` and `enable.auto.offset.store=false`. The variable is a JSON object of strings, merged into the file's properties key by key |
+| `opensearch.url` | `OPENSEARCH_URL` | required | `http` or `https`; a path prefix is kept |
+| `opensearch.index` | `OPENSEARCH_INDEX` | required | Index, alias or data stream to write to. `{org_id}` is replaced with each event's org, e.g. `events-{org_id}`. Can be overridden per org; see [Per-org indexes](#per-org-indexes). The variable applies to every org, so per-org overrides are ignored while it is set |
+| `opensearch.request_timeout_ms` | `OPENSEARCH_REQUEST_TIMEOUT_MS` | `30000` | Per bulk request |
+| `batch.max_docs` | `BATCH_MAX_DOCS` | `1000` | Flush a partition's buffer at this many records |
+| `batch.max_bytes` | `BATCH_MAX_BYTES` | `5242880` | Flush at this many bytes; a bigger single document goes to the DLQ |
+| `batch.linger_ms` | `BATCH_LINGER_MS` | `1000` | Longest a record waits before its buffer is flushed |
+| `batch.max_in_flight` | `BATCH_MAX_IN_FLIGHT` | `8` | Concurrent bulk requests across all partitions |
+| `retry.initial_backoff_ms` | `RETRY_INITIAL_BACKOFF_MS` | `100` | Exponential backoff with full jitter |
+| `retry.max_backoff_ms` | `RETRY_MAX_BACKOFF_MS` | `30000` | |
+| `dlq.topic` | `DLQ_TOPIC` | required | Must exist, and must not be in `kafka.topics` |
+| `commit.interval_ms` | `COMMIT_INTERVAL_MS` | `5000` | Periodic offset commit |
+| `shutdown.grace_ms` | `SHUTDOWN_GRACE_MS` | `25000` | Time to finish writing after SIGTERM; keep it below the orchestrator's termination grace period |
+| `server.addr` | `SERVER_ADDR` | `0.0.0.0:9464` | `/health` and `/metrics` |
+
+Other variables:
 
 | Variable | Effect |
 |---|---|
-| `KAFKA_BOOTSTRAP_SERVERS` | Overrides `bootstrap.servers` |
-| `KAFKA_CLIENT_CONFIG` | JSON object merged into `kafka.client_config`; `KAFKA_BOOTSTRAP_SERVERS` still wins |
-| `OPENSEARCH_URL` | Overrides `opensearch.url` |
+| `SINK_CONFIG` | Path of the CAC file (default `cac.toml`) |
+| `KAFKA_BOOTSTRAP_SERVERS` | Overrides `bootstrap.servers`, winning over `KAFKA_CLIENT_CONFIG` too |
 | `OPENSEARCH_USERNAME`, `OPENSEARCH_PASSWORD` | Basic auth; accepted only from the environment, and both or neither |
 | `RUST_LOG` | Log filter (default `info`) |
 | `LOG_FORMAT` | `pretty` for human-readable logs; JSON otherwise |

@@ -17,7 +17,7 @@ urlencoding = "2"
 tower-http = { version = "0.6", features = ["cors", "fs", "trace"] }
 tower = "0.5"
 reqwest = { version = "0.12", features = ["json"] }
-dotenvy = "0.15"
+dotenvy = { workspace = true }
 
 sqlx = { version = "0.8", features = ["runtime-tokio", "postgres", "uuid", "chrono", "tls-rustls"] }
 sea-orm = { version = "1.0", features = ["sqlx-postgres", "runtime-tokio-native-tls", "with-uuid", "with-chrono"] }

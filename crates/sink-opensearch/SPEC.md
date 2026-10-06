@@ -153,7 +153,7 @@ A fatal consumer error skips the drain: in-flight batches are cancelled, complet
 
 ## Configuration
 
-See [README.md](README.md#configuration). Settings come from a CAC (Superposition) file with one `section.name` key per setting and `org_id` and `proj_id` dimensions, loaded the same way as the collector's `cac.toml`. Environment overrides use the collector's variable names. Unknown keys are rejected, and values are validated at startup: index naming rules, URL scheme, DLQ topic not consumed, and both or neither credential. Process-wide settings are resolved once with no org; `opensearch.index` is resolved per org.
+See [README.md](README.md#configuration). Settings come from a CAC (Superposition) file with one `section.name` key per setting and `org_id` and `proj_id` dimensions, loaded the same way as the collector's `cac.toml`. Every setting can also be set from the environment, with the key in upper case and `.` replaced by `_` (`BATCH_MAX_DOCS` for `batch.max_docs`), and the environment wins over the file. Unknown keys are rejected, and values are validated at startup: index naming rules, URL scheme, DLQ topic not consumed, and both or neither credential. Process-wide settings are resolved once with no org; `opensearch.index` is resolved per org.
 
 ## Observability
 
