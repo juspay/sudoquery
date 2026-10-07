@@ -10,6 +10,10 @@ interface ImportMetaEnv {
   readonly VITE_ANALYTICS_TOKEN: string;
   readonly VITE_ANALYTICS_FLUSH_INTERVAL: string;
   readonly VITE_MAINTENANCE_MODE?: string;
+  readonly VITE_DEMO_ENABLED?: string;
+  readonly VITE_DEMO_COLLECTOR_URL?: string;
+  readonly VITE_DEMO_TENANT_ID?: string;
+  readonly VITE_DEMO_WORKSPACE_ID?: string;
 }
 
 interface ImportMeta {

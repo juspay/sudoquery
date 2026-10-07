@@ -2,6 +2,7 @@ import React, { lazy, Suspense } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { RequireAuth } from './RequireAuth';
 import { LoadingSkeleton } from '../components/shared/LoadingSkeleton';
+import { DEMO_CONFIG } from '../config/api';
 
 // ─── Layouts ─────────────────────────────────────────────────────────────────
 // Lazy-loaded to keep Phase 1 working even when layouts are stubs
@@ -14,6 +15,7 @@ const DocsLayout = lazy(() => import('../layouts/DocsLayout'));
 const LandingPage = lazy(() => import('../pages/LandingPage'));
 const LoginPage = lazy(() => import('../pages/LoginPage'));
 const NotFoundPage = lazy(() => import('../pages/NotFoundPage'));
+const DemoStorePage = lazy(() => import('../pages/DemoStorePage'));
 
 // ─── Docs pages ───────────────────────────────────────────────────────────────
 const GettingStartedPage = lazy(() => import('../pages/docs/GettingStartedPage'));
@@ -58,6 +60,9 @@ export function AppRoutes() {
           <Route path="login" element={<LoginPage />} />
           <Route path="callback" element={<OAuthCallbackPage />} />
         </Route>
+
+        {/* Demo store; set VITE_DEMO_ENABLED=true to turn it on */}
+        {DEMO_CONFIG.ENABLED && <Route path="demo" element={<DemoStorePage />} />}
 
         {/* Docs routes */}
         <Route path="docs" element={<DocsLayout />}>
