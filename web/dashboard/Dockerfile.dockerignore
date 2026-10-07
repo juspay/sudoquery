@@ -1,0 +1,15 @@
+# Used in place of the repo root's .dockerignore when building
+# web/dashboard/Dockerfile. The build context is the repo root; send only the
+# dashboard and the SDK source its demo store imports.
+*
+!web/dashboard
+!clients/typescript/src
+!clients/typescript/tsconfig.json
+
+web/dashboard/node_modules
+web/dashboard/dist
+web/dashboard/.env
+web/dashboard/.env.*
+web/dashboard/.omo
+web/dashboard/Dockerfile
+web/dashboard/Dockerfile.dockerignore

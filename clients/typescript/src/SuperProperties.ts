@@ -1,4 +1,4 @@
-import { JSONSerializable } from "./types";
+import type { JSONSerializable } from "./types";
 
 export class SuperProperties {
   private static properties: Record<string, JSONSerializable> = {};

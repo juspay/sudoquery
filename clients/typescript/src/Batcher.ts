@@ -1,6 +1,6 @@
 import { Configuration } from "./Configuration";
 import { flush } from "./Flush";
-import { Event } from "./types";
+import type { Event } from "./types";
 
 export class Batcher {
   private static batches: Array<Array<Event>> = [[]];

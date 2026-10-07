@@ -6,6 +6,8 @@ import {
   TextField,
   InputAdornment,
   Button,
+  IconButton,
+  Tooltip,
 } from '@mui/material';
 import {
   Folder as FolderIcon,
@@ -13,6 +15,8 @@ import {
   Plus as AddIcon,
   CheckCircle as CheckCircleIcon,
   ChevronRight as ChevronRightIcon,
+  Copy as CopyIcon,
+  Check as CheckIcon,
 } from 'lucide-react';
 import { useOrganization } from '../../contexts/OrganizationContext';
 import { useProject } from '../../contexts/ProjectContext';
@@ -51,13 +55,61 @@ function getOrgColor(name: string): string {
   return colors[Math.abs(hash) % colors.length];
 }
 
+// The copy button shows while its row is hovered, while it has keyboard focus,
+// while it says "Copied", and always on touch screens, which can't hover.
+const copyIdButtonReveal = {
+  '& .copy-id': { opacity: 0, transition: 'opacity 0.15s' },
+  '&:hover .copy-id, & .copy-id:focus-visible, & .copy-id.copied': { opacity: 1 },
+  '@media (hover: none)': { '& .copy-id': { opacity: 1 } },
+};
+
+interface CopyIdButtonProps {
+  id: string;
+  /** What the ID is called, e.g. "tenant ID". */
+  label: string;
+}
+
+function CopyIdButton({ id, label }: CopyIdButtonProps) {
+  const { showError } = useToast();
+  const [copied, setCopied] = useState(false);
+
+  const copy = async (e: React.MouseEvent) => {
+    // Copying shouldn't also select the row.
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(id);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // There's no clipboard outside secure contexts (e.g. plain http), so
+      // show the ID for copying by hand.
+      showError(`Couldn't copy the ${label}: ${id}`);
+    }
+  };
+
+  return (
+    <Tooltip title={copied ? 'Copied' : `Copy ${label}`} placement="top">
+      <IconButton
+        className={copied ? 'copy-id copied' : 'copy-id'}
+        size="small"
+        aria-label={`Copy ${label}`}
+        onClick={copy}
+        sx={{ flexShrink: 0, color: copied ? '#2AA99E' : colorInk40, '&:hover': { color: colorInk } }}
+      >
+        {copied ? <CheckIcon size={16} /> : <CopyIcon size={16} />}
+      </IconButton>
+    </Tooltip>
+  );
+}
+
 interface OrgItemProps {
+  id: string;
   name: string;
   selected: boolean;
   onClick: () => void;
 }
 
-function OrgItem({ name, selected, onClick }: OrgItemProps) {
+function OrgItem({ id, name, selected, onClick }: OrgItemProps) {
   const initials = getInitials(name);
   const bgColor = getOrgColor(name);
 
@@ -74,6 +126,7 @@ function OrgItem({ name, selected, onClick }: OrgItemProps) {
         cursor: 'pointer',
         bgcolor: selected ? colorCream2 : 'transparent',
         '&:hover': { bgcolor: selected ? colorCream2 : 'rgba(0,0,0,0.02)' },
+        ...copyIdButtonReveal,
       }}
     >
       <Box
@@ -109,6 +162,7 @@ function OrgItem({ name, selected, onClick }: OrgItemProps) {
           {name}
         </Typography>
       </Box>
+      <CopyIdButton id={id} label="tenant ID" />
       {selected && (
         <CheckCircleIcon size={20} style={{ color: '#2AA99E', flexShrink: 0 }} />
       )}
@@ -117,12 +171,13 @@ function OrgItem({ name, selected, onClick }: OrgItemProps) {
 }
 
 interface ProjectItemProps {
+  id: string;
   name: string;
   selected: boolean;
   onClick: () => void;
 }
 
-function ProjectItem({ name, selected, onClick }: ProjectItemProps) {
+function ProjectItem({ id, name, selected, onClick }: ProjectItemProps) {
   return (
     <Box
       onClick={onClick}
@@ -136,6 +191,7 @@ function ProjectItem({ name, selected, onClick }: ProjectItemProps) {
         cursor: 'pointer',
         bgcolor: selected ? colorCream2 : 'transparent',
         '&:hover': { bgcolor: selected ? colorCream2 : 'rgba(0,0,0,0.02)' },
+        ...copyIdButtonReveal,
       }}
     >
       <Box
@@ -166,6 +222,7 @@ function ProjectItem({ name, selected, onClick }: ProjectItemProps) {
           {name}
         </Typography>
       </Box>
+      <CopyIdButton id={id} label="workspace ID" />
       {selected && (
         <CheckCircleIcon size={20} style={{ color: '#2AA99E', flexShrink: 0 }} />
       )}
@@ -330,6 +387,7 @@ export function OrgProjectSwitcher() {
               {filteredOrgs.map((org) => (
                 <OrgItem
                   key={org.id}
+                  id={org.id}
                   name={org.name}
                   selected={org.id === currentOrganization?.id}
                   onClick={() => handleSelectOrg(org.id)}
@@ -401,6 +459,7 @@ export function OrgProjectSwitcher() {
                 filteredProjects.map((proj) => (
                   <ProjectItem
                     key={proj.id}
+                    id={proj.id}
                     name={proj.name}
                     selected={proj.id === currentProject?.id}
                     onClick={() => handleSelectProject(proj.id)}

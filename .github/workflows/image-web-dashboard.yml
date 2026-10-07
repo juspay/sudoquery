@@ -32,7 +32,7 @@ jobs:
           image: web-dashboard
           platform: ${{ matrix.platform }}
           dockerfile: web/dashboard/Dockerfile
-          context: web/dashboard
+          context: .
           github-token: ${{ secrets.GITHUB_TOKEN }}
           build-args: |
             VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }}
@@ -45,6 +45,10 @@ jobs:
             VITE_ANALYTICS_TOKEN=${{ vars.VITE_ANALYTICS_TOKEN }}
             VITE_ANALYTICS_FLUSH_INTERVAL=${{ vars.VITE_ANALYTICS_FLUSH_INTERVAL }}
             VITE_MAINTENANCE_MODE=${{ vars.VITE_MAINTENANCE_MODE }}
+            VITE_DEMO_ENABLED=${{ vars.VITE_DEMO_ENABLED }}
+            VITE_DEMO_COLLECTOR_URL=${{ vars.VITE_DEMO_COLLECTOR_URL }}
+            VITE_DEMO_TENANT_ID=${{ vars.VITE_DEMO_TENANT_ID }}
+            VITE_DEMO_WORKSPACE_ID=${{ vars.VITE_DEMO_WORKSPACE_ID }}
 
   merge:
     name: Push web-dashboard manifest
