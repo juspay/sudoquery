@@ -57,7 +57,9 @@ SudoQuery.init({
   headers: {              // Custom headers to send with requests (optional)
     'X-Api-Key': 'your-api-key',
     'X-Custom-Header': 'custom-value'
-  }
+  },
+  retryBaseDelay: 1000,   // First retry delay after a failed upload, doubling each time (default: 1000)
+  retryMaxDelay: 60000    // Cap on the retry delay (default: 60000)
 });
 ```
 
@@ -141,6 +143,8 @@ All configuration is done through the `init()` method:
 | `sessionId` | `string \| null \| undefined` | generated | Optional session id written to each event. |
 | `token` | `string \| undefined` | `undefined` | Optional bearer token for proxies/gateways. |
 | `headers` | `Record<string, string> \| undefined` | `{}` | Custom headers to include in all requests to the endpoint. |
+| `retryBaseDelay` | `number \| undefined` | `1000` | Delay in milliseconds before the first retry after a failed upload. Doubles on each consecutive failure (with jitter). |
+| `retryMaxDelay` | `number \| undefined` | `60000` | Maximum delay in milliseconds between retries. |
 
 ### Example Configurations
 

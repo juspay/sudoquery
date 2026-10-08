@@ -28,6 +28,12 @@ var ShopifySudoQueryPixel = (() => {
     static get sessionId() {
       return _Configuration._sessionId;
     }
+    static get retryBaseDelay() {
+      return _Configuration._retryBaseDelay;
+    }
+    static get retryMaxDelay() {
+      return _Configuration._retryMaxDelay;
+    }
     static setBatchSize(value) {
       _Configuration._batchSize = value;
     }
@@ -55,6 +61,12 @@ var ShopifySudoQueryPixel = (() => {
     static setSessionId(value) {
       _Configuration._sessionId = value;
     }
+    static setRetryBaseDelay(value) {
+      _Configuration._retryBaseDelay = value;
+    }
+    static setRetryMaxDelay(value) {
+      _Configuration._retryMaxDelay = value;
+    }
     static reset() {
       _Configuration._batchSize = 10;
       _Configuration._flushInterval = null;
@@ -65,10 +77,14 @@ var ShopifySudoQueryPixel = (() => {
       _Configuration._workspaceId = null;
       _Configuration._source = _Configuration.DEFAULT_SOURCE;
       _Configuration._sessionId = null;
+      _Configuration._retryBaseDelay = _Configuration.DEFAULT_RETRY_BASE_DELAY;
+      _Configuration._retryMaxDelay = _Configuration.DEFAULT_RETRY_MAX_DELAY;
     }
   };
   _Configuration.DEFAULT_ENDPOINT = "http://localhost:3000/batch";
   _Configuration.DEFAULT_SOURCE = "typescript";
+  _Configuration.DEFAULT_RETRY_BASE_DELAY = 1e3;
+  _Configuration.DEFAULT_RETRY_MAX_DELAY = 6e4;
   _Configuration._batchSize = 10;
   _Configuration._flushInterval = null;
   _Configuration._endpoint = _Configuration.DEFAULT_ENDPOINT;
@@ -78,6 +94,8 @@ var ShopifySudoQueryPixel = (() => {
   _Configuration._workspaceId = null;
   _Configuration._source = _Configuration.DEFAULT_SOURCE;
   _Configuration._sessionId = null;
+  _Configuration._retryBaseDelay = _Configuration.DEFAULT_RETRY_BASE_DELAY;
+  _Configuration._retryMaxDelay = _Configuration.DEFAULT_RETRY_MAX_DELAY;
   var Configuration = _Configuration;
 
   // src/Uuid.ts
@@ -142,7 +160,11 @@ var ShopifySudoQueryPixel = (() => {
       };
     }
     static async pushLogs(useBeacon = false) {
-      if (this._isUploadInProgress) return null;
+      if (useBeacon) {
+        this.sendAllWithKeepalive();
+        return null;
+      }
+      if (this._isUploadInProgress || this.isBackingOff()) return null;
       this._isUploadInProgress = true;
       const batch = Batcher.fetchBatchToUpload();
       if (!batch) {
@@ -154,17 +176,54 @@ var ShopifySudoQueryPixel = (() => {
         this._isUploadInProgress = false;
         return null;
       }
-      if (useBeacon) {
-        this.sendWithKeepalive(payload);
-        this._isUploadInProgress = false;
+      const success = await this.sendNormally(payload);
+      this._isUploadInProgress = false;
+      if (!success) {
+        this.scheduleRetry();
         return null;
-      } else {
-        const success = await this.sendNormally(payload);
-        this._isUploadInProgress = false;
-        return success ? batch : null;
+      }
+      this._failedAttempts = 0;
+      return batch;
+    }
+    static isBackingOff() {
+      return Date.now() < this._retryAt;
+    }
+    /**
+     * Back off exponentially (retryBaseDelay, doubling, capped at retryMaxDelay) with jitter so many
+     * clients recovering from the same outage don't retry in lockstep, then retry.
+     */
+    static scheduleRetry() {
+      this._failedAttempts++;
+      const maxDelay = Math.min(
+        Configuration.retryMaxDelay,
+        Configuration.retryBaseDelay * 2 ** (this._failedAttempts - 1)
+      );
+      const delay = maxDelay / 2 + Math.random() * (maxDelay / 2);
+      this._retryAt = Date.now() + delay;
+      if (this._retryTimer !== null) clearTimeout(this._retryTimer);
+      this._retryTimer = setTimeout(() => {
+        this._retryTimer = null;
+        this._retryAt = 0;
+        flush(false).catch((err) => console.error("Retry flush error:", err));
+      }, delay);
+    }
+    /**
+     * Send all pending batches with keepalive so they survive page unload.
+     * Batches leave the queue before sending so a later flush can't resend them;
+     * if the page is still alive when a send fails, the batch is requeued.
+     */
+    static sendAllWithKeepalive() {
+      const batches = Batcher.takeAllPending(this._isUploadInProgress);
+      for (const batch of batches) {
+        void this.sendWithKeepalive(this.transformBatch(batch)).then((success) => {
+          if (!success) {
+            Batcher.requeue(batch, this._isUploadInProgress);
+            if (!this.isBackingOff()) this.scheduleRetry();
+          }
+        });
       }
     }
-    static sendWithKeepalive(payload) {
+    static async sendWithKeepalive(payload) {
       if (typeof fetch === "undefined") {
         return false;
       }
@@ -173,13 +232,13 @@ var ShopifySudoQueryPixel = (() => {
         return false;
       }
       try {
-        void fetch(this.endpoint, {
+        const response = await fetch(this.endpoint, {
           method: "POST",
           headers,
           body: JSON.stringify(payload),
           keepalive: true
         });
-        return true;
+        return response.ok;
       } catch (error) {
         console.error("Keepalive fetch failed:", error);
         return false;
@@ -222,6 +281,16 @@ var ShopifySudoQueryPixel = (() => {
       }
       return headers;
     }
+    /**
+     * Reset upload and backoff state. Useful for testing.
+     */
+    static reset() {
+      if (this._retryTimer !== null) clearTimeout(this._retryTimer);
+      this._retryTimer = null;
+      this._retryAt = 0;
+      this._failedAttempts = 0;
+      this._isUploadInProgress = false;
+    }
     static async startScheduler(time) {
       setInterval(() => {
         flush();
@@ -229,6 +298,9 @@ var ShopifySudoQueryPixel = (() => {
     }
   };
   Pusher._isUploadInProgress = false;
+  Pusher._failedAttempts = 0;
+  Pusher._retryAt = 0;
+  Pusher._retryTimer = null;
 
   // src/Flush.ts
   async function flush(useBeacon = false) {
@@ -245,42 +317,61 @@ var ShopifySudoQueryPixel = (() => {
   // src/Batcher.ts
   var Batcher = class {
     static addToBatch(event) {
-      if (this.batches[this.currentAccumilatingBatch].length === Configuration.batchSize) {
+      if (this.accumulatingBatch().length >= Configuration.batchSize) {
         this.addNewBatch();
       }
-      const lastBatch = this.batches[this.batches.length - 1];
+      const lastBatch = this.accumulatingBatch();
       lastBatch.push(event);
       if (lastBatch.length === Configuration.batchSize) {
         flush(false).catch((err) => console.error("Auto-flush error:", err));
       }
     }
     static fetchBatchToUpload() {
-      const batchToUpload = this.batches[this._currentBatchToUpload];
+      const batchToUpload = this.batches[0];
       if (batchToUpload.length == 0) return null;
-      if (this._currentBatchToUpload === this.currentAccumilatingBatch) {
+      if (this.batches.length === 1) {
         this.addNewBatch();
       }
       return batchToUpload;
     }
     static addNewBatch() {
       this.batches.push([]);
-      this.currentAccumilatingBatch = this.batches.length - 1;
     }
     static setMarkLastBatchUploaded() {
-      return this._currentBatchToUpload++;
+      this.batches.shift();
+      if (this.batches.length === 0) {
+        this.batches.push([]);
+      }
+    }
+    /**
+     * Remove every pending batch for a page-unload send. When keepHead is true the
+     * head batch is already being uploaded, so it stays queued for that upload to mark.
+     */
+    static takeAllPending(keepHead) {
+      const pending = this.batches.splice(keepHead ? 1 : 0).filter((batch) => batch.length > 0);
+      this.batches.push([]);
+      return pending;
+    }
+    /**
+     * Put back a batch whose unload send failed so the next flush retries it.
+     * When afterHead is true it goes behind the batch currently being uploaded.
+     */
+    static requeue(batch, afterHead) {
+      this.batches.splice(afterHead ? 1 : 0, 0, batch);
+    }
+    static accumulatingBatch() {
+      return this.batches[this.batches.length - 1];
     }
     /**
      * Reset all internal state. Useful for testing.
      */
     static reset() {
       this.batches = [[]];
-      this._currentBatchToUpload = 0;
-      this.currentAccumilatingBatch = 0;
     }
   };
+  // Queue of pending batches: the head is the next to upload, the tail is accumulating.
+  // Uploaded batches are removed so memory stays bounded by what is still unsent.
   Batcher.batches = [[]];
-  Batcher._currentBatchToUpload = 0;
-  Batcher.currentAccumilatingBatch = 0;
 
   // src/SuperProperties.ts
   var SuperProperties = class {
@@ -409,6 +500,12 @@ var ShopifySudoQueryPixel = (() => {
       }
       if (config?.sessionId !== void 0) {
         Configuration.setSessionId(config.sessionId);
+      }
+      if (config?.retryBaseDelay !== void 0 && config.retryBaseDelay > 0) {
+        Configuration.setRetryBaseDelay(config.retryBaseDelay);
+      }
+      if (config?.retryMaxDelay !== void 0 && config.retryMaxDelay > 0) {
+        Configuration.setRetryMaxDelay(config.retryMaxDelay);
       }
       if (config?.flushInterval !== void 0 && config.flushInterval > 0) {
         Configuration.setFlushInterval(config.flushInterval);

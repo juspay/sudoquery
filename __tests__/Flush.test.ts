@@ -9,7 +9,7 @@ describe('flush', () => {
   beforeEach(() => {
     // Reset state before each test
     Configuration.setBatchSize(10);
-    Pusher['_isUploadInProgress'] = false;
+    Pusher.reset();
     Batcher.reset();
     jest.clearAllMocks();
   });
@@ -115,8 +115,14 @@ describe('flush', () => {
       markUploadedSpy.mockRestore();
     });
 
-    it('should increment _currentBatchToUpload correctly', async () => {
-      const pushLogsSpy = jest.spyOn(Pusher, 'pushLogs');
+    it('should release uploaded batches from memory', async () => {
+      Configuration.setBatchSize(2);
+      Batcher.reset();
+      const pushLogsSpy = jest.spyOn(Pusher, 'pushLogs').mockResolvedValue(null);
+      for (let i = 1; i <= 4; i++) {
+        Batcher.addToBatch(createMockEvent(i));
+      }
+      pushLogsSpy.mockReset();
       pushLogsSpy
         .mockResolvedValueOnce([createMockEvent(1)])
         .mockResolvedValueOnce([createMockEvent(2)])
@@ -124,7 +130,7 @@ describe('flush', () => {
 
       await flush();
 
-      expect(Batcher['_currentBatchToUpload']).toBe(2);
+      expect(Batcher['batches']).toEqual([[]]);
       pushLogsSpy.mockRestore();
     });
   });

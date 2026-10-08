@@ -129,4 +129,23 @@ describe('Configuration', () => {
       expect(Configuration.sessionId).toBe('session-1');
     });
   });
+
+  describe('retry delays', () => {
+    it('should default to 1s base and 60s max', () => {
+      expect(Configuration.retryBaseDelay).toBe(1000);
+      expect(Configuration.retryMaxDelay).toBe(60000);
+    });
+
+    it('should allow overriding and reset to defaults', () => {
+      Configuration.setRetryBaseDelay(250);
+      Configuration.setRetryMaxDelay(5000);
+
+      expect(Configuration.retryBaseDelay).toBe(250);
+      expect(Configuration.retryMaxDelay).toBe(5000);
+
+      Configuration.reset();
+      expect(Configuration.retryBaseDelay).toBe(1000);
+      expect(Configuration.retryMaxDelay).toBe(60000);
+    });
+  });
 });

@@ -70,6 +70,8 @@ interface SudoQueryConfig {
     workspaceId?: string | null;
     source?: string | null;
     sessionId?: string | null;
+    retryBaseDelay?: number;
+    retryMaxDelay?: number;
 }
 declare class SudoQuery {
     private static didInit;

@@ -3,15 +3,15 @@ import { flush } from "./Flush";
 import { Event } from "./types";
 
 export class Batcher {
+  // Queue of pending batches: the head is the next to upload, the tail is accumulating.
+  // Uploaded batches are removed so memory stays bounded by what is still unsent.
   private static batches: Array<Array<Event>> = [[]];
-  private static _currentBatchToUpload = 0;
-  private static currentAccumilatingBatch = 0;
 
   static addToBatch(event : Event){
-    if(this.batches[this.currentAccumilatingBatch].length === Configuration.batchSize){
+    if(this.accumulatingBatch().length >= Configuration.batchSize){
       this.addNewBatch();
     }
-    const lastBatch = this.batches[this.batches.length - 1];
+    const lastBatch = this.accumulatingBatch();
     lastBatch.push(event);
     // Auto-flush when batch is full, but don't await it to avoid blocking
     // Don't use keepalive for regular flushes (only use during page unload)
@@ -21,9 +21,10 @@ export class Batcher {
   }
 
   static fetchBatchToUpload(): (Event[] | null) {
-    const batchToUpload = this.batches[this._currentBatchToUpload];
+    const batchToUpload = this.batches[0];
     if(batchToUpload.length == 0) return null;
-    if(this._currentBatchToUpload === this.currentAccumilatingBatch){
+    // Stop accumulating into the batch being uploaded
+    if(this.batches.length === 1){
       this.addNewBatch();
     }
     return batchToUpload;
@@ -31,11 +32,35 @@ export class Batcher {
 
   static addNewBatch(){
     this.batches.push([]);
-    this.currentAccumilatingBatch = this.batches.length - 1;
   }
 
   static setMarkLastBatchUploaded() {
-    return this._currentBatchToUpload++;
+    this.batches.shift();
+    if(this.batches.length === 0){
+      this.batches.push([]);
+    }
+  }
+
+  /**
+   * Remove every pending batch for a page-unload send. When keepHead is true the
+   * head batch is already being uploaded, so it stays queued for that upload to mark.
+   */
+  static takeAllPending(keepHead: boolean): Event[][] {
+    const pending = this.batches.splice(keepHead ? 1 : 0).filter(batch => batch.length > 0);
+    this.batches.push([]);
+    return pending;
+  }
+
+  /**
+   * Put back a batch whose unload send failed so the next flush retries it.
+   * When afterHead is true it goes behind the batch currently being uploaded.
+   */
+  static requeue(batch: Event[], afterHead: boolean) {
+    this.batches.splice(afterHead ? 1 : 0, 0, batch);
+  }
+
+  private static accumulatingBatch(): Event[] {
+    return this.batches[this.batches.length - 1];
   }
 
   /**
@@ -43,7 +68,5 @@ export class Batcher {
    */
   static reset() {
     this.batches = [[]];
-    this._currentBatchToUpload = 0;
-    this.currentAccumilatingBatch = 0;
   }
 }
