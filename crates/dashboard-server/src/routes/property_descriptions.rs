@@ -3,8 +3,8 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
+use canonical_event::ProjectId;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::{
     AppState, db,
@@ -41,7 +41,7 @@ pub async fn upsert_property_description(
 ) -> Result<(StatusCode, Json<PropertyDescriptionResponse>), PropertyDescriptionError> {
     let desc = db::upsert_property_description(
         &state.db_pool,
-        project.id,
+        &project.id,
         &req.event_name,
         &req.property_name,
         &req.property_type,
@@ -86,11 +86,11 @@ pub async fn list_property_descriptions(
     Query(query): Query<ListPropertyDescriptionsQuery>,
 ) -> Result<Json<ListPropertyDescriptionsResponse>, PropertyDescriptionError> {
     let descriptions = if let Some(event_name) = query.event_name {
-        db::list_property_descriptions_by_event(&state.db_pool, project.id, &event_name)
+        db::list_property_descriptions_by_event(&state.db_pool, &project.id, &event_name)
             .await
             .map_err(|e| PropertyDescriptionError::Database(e.to_string()))?
     } else {
-        db::list_property_descriptions_by_project(&state.db_pool, project.id)
+        db::list_property_descriptions_by_project(&state.db_pool, &project.id)
             .await
             .map_err(|e| PropertyDescriptionError::Database(e.to_string()))?
     };
@@ -118,7 +118,7 @@ pub async fn list_property_descriptions(
 
 #[derive(Deserialize)]
 pub struct GetPropertyDescriptionQuery {
-    pub project_id: Uuid,
+    pub project_id: ProjectId,
     pub event_name: String,
     pub property_name: String,
 }
@@ -130,7 +130,7 @@ pub async fn get_property_description(
     AuthUser { user, .. }: AuthUser,
 ) -> Result<Json<PropertyDescriptionResponse>, PropertyDescriptionError> {
     // Check user has access to this project
-    let role = db::get_user_project_role(&state.db_pool, user.id, query.project_id)
+    let role = db::get_user_project_role(&state.db_pool, user.id, &query.project_id)
         .await
         .map_err(|e| PropertyDescriptionError::Database(e.to_string()))?;
 
@@ -140,7 +140,7 @@ pub async fn get_property_description(
 
     let desc = db::get_property_description(
         &state.db_pool,
-        query.project_id,
+        &query.project_id,
         &query.event_name,
         &query.property_name,
     )

@@ -1,5 +1,7 @@
 use axum::{extract::State, http::StatusCode, response::Json};
+use canonical_event::ProjectId;
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::{
@@ -85,7 +87,7 @@ pub async fn delete_user(
         .ok_or(ApiError::UserNotFound)?;
 
     // Check if user is a member of the organization
-    let membership = db::get_organization_membership(&state.db_pool, user_uuid, organization.id)
+    let membership = db::get_organization_membership(&state.db_pool, user_uuid, &organization.id)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?;
 
@@ -158,7 +160,7 @@ pub async fn add_project_member(
         .and_then(|v| v.to_str().ok())
         .ok_or(ApiError::InvalidProjectId)?;
 
-    let project_uuid = Uuid::parse_str(project_id_str).map_err(|_| ApiError::InvalidProjectId)?;
+    let project_id = ProjectId::from_str(project_id_str).map_err(|_| ApiError::InvalidProjectId)?;
 
     // Resolve user by ID or email
     let user_uuid = if let Some(user_id) = req.user_id {
@@ -174,7 +176,7 @@ pub async fn add_project_member(
     };
 
     // Verify project exists and belongs to the organization context
-    let _project = db::get_project_by_id(&state.db_pool, project_uuid)
+    let _project = db::get_project_by_id(&state.db_pool, &project_id)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?
         .ok_or(ApiError::ProjectNotFound)?;
@@ -184,7 +186,7 @@ pub async fn add_project_member(
         Some(db::OrgRole::OrgAdmin) => {} // Org admin can add anyone
         Some(db::OrgRole::OrgUser) | None => {
             // Check if requesting user is project admin
-            let pm = db::get_project_membership(&state.db_pool, auth_user.user.id, project_uuid)
+            let pm = db::get_project_membership(&state.db_pool, auth_user.user.id, &project_id)
                 .await
                 .map_err(|e| ApiError::Database(e.to_string()))?;
 
@@ -201,7 +203,7 @@ pub async fn add_project_member(
         _ => return Err(ApiError::InvalidRole),
     };
 
-    let membership = db::add_user_to_project(&state.db_pool, user_uuid, project_uuid, &role)
+    let membership = db::add_user_to_project(&state.db_pool, user_uuid, &project_id, &role)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?;
 
@@ -232,7 +234,7 @@ pub async fn remove_project_member(
         .and_then(|v| v.to_str().ok())
         .ok_or(ApiError::InvalidProjectId)?;
 
-    let project_uuid = Uuid::parse_str(project_id_str).map_err(|_| ApiError::InvalidProjectId)?;
+    let project_id = ProjectId::from_str(project_id_str).map_err(|_| ApiError::InvalidProjectId)?;
 
     let user_uuid = Uuid::parse_str(&user_id).map_err(|_| ApiError::InvalidUserId)?;
 
@@ -242,7 +244,7 @@ pub async fn remove_project_member(
     }
 
     // Verify project exists
-    let _project = db::get_project_by_id(&state.db_pool, project_uuid)
+    let _project = db::get_project_by_id(&state.db_pool, &project_id)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?
         .ok_or(ApiError::ProjectNotFound)?;
@@ -255,7 +257,7 @@ pub async fn remove_project_member(
         }
     };
 
-    db::remove_user_from_project(&state.db_pool, user_uuid, project_uuid)
+    db::remove_user_from_project(&state.db_pool, user_uuid, &project_id)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?;
 
@@ -281,9 +283,9 @@ pub async fn list_project_members(
         .and_then(|v| v.to_str().ok())
         .ok_or(ApiError::InvalidProjectId)?;
 
-    let project_uuid = Uuid::parse_str(project_id_str).map_err(|_| ApiError::InvalidProjectId)?;
+    let project_id = ProjectId::from_str(project_id_str).map_err(|_| ApiError::InvalidProjectId)?;
 
-    let members = db::list_project_members(&state.db_pool, project_uuid)
+    let members = db::list_project_members(&state.db_pool, &project_id)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?;
 

@@ -1,7 +1,8 @@
 use axum::{extract::State, http::StatusCode, response::Json};
+use canonical_event::ProjectId;
 use sea_orm::{ActiveModelTrait, Set};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use std::str::FromStr;
 
 use crate::{
     AppState, clickhouse, db, entities,
@@ -11,6 +12,7 @@ use crate::{
 // ============ Create Project ============
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateProjectRequest {
     pub name: String,
 }
@@ -32,7 +34,7 @@ pub async fn create_project(
     }: OrgAdmin,
     Json(req): Json<CreateProjectRequest>,
 ) -> Result<(StatusCode, Json<CreateProjectResponse>), ProjectError> {
-    let project = db::create_project(&state.db_pool, Some(organization.id), &req.name)
+    let project = db::create_project(&state.db_pool, Some(&organization.id), &req.name)
         .await
         .map_err(|e| ProjectError::Database(e.to_string()))?;
 
@@ -42,12 +44,12 @@ pub async fn create_project(
         &state.clickhouse_admin_user,
         &state.clickhouse_admin_password,
         &state.clickhouse_project_password,
-        project.id,
+        &project.id,
     )
     .await
     {
         // Clean up the project from DB since ClickHouse creation failed
-        if let Err(cleanup_err) = db::soft_delete_project(&state.db_pool, project.id).await {
+        if let Err(cleanup_err) = db::soft_delete_project(&state.db_pool, &project.id).await {
             tracing::error!(
                 "Failed to cleanup project {} after ClickHouse error: {}",
                 project.id,
@@ -64,7 +66,7 @@ pub async fn create_project(
     db::add_user_to_project(
         &state.db_pool,
         auth_user.user.id,
-        project.id,
+        &project.id,
         &db::ProjectRole::ProjectAdmin,
     )
     .await
@@ -98,9 +100,10 @@ pub async fn list_projects(
     OrgContext { organization, .. }: OrgContext,
     AuthUser { user, .. }: AuthUser,
 ) -> Result<Json<Vec<ProjectResponse>>, ProjectError> {
-    let projects = db::list_user_projects_in_organization(&state.db_pool, user.id, organization.id)
-        .await
-        .map_err(|e| ProjectError::Database(e.to_string()))?;
+    let projects =
+        db::list_user_projects_in_organization(&state.db_pool, user.id, &organization.id)
+            .await
+            .map_err(|e| ProjectError::Database(e.to_string()))?;
 
     let response: Vec<ProjectResponse> = projects
         .into_iter()
@@ -128,7 +131,7 @@ pub async fn list_my_projects(
 
     let mut projects = Vec::new();
     for project_id in project_ids {
-        if let Some(project) = db::get_project_by_id(&state.db_pool, project_id)
+        if let Some(project) = db::get_project_by_id(&state.db_pool, &project_id)
             .await
             .map_err(|e| ProjectError::Database(e.to_string()))?
         {
@@ -233,7 +236,7 @@ pub async fn get_project_tokens(
     State(state): State<AppState>,
     ProjectAccess { project, .. }: ProjectAccess,
 ) -> Result<Json<Vec<ProjectTokenResponse>>, ProjectError> {
-    let tokens = db::list_tokens_by_project(&state.db_pool, project.id)
+    let tokens = db::list_tokens_by_project(&state.db_pool, &project.id)
         .await
         .map_err(|e| ProjectError::Database(e.to_string()))?;
 
@@ -263,11 +266,11 @@ pub async fn delete_project(
         .and_then(|v| v.to_str().ok())
         .ok_or(ProjectError::InvalidProjectId)?;
 
-    let project_uuid =
-        Uuid::parse_str(project_id_str).map_err(|_| ProjectError::InvalidProjectId)?;
+    let project_id =
+        ProjectId::from_str(project_id_str).map_err(|_| ProjectError::InvalidProjectId)?;
 
     // Verify project belongs to organization
-    let project = db::get_project_by_id(&state.db_pool, project_uuid)
+    let project = db::get_project_by_id(&state.db_pool, &project_id)
         .await
         .map_err(|e| ProjectError::Database(e.to_string()))?
         .ok_or(ProjectError::NotFound)?;
@@ -276,7 +279,7 @@ pub async fn delete_project(
         return Err(ProjectError::NotFound);
     }
 
-    db::soft_delete_project(&state.db_pool, project_uuid)
+    db::soft_delete_project(&state.db_pool, &project_id)
         .await
         .map_err(|e| ProjectError::Database(e.to_string()))?;
 

@@ -1,3 +1,4 @@
+use canonical_event::OrgId;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -16,7 +17,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub user_id: Uuid,
-    pub organization_id: Uuid,
+    pub organization_id: OrgId,
     pub role: OrgRole,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,

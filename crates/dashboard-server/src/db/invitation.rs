@@ -26,7 +26,7 @@ pub struct Invitation {
     pub id: Uuid,
     pub email: String,
     pub invitation_type: InvitationType,
-    pub target_id: Uuid,
+    pub target_id: String,
     pub role: String,
     pub invited_by: Uuid,
     pub status: InvitationStatus,
@@ -39,7 +39,7 @@ pub async fn create_invitation(
     pool: &PgPool,
     email: &str,
     invitation_type: InvitationType,
-    target_id: Uuid,
+    target_id: &str,
     role: &str,
     invited_by: Uuid,
 ) -> Result<Invitation, sqlx::Error> {
@@ -119,7 +119,7 @@ pub async fn list_invitations_by_inviter(
 
 pub async fn list_invitations_for_target(
     pool: &PgPool,
-    target_id: Uuid,
+    target_id: &str,
     invitation_type: InvitationType,
 ) -> Result<Vec<Invitation>, sqlx::Error> {
     sqlx::query_as::<_, Invitation>(

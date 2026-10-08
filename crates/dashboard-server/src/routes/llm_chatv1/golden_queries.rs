@@ -584,7 +584,7 @@ FROM (
     SELECT
         (lead(event_timestamp) OVER w) - event_timestamp AS time_gap
     FROM user_events_v2
-    WHERE event_name = '{event_name}' AND proj_id = '{proj_id}'
+    WHERE event_name = '{event_name}' AND project_id = '{project_id}'
     WINDOW w AS (PARTITION BY actor_id ORDER BY event_timestamp)
 )
 WHERE time_gap IS NOT NULL
@@ -634,7 +634,7 @@ FROM (
     SELECT
         editDistance(properties.{property_name}, lead(properties.{property_name}) OVER w) AS edit_dist
     FROM user_events_v2
-    WHERE event_name = '{event_name}' AND proj_id = '{proj_id}'
+    WHERE event_name = '{event_name}' AND project_id = '{project_id}'
     WINDOW w AS (PARTITION BY actor_id ORDER BY event_timestamp)
 )
 WHERE edit_dist IS NOT NULL
@@ -684,7 +684,7 @@ ORDER BY similarity_bucket"#,
 FROM (
     SELECT 1 / properties.{property_name} AS inv_position
     FROM user_events_v2
-    WHERE event_name = '{event_name}' AND proj_id = '{proj_id}'
+    WHERE event_name = '{event_name}' AND project_id = '{project_id}'
         AND properties.{property_name} IS NOT NULL
 )
 WHERE inv_position IS NOT NULL

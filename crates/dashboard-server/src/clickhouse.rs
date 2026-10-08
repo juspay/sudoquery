@@ -1,6 +1,6 @@
+use canonical_event::ProjectId;
 use reqwest::Client;
 use serde_json::Value;
-use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClickHouseError {
@@ -15,7 +15,7 @@ pub async fn create_project_user(
     admin_user: &str,
     admin_password: &str,
     project_password: &str,
-    project_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<(), ClickHouseError> {
     let client = Client::new();
     let project_id_str = project_id.to_string();
@@ -43,7 +43,7 @@ pub async fn drop_project_user(
     admin_url: &str,
     admin_user: &str,
     admin_password: &str,
-    project_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<(), ClickHouseError> {
     let client = Client::new();
     let project_id_str = project_id.to_string();
@@ -102,7 +102,7 @@ pub async fn execute_query(clickhouse_url: &str, query: &str) -> Result<Value, C
 
 pub async fn execute_project_query(
     clickhouse_url: &str,
-    project_id: Uuid,
+    project_id: &ProjectId,
     project_password: &str,
     query: &str,
 ) -> Result<Value, ClickHouseError> {

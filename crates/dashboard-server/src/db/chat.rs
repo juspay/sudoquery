@@ -1,3 +1,4 @@
+use canonical_event::ProjectId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -6,7 +7,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Chat {
     pub id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: ProjectId,
     pub user_id: Uuid,
     pub title: String,
     pub created_at: DateTime<Utc>,
@@ -24,7 +25,7 @@ pub enum ChatType {
 
 pub async fn create_chat(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
     user_id: Uuid,
     title: &str,
     chat_type: &ChatType,
@@ -62,7 +63,7 @@ pub async fn get_chat_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Chat>, sql
 
 pub async fn list_chats_by_project(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<Vec<Chat>, sqlx::Error> {
     sqlx::query_as::<_, Chat>(
         r#"
@@ -93,7 +94,7 @@ pub async fn list_chats_by_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<Chat
 
 pub async fn list_chats_by_project_and_user(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
     user_id: Uuid,
 ) -> Result<Vec<Chat>, sqlx::Error> {
     sqlx::query_as::<_, Chat>(

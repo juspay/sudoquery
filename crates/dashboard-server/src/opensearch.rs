@@ -26,19 +26,19 @@ const MAX_ERROR_TEXT: usize = 512;
 const EVENT_KEY_LEN: usize = 2;
 
 /// What a project may read: the events of its organization (`org_id`) that
-/// were sent for the project itself (`proj_id`).
+/// were sent for the project itself (`project_id`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Scope {
     pub org_id: String,
-    pub proj_id: String,
+    pub project_id: String,
 }
 
 impl Scope {
     /// `None` when the project has no organization, and therefore no `org_id`.
     pub fn for_project(project: &db::Project) -> Option<Self> {
         Some(Self {
-            org_id: project.organization_id?.to_string(),
-            proj_id: project.id.to_string(),
+            org_id: project.organization_id.as_ref()?.to_string(),
+            project_id: project.id.to_string(),
         })
     }
 }
@@ -236,7 +236,11 @@ impl OpenSearch {
         Ok(CursorPage::from_rows(rows, page_size))
     }
 
-    pub async fn count(&self, scope: &Scope, query: Option<&Value>) -> Result<u64, OpenSearchError> {
+    pub async fn count(
+        &self,
+        scope: &Scope,
+        query: Option<&Value>,
+    ) -> Result<u64, OpenSearchError> {
         let target = self.target(scope);
         let Some(query) = self.prepare(&target, query, Vec::new()).await? else {
             return Ok(0);
@@ -255,7 +259,11 @@ impl OpenSearch {
     }
 
     /// The event with this id, if the project may read it.
-    pub async fn get_event(&self, scope: &Scope, id: &str) -> Result<Option<Event>, OpenSearchError> {
+    pub async fn get_event(
+        &self,
+        scope: &Scope,
+        id: &str,
+    ) -> Result<Option<Event>, OpenSearchError> {
         let target = self.target(scope);
         let api = format!("_doc/{}", urlencoding::encode(id));
         let Some(reply) = self.call(Method::GET, &target, &api, None).await? else {
@@ -268,7 +276,7 @@ impl OpenSearch {
         let event = CanonicalEvent::deserialize(&reply["_source"]).map_err(decode_error)?;
         // `_doc` takes no query, so the scope is checked on the document.
         let in_scope = event.org_id == scope.org_id
-            && event.proj_id.as_deref() == Some(scope.proj_id.as_str());
+            && event.project_id.as_deref() == Some(scope.project_id.as_str());
         if !in_scope {
             return Ok(None);
         }
@@ -284,11 +292,7 @@ impl OpenSearch {
     ) -> Result<CursorPage<SessionSummary>, OpenSearchError> {
         query::require_time_range(request.query.as_ref())?;
         let page_size = cursor::page_size(request.page_size)?;
-        let after = request
-            .cursor
-            .as_deref()
-            .map(session_cursor)
-            .transpose()?;
+        let after = request.cursor.as_deref().map(session_cursor).transpose()?;
 
         let target = self.target(scope);
         let Some(query) = self
@@ -305,10 +309,13 @@ impl OpenSearch {
             return Ok(CursorPage::empty());
         };
 
-        let rows = array(&reply["aggregations"]["sessions"]["buckets"], "session buckets")?
-            .iter()
-            .map(session_row)
-            .collect::<Result<Vec<_>, _>>()?;
+        let rows = array(
+            &reply["aggregations"]["sessions"]["buckets"],
+            "session buckets",
+        )?
+        .iter()
+        .map(session_row)
+        .collect::<Result<Vec<_>, _>>()?;
         Ok(CursorPage::from_rows(rows, page_size))
     }
 
@@ -339,10 +346,13 @@ impl OpenSearch {
             return Ok(empty());
         };
 
-        let buckets = array(&reply["aggregations"]["events"]["buckets"], "histogram buckets")?
-            .iter()
-            .map(histogram_bucket)
-            .collect::<Result<_, _>>()?;
+        let buckets = array(
+            &reply["aggregations"]["events"]["buckets"],
+            "histogram buckets",
+        )?
+        .iter()
+        .map(histogram_bucket)
+        .collect::<Result<_, _>>()?;
         Ok(Histogram { interval, buckets })
     }
 
@@ -415,7 +425,12 @@ impl OpenSearch {
 
         let body = json!({ "query": &scoped });
         let Some(reply) = self
-            .call(Method::POST, target, "_validate/query?explain=true", Some(&body))
+            .call(
+                Method::POST,
+                target,
+                "_validate/query?explain=true",
+                Some(&body),
+            )
             .await?
         else {
             return Ok(None);
@@ -590,7 +605,7 @@ mod tests {
     fn scope() -> Scope {
         Scope {
             org_id: ORG.into(),
-            proj_id: PROJ.into(),
+            project_id: PROJ.into(),
         }
     }
 
@@ -623,7 +638,7 @@ mod tests {
             "name": "checkout_viewed",
             "occured_at": format!("2026-09-29T09:50:{n:02}Z"),
             "org_id": ORG,
-            "proj_id": proj,
+            "project_id": proj,
             "session_id": "session-1",
             "anon_id": "anon-1",
             "properties": { "plan": "pro" },
@@ -876,7 +891,10 @@ mod tests {
 
         let events = search(&server, &request(None)).await;
         let count = client(&server).count(&scope(), None).await.unwrap();
-        let event = client(&server).get_event(&scope(), "missing").await.unwrap();
+        let event = client(&server)
+            .get_event(&scope(), "missing")
+            .await
+            .unwrap();
         let sessions = client(&server)
             .list_sessions(&scope(), &bounded)
             .await
@@ -938,7 +956,7 @@ mod tests {
         let mut other_org = source(1, PROJ);
         other_org["org_id"] = json!("someone-else");
         let mut no_proj = source(1, PROJ);
-        no_proj.as_object_mut().unwrap().remove("proj_id");
+        no_proj.as_object_mut().unwrap().remove("project_id");
 
         for stored in [source(1, "another-proj"), other_org, no_proj] {
             let server = MockServer::start().await;
@@ -1035,7 +1053,10 @@ mod tests {
                 "event_count": 3,
             }])
         );
-        assert_eq!(page.next_cursor, Some(cursor::encode(&[json!("session-a")])));
+        assert_eq!(
+            page.next_cursor,
+            Some(cursor::encode(&[json!("session-a")]))
+        );
 
         // The cursor comes back to OpenSearch as the composite `after` key.
         let second = QueryRequest {
@@ -1133,7 +1154,8 @@ mod tests {
     async fn a_stored_document_that_is_not_an_event_is_a_decode_error() {
         let server = MockServer::start().await;
         accept_any_query(&server).await;
-        let reply = json!({ "hits": { "hits": [{ "_source": { "name": "no id" }, "sort": [1, "a"] }] } });
+        let reply =
+            json!({ "hits": { "hits": [{ "_source": { "name": "no id" }, "sort": [1, "a"] }] } });
         mount(
             &server,
             "POST",
@@ -1180,10 +1202,10 @@ mod tests {
 
     #[test]
     fn a_scope_needs_an_organization() {
-        let organization = uuid::Uuid::from_u128(1);
+        let organization = canonical_event::OrgId::try_from("acme-corp".to_string()).unwrap();
         let mut project = db::Project {
-            id: uuid::Uuid::from_u128(2),
-            organization_id: Some(organization),
+            id: canonical_event::ProjectId::try_from("acme-corp-shop".to_string()).unwrap(),
+            organization_id: Some(organization.clone()),
             name: "shop".into(),
             timezone: None,
             deleted_at: None,
@@ -1195,7 +1217,7 @@ mod tests {
             Scope::for_project(&project),
             Some(Scope {
                 org_id: organization.to_string(),
-                proj_id: project.id.to_string(),
+                project_id: project.id.to_string(),
             })
         );
 
@@ -1263,7 +1285,12 @@ mod tests {
         ]}}});
         Mock::given(method("POST"))
             .and(path(api("_search")))
-            .and(body_json(query::histogram_body(scoped.clone(), from, to, "1m")))
+            .and(body_json(query::histogram_body(
+                scoped.clone(),
+                from,
+                to,
+                "1m",
+            )))
             .respond_with(ResponseTemplate::new(200).set_body_json(reply))
             .expect(1)
             .mount(&server)
@@ -1382,9 +1409,24 @@ mod tests {
         let server = MockServer::start().await;
         let bounded = bounded_query();
         let cases = [
-            ("org_id", Some(&bounded), None, RequestError::UnknownFacetField),
-            ("properties.plan", Some(&bounded), None, RequestError::UnknownFacetField),
-            ("name", Some(&bounded), Some(51), RequestError::InvalidFacetSize),
+            (
+                "org_id",
+                Some(&bounded),
+                None,
+                RequestError::UnknownFacetField,
+            ),
+            (
+                "properties.plan",
+                Some(&bounded),
+                None,
+                RequestError::UnknownFacetField,
+            ),
+            (
+                "name",
+                Some(&bounded),
+                Some(51),
+                RequestError::InvalidFacetSize,
+            ),
             ("name", None, None, RequestError::MissingTimeRange),
         ];
 
@@ -1470,7 +1512,8 @@ mod tests {
             ))
             .unwrap();
             let template: Value = serde_json::from_str(&template).unwrap();
-            live.send(Method::PUT, "", Some(&template["template"])).await;
+            live.send(Method::PUT, "", Some(&template["template"]))
+                .await;
             live
         }
 
@@ -1492,7 +1535,7 @@ mod tests {
         fn scope(&self, proj: &str) -> Scope {
             Scope {
                 org_id: self.org.clone(),
-                proj_id: proj.into(),
+                project_id: proj.into(),
             }
         }
 
@@ -1512,7 +1555,7 @@ mod tests {
                 .name(name.into())
                 .occured_at(Utc.with_ymd_and_hms(2026, 9, 1, 10, 0, second).unwrap())
                 .org_id(org.into())
-                .proj_id(Some(proj.into()))
+                .project_id(Some(proj.into()))
                 .session_id(session.map(Into::into))
                 .anon_id("anon-1".into())
                 .properties(Some(json!({ "plan": "pro" })))
@@ -1622,7 +1665,7 @@ mod tests {
         assert_eq!(pages, 3);
         assert!(times.windows(2).all(|pair| pair[0] >= pair[1]), "{times:?}");
         assert!(events.iter().all(|event| event.get("org_id").is_none()));
-        assert!(events.iter().all(|event| event["proj_id"] == A));
+        assert!(events.iter().all(|event| event["project_id"] == A));
         found.sort();
         a_ids.sort();
         assert_eq!(found, a_ids);
@@ -1692,7 +1735,11 @@ mod tests {
         // Histogram: the test minute in 1s buckets, empty ones included.
         let (from, to) = (at("2026-09-01T10:00:00Z"), at("2026-09-01T10:01:00Z"));
         let histogram = live.client.histogram(&a, None, from, to).await.unwrap();
-        let counts: Vec<u64> = histogram.buckets.iter().map(|bucket| bucket.count).collect();
+        let counts: Vec<u64> = histogram
+            .buckets
+            .iter()
+            .map(|bucket| bucket.count)
+            .collect();
         assert_eq!(histogram.interval, "1s");
         assert_eq!(counts.len(), 60);
         assert_eq!(counts[..6], [1, 1, 1, 1, 2, 1]);
@@ -1705,7 +1752,11 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(
-            histogram.buckets.iter().map(|bucket| bucket.count).sum::<u64>(),
+            histogram
+                .buckets
+                .iter()
+                .map(|bucket| bucket.count)
+                .sum::<u64>(),
             4
         );
 
@@ -1757,7 +1808,7 @@ mod tests {
         // An org with no index yet has no events.
         let nobody = Scope {
             org_id: uuid::Uuid::new_v4().to_string(),
-            proj_id: A.into(),
+            project_id: A.into(),
         };
         assert_eq!(live.client.count(&nobody, None).await.unwrap(), 0);
 

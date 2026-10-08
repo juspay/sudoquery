@@ -1,3 +1,4 @@
+use canonical_event::ProjectId;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +8,7 @@ pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub user_id: Uuid,
-    pub proj_id: Uuid,
+    pub project_id: ProjectId,
     pub console: Option<String>,
     pub name: Option<String>,
     pub created_at: DateTimeWithTimeZone,
@@ -24,7 +25,7 @@ pub enum Relation {
     User,
     #[sea_orm(
         belongs_to = "super::project::Entity",
-        from = "Column::ProjId",
+        from = "Column::ProjectId",
         to = "super::project::Column::Id"
     )]
     Project,

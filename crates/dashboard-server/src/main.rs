@@ -15,6 +15,7 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod clickhouse;
 mod db;
 mod entities;
+mod ids;
 mod keycloak;
 mod middleware;
 mod models;
@@ -93,7 +94,7 @@ async fn get_events_today_count(
     );
     match clickhouse::execute_project_query(
         &s.clickhouse_url,
-        project.id,
+        &project.id,
         &s.clickhouse_project_password,
         &query,
     )
@@ -118,7 +119,7 @@ async fn get_events(
     let query = "SELECT event_name FROM events_v2 GROUP BY event_name";
     match clickhouse::execute_project_query(
         &s.clickhouse_url,
-        project.id,
+        &project.id,
         &s.clickhouse_project_password,
         query,
     )
@@ -163,7 +164,7 @@ async fn get_event_props(
 
     match clickhouse::execute_project_query(
         &s.clickhouse_url,
-        project.id,
+        &project.id,
         &s.clickhouse_project_password,
         &query,
     )
@@ -203,7 +204,7 @@ async fn run_raw_query(
 
     match clickhouse::execute_project_query(
         &s.clickhouse_url,
-        project.id,
+        &project.id,
         &s.clickhouse_project_password,
         trimmed_query,
     )
@@ -311,19 +312,6 @@ async fn chat_completions(Json(req): Json<ChatCompletionRequest>) -> impl IntoRe
     }
 }
 
-async fn run_migrations(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
-    let migration = include_str!("../migrations/20260313000000_init.sql");
-
-    for statement in migration.split(';') {
-        let statement = statement.trim();
-        if !statement.is_empty() {
-            sqlx::query(statement).execute(pool).await?;
-        }
-    }
-
-    Ok(())
-}
-
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
@@ -348,8 +336,6 @@ async fn main() {
         .connect(&database_url)
         .await
         .expect("Failed to connect to database");
-
-    // run_migrations(&db_pool).await.expect("Failed to run migrations");
 
     let keycloak_url = std::env::var("KEYCLOAK_URL").expect("KEYCLOAK_URL must be set");
     println!("keycloak_url {}", &keycloak_url);

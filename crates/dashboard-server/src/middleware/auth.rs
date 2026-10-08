@@ -4,12 +4,13 @@ use axum::{
     http::{StatusCode, request::Parts},
     response::{IntoResponse, Response},
 };
+use canonical_event::{OrgId, ProjectId};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::str::FromStr;
 use tokio::sync::RwLock;
-use uuid::Uuid;
 
 use crate::{AppState, db};
 
@@ -168,14 +169,14 @@ impl FromRequestParts<AppState> for OrgAdmin {
             .and_then(|v| v.to_str().ok())
             .ok_or(AuthError::MissingOrganizationId)?;
 
-        let org_id = Uuid::parse_str(org_id_str).map_err(|_| AuthError::InvalidOrganizationId)?;
+        let org_id = OrgId::from_str(org_id_str).map_err(|_| AuthError::InvalidOrganizationId)?;
 
-        let organization = db::get_organization_by_id(&state.db_pool, org_id)
+        let organization = db::get_organization_by_id(&state.db_pool, &org_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::OrganizationNotFound)?;
 
-        let role = db::get_user_organization_role(&state.db_pool, auth_user.user.id, org_id)
+        let role = db::get_user_organization_role(&state.db_pool, auth_user.user.id, &org_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
@@ -211,14 +212,14 @@ impl FromRequestParts<AppState> for OrgContext {
             .and_then(|v| v.to_str().ok())
             .ok_or(AuthError::MissingOrganizationId)?;
 
-        let org_id = Uuid::parse_str(org_id_str).map_err(|_| AuthError::InvalidOrganizationId)?;
+        let org_id = OrgId::from_str(org_id_str).map_err(|_| AuthError::InvalidOrganizationId)?;
 
-        let organization = db::get_organization_by_id(&state.db_pool, org_id)
+        let organization = db::get_organization_by_id(&state.db_pool, &org_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::OrganizationNotFound)?;
 
-        let role = db::get_user_organization_role(&state.db_pool, auth_user.user.id, org_id)
+        let role = db::get_user_organization_role(&state.db_pool, auth_user.user.id, &org_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
@@ -253,14 +254,14 @@ impl FromRequestParts<AppState> for ProjectAccess {
             .ok_or(AuthError::MissingProjectId)?;
 
         let project_id =
-            Uuid::parse_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
+            ProjectId::from_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
 
-        let project = db::get_project_by_id(&state.db_pool, project_id)
+        let project = db::get_project_by_id(&state.db_pool, &project_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::ProjectNotFound)?;
 
-        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, project_id)
+        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, &project_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::Forbidden)?;
@@ -296,14 +297,14 @@ impl FromRequestParts<AppState> for ProjectContext {
             .ok_or(AuthError::MissingProjectId)?;
 
         let project_id =
-            Uuid::parse_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
+            ProjectId::from_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
 
-        let project = db::get_project_by_id(&state.db_pool, project_id)
+        let project = db::get_project_by_id(&state.db_pool, &project_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::ProjectNotFound)?;
 
-        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, project_id)
+        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, &project_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
@@ -337,14 +338,14 @@ impl FromRequestParts<AppState> for ProjectAdmin {
             .ok_or(AuthError::MissingProjectId)?;
 
         let project_id =
-            Uuid::parse_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
+            ProjectId::from_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
 
-        let project = db::get_project_by_id(&state.db_pool, project_id)
+        let project = db::get_project_by_id(&state.db_pool, &project_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::ProjectNotFound)?;
 
-        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, project_id)
+        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, &project_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
@@ -377,24 +378,25 @@ impl FromRequestParts<AppState> for ProjectAdminOrOrgAdmin {
             .ok_or(AuthError::MissingProjectId)?;
 
         let project_id =
-            Uuid::parse_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
+            ProjectId::from_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
 
-        let project = db::get_project_by_id(&state.db_pool, project_id)
+        let project = db::get_project_by_id(&state.db_pool, &project_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::ProjectNotFound)?;
 
         // Check if user has project admin role
-        let project_role = db::get_user_project_role(&state.db_pool, auth_user.user.id, project_id)
-            .await
-            .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
+        let project_role =
+            db::get_user_project_role(&state.db_pool, auth_user.user.id, &project_id)
+                .await
+                .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
         if matches!(project_role, Some(db::ProjectRole::ProjectAdmin)) {
             return Ok(ProjectAdminOrOrgAdmin { auth_user, project });
         }
 
         // Or check if user is org admin of the project's organization
-        if let Some(org_id) = project.organization_id {
+        if let Some(org_id) = project.organization_id.as_ref() {
             let org_role =
                 db::get_user_organization_role(&state.db_pool, auth_user.user.id, org_id)
                     .await

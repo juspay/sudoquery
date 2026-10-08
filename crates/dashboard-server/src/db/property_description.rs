@@ -1,3 +1,4 @@
+use canonical_event::ProjectId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -6,7 +7,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct PropertyDescription {
     pub id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: ProjectId,
     pub event_name: String,
     pub property_name: String,
     pub property_type: String,
@@ -18,7 +19,7 @@ pub struct PropertyDescription {
 /// Create or update property description (upsert)
 pub async fn upsert_property_description(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
     event_name: &str,
     property_name: &str,
     property_type: &str,
@@ -50,7 +51,7 @@ pub async fn upsert_property_description(
 /// Get a single property description by project_id, event_name, and property_name
 pub async fn get_property_description(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
     event_name: &str,
     property_name: &str,
 ) -> Result<Option<PropertyDescription>, sqlx::Error> {
@@ -71,7 +72,7 @@ pub async fn get_property_description(
 /// List all property descriptions for a project
 pub async fn list_property_descriptions_by_project(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<Vec<PropertyDescription>, sqlx::Error> {
     sqlx::query_as::<_, PropertyDescription>(
         r#"
@@ -89,7 +90,7 @@ pub async fn list_property_descriptions_by_project(
 /// List property descriptions for a specific event in a project
 pub async fn list_property_descriptions_by_event(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
     event_name: &str,
 ) -> Result<Vec<PropertyDescription>, sqlx::Error> {
     sqlx::query_as::<_, PropertyDescription>(
@@ -109,7 +110,7 @@ pub async fn list_property_descriptions_by_event(
 /// Delete a property description
 pub async fn delete_property_description(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
     event_name: &str,
     property_name: &str,
 ) -> Result<(), sqlx::Error> {

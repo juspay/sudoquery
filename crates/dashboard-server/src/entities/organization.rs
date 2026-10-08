@@ -4,8 +4,12 @@ use serde::{Deserialize, Serialize};
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "organizations")]
 pub struct Model {
+    // `String` rather than `OrgId`: sea-orm's `PrimaryKeyTrait` requires
+    // `TryFromU64`/`FromValueTuple`, which the canonical-event newtypes do
+    // not (and cannot, per orphan rules) implement. The sqlx `db` layer is
+    // the authoritative typed boundary for slugs.
     #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
+    pub id: String,
     pub name: String,
     pub deleted_at: Option<DateTimeWithTimeZone>,
     pub created_at: DateTimeWithTimeZone,

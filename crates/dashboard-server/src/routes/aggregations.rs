@@ -4,10 +4,10 @@ use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{
+    AppState,
     middleware::ProjectAccess,
     opensearch::{Facets, Histogram},
-    routes::search::{project_scope, SearchError},
-    AppState,
+    routes::search::{SearchError, project_scope},
 };
 
 // ============ Request Types ============

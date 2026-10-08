@@ -1,3 +1,4 @@
+use canonical_event::{OrgId, ProjectId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -39,7 +40,7 @@ impl ProjectRole {
 pub struct OrganizationMembership {
     pub id: Uuid,
     pub user_id: Uuid,
-    pub organization_id: Uuid,
+    pub organization_id: OrgId,
     pub role: OrgRole,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -49,7 +50,7 @@ pub struct OrganizationMembership {
 pub struct ProjectMembership {
     pub id: Uuid,
     pub user_id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: ProjectId,
     pub role: ProjectRole,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
@@ -60,7 +61,7 @@ pub struct ProjectMembership {
 pub async fn add_user_to_organization(
     pool: &PgPool,
     user_id: Uuid,
-    organization_id: Uuid,
+    organization_id: &OrgId,
     role: &OrgRole,
 ) -> Result<OrganizationMembership, sqlx::Error> {
     let uuid7 = uuid7::uuid7();
@@ -84,7 +85,7 @@ pub async fn add_user_to_organization(
 pub async fn get_user_organization_role(
     pool: &PgPool,
     user_id: Uuid,
-    organization_id: Uuid,
+    organization_id: &OrgId,
 ) -> Result<Option<OrgRole>, sqlx::Error> {
     let result: Option<(OrgRole,)> = sqlx::query_as(
         r#"
@@ -104,7 +105,7 @@ pub async fn get_user_organization_role(
 pub async fn get_organization_membership(
     pool: &PgPool,
     user_id: Uuid,
-    organization_id: Uuid,
+    organization_id: &OrgId,
 ) -> Result<Option<OrganizationMembership>, sqlx::Error> {
     sqlx::query_as::<_, OrganizationMembership>(
         r#"
@@ -122,7 +123,7 @@ pub async fn get_organization_membership(
 pub async fn remove_user_from_organization(
     pool: &PgPool,
     user_id: Uuid,
-    organization_id: Uuid,
+    organization_id: &OrgId,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
@@ -141,7 +142,7 @@ pub async fn remove_user_from_organization(
 pub async fn update_organization_membership_role(
     pool: &PgPool,
     user_id: Uuid,
-    organization_id: Uuid,
+    organization_id: &OrgId,
     role: &OrgRole,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
@@ -162,7 +163,7 @@ pub async fn update_organization_membership_role(
 
 pub async fn list_organization_members(
     pool: &PgPool,
-    organization_id: Uuid,
+    organization_id: &OrgId,
 ) -> Result<Vec<(Uuid, String, String, OrgRole)>, sqlx::Error> {
     sqlx::query_as(
         r#"
@@ -183,7 +184,7 @@ pub async fn list_organization_members(
 pub async fn add_user_to_project(
     pool: &PgPool,
     user_id: Uuid,
-    project_id: Uuid,
+    project_id: &ProjectId,
     role: &ProjectRole,
 ) -> Result<ProjectMembership, sqlx::Error> {
     let uuid7 = uuid7::uuid7();
@@ -207,7 +208,7 @@ pub async fn add_user_to_project(
 pub async fn get_user_project_role(
     pool: &PgPool,
     user_id: Uuid,
-    project_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<Option<ProjectRole>, sqlx::Error> {
     // First check for direct project membership
     let result: Option<(ProjectRole,)> = sqlx::query_as(
@@ -272,7 +273,7 @@ pub async fn get_user_project_role(
 pub async fn get_project_membership(
     pool: &PgPool,
     user_id: Uuid,
-    project_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<Option<ProjectMembership>, sqlx::Error> {
     sqlx::query_as::<_, ProjectMembership>(
         r#"
@@ -290,7 +291,7 @@ pub async fn get_project_membership(
 pub async fn remove_user_from_project(
     pool: &PgPool,
     user_id: Uuid,
-    project_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
@@ -309,7 +310,7 @@ pub async fn remove_user_from_project(
 pub async fn update_project_membership_role(
     pool: &PgPool,
     user_id: Uuid,
-    project_id: Uuid,
+    project_id: &ProjectId,
     role: &ProjectRole,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
@@ -330,7 +331,7 @@ pub async fn update_project_membership_role(
 
 pub async fn list_project_members(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<Vec<(Uuid, String, String, ProjectRole)>, sqlx::Error> {
     sqlx::query_as(
         r#"
@@ -346,8 +347,11 @@ pub async fn list_project_members(
     .await
 }
 
-pub async fn list_user_projects(pool: &PgPool, user_id: Uuid) -> Result<Vec<Uuid>, sqlx::Error> {
-    let result: Vec<(Uuid,)> = sqlx::query_as(
+pub async fn list_user_projects(
+    pool: &PgPool,
+    user_id: Uuid,
+) -> Result<Vec<ProjectId>, sqlx::Error> {
+    let result: Vec<(ProjectId,)> = sqlx::query_as(
         r#"
         SELECT project_id
         FROM project_memberships

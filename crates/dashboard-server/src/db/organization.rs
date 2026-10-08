@@ -1,11 +1,15 @@
+use canonical_event::OrgId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use super::{MAX_SLUG_INSERT_ATTEMPTS, is_unique_violation};
+use crate::ids;
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Organization {
-    pub id: Uuid,
+    pub id: OrgId,
     pub name: String,
     pub deleted_at: Option<DateTime<Utc>>,
     pub created_at: DateTime<Utc>,
@@ -13,25 +17,42 @@ pub struct Organization {
 }
 
 pub async fn create_organization(pool: &PgPool, name: &str) -> Result<Organization, sqlx::Error> {
-    let uuid7 = uuid7::uuid7();
-    let id = Uuid::from_bytes(*uuid7.as_bytes());
-
-    sqlx::query_as::<_, Organization>(
-        r#"
-        INSERT INTO organizations (id, name)
-        VALUES ($1, $2)
-        RETURNING id, name, deleted_at, created_at, updated_at
-        "#,
-    )
-    .bind(id)
-    .bind(name)
-    .fetch_one(pool)
-    .await
+    let mut attempt = 0;
+    loop {
+        let id = ids::generate_org_id(name);
+        attempt += 1;
+        match sqlx::query_as::<_, Organization>(
+            r#"
+            INSERT INTO organizations (id, name)
+            VALUES ($1, $2)
+            RETURNING id, name, deleted_at, created_at, updated_at
+            "#,
+        )
+        .bind(&id)
+        .bind(name)
+        .fetch_one(pool)
+        .await
+        {
+            Ok(organization) => return Ok(organization),
+            // A unique violation means the random slug suffix collided with
+            // an existing organization; dropping out of the match retries
+            // with a fresh suffix.
+            Err(err) if attempt < MAX_SLUG_INSERT_ATTEMPTS && is_unique_violation(&err) => {
+                tracing::warn!(
+                    "generated organization slug '{}' collided (attempt {}/{}); regenerating suffix",
+                    id,
+                    attempt,
+                    MAX_SLUG_INSERT_ATTEMPTS
+                );
+            }
+            Err(err) => return Err(err),
+        }
+    }
 }
 
 pub async fn get_organization_by_id(
     pool: &PgPool,
-    id: Uuid,
+    id: &OrgId,
 ) -> Result<Option<Organization>, sqlx::Error> {
     sqlx::query_as::<_, Organization>(
         r#"
@@ -45,7 +66,7 @@ pub async fn get_organization_by_id(
     .await
 }
 
-pub async fn soft_delete_organization(pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error> {
+pub async fn soft_delete_organization(pool: &PgPool, id: &OrgId) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         UPDATE organizations

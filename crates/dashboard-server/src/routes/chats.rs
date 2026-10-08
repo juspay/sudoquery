@@ -31,7 +31,7 @@ pub async fn list_chats(
         project, auth_user, ..
     }: ProjectAccess,
 ) -> Result<Json<Vec<ChatResponse>>, ChatError> {
-    let chats = db::list_chats_by_project_and_user(&state.db_pool, project.id, auth_user.user.id)
+    let chats = db::list_chats_by_project_and_user(&state.db_pool, &project.id, auth_user.user.id)
         .await
         .map_err(|e| ChatError::Database(e.to_string()))?;
 
