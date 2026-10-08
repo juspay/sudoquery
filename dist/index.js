@@ -270,42 +270,45 @@ async function flush(useBeacon = false) {
 // src/Batcher.ts
 var Batcher = class {
   static addToBatch(event) {
-    if (this.batches[this.currentAccumilatingBatch].length === Configuration.batchSize) {
+    if (this.accumulatingBatch().length >= Configuration.batchSize) {
       this.addNewBatch();
     }
-    const lastBatch = this.batches[this.batches.length - 1];
+    const lastBatch = this.accumulatingBatch();
     lastBatch.push(event);
     if (lastBatch.length === Configuration.batchSize) {
       flush(false).catch((err) => console.error("Auto-flush error:", err));
     }
   }
   static fetchBatchToUpload() {
-    const batchToUpload = this.batches[this._currentBatchToUpload];
+    const batchToUpload = this.batches[0];
     if (batchToUpload.length == 0) return null;
-    if (this._currentBatchToUpload === this.currentAccumilatingBatch) {
+    if (this.batches.length === 1) {
       this.addNewBatch();
     }
     return batchToUpload;
   }
   static addNewBatch() {
     this.batches.push([]);
-    this.currentAccumilatingBatch = this.batches.length - 1;
   }
   static setMarkLastBatchUploaded() {
-    return this._currentBatchToUpload++;
+    this.batches.shift();
+    if (this.batches.length === 0) {
+      this.batches.push([]);
+    }
+  }
+  static accumulatingBatch() {
+    return this.batches[this.batches.length - 1];
   }
   /**
    * Reset all internal state. Useful for testing.
    */
   static reset() {
     this.batches = [[]];
-    this._currentBatchToUpload = 0;
-    this.currentAccumilatingBatch = 0;
   }
 };
+// Queue of pending batches: the head is the next to upload, the tail is accumulating.
+// Uploaded batches are removed so memory stays bounded by what is still unsent.
 Batcher.batches = [[]];
-Batcher._currentBatchToUpload = 0;
-Batcher.currentAccumilatingBatch = 0;
 
 // src/SuperProperties.ts
 var SuperProperties = class {
