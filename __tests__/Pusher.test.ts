@@ -522,4 +522,57 @@ describe("Pusher", () => {
       );
     });
   });
+
+  describe("delivery listeners", () => {
+    beforeEach(() => {
+      Configuration.setBatchSize(2);
+      Batcher.addToBatch(createMockEvent(1));
+      Batcher.addToBatch(createMockEvent(2));
+      jest.spyOn(console, "error").mockImplementation(() => {});
+    });
+
+    afterEach(() => {
+      Pusher.reset();
+      jest.restoreAllMocks();
+      (fetch as jest.Mock).mockResolvedValue({ ok: true });
+    });
+
+    it("should report delivered and failed batches", async () => {
+      const listener = { onDelivered: jest.fn(), onFailed: jest.fn() };
+      Pusher.addDeliveryListener(listener);
+
+      (fetch as jest.Mock).mockResolvedValueOnce({ ok: false });
+      await Pusher.pushLogs();
+      expect(listener.onFailed).toHaveBeenCalledWith([
+        expect.objectContaining({ name: "event_1" }),
+        expect.objectContaining({ name: "event_2" }),
+      ]);
+
+      Pusher["_retryAt"] = 0;
+      await Pusher.pushLogs();
+      expect(listener.onDelivered).toHaveBeenCalledTimes(1);
+    });
+
+    it("should report unload sends and their outcome", async () => {
+      const listener = { onUnloadSend: jest.fn(), onDelivered: jest.fn(), onFailed: jest.fn() };
+      Pusher.addDeliveryListener(listener);
+
+      await Pusher.pushLogs(true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      expect(listener.onUnloadSend).toHaveBeenCalledWith([expect.any(Array)]);
+      expect(listener.onDelivered).toHaveBeenCalledTimes(1);
+      expect(listener.onFailed).not.toHaveBeenCalled();
+    });
+
+    it("should keep sending when a listener throws", async () => {
+      Pusher.addDeliveryListener({
+        onDelivered: () => {
+          throw new Error("listener bug");
+        },
+      });
+
+      expect(await Pusher.pushLogs()).toHaveLength(2);
+    });
+  });
 });

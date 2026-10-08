@@ -59,6 +59,16 @@ export class Batcher {
     this.batches.splice(afterHead ? 1 : 0, 0, batch);
   }
 
+  /**
+   * Queue events restored from storage ahead of the batch currently accumulating.
+   */
+  static addRestored(events: Event[]) {
+    const size = Math.max(1, Configuration.batchSize);
+    for (let i = 0; i < events.length; i += size) {
+      this.batches.splice(this.batches.length - 1, 0, events.slice(i, i + size));
+    }
+  }
+
   private static accumulatingBatch(): Event[] {
     return this.batches[this.batches.length - 1];
   }

@@ -4,11 +4,39 @@ import type { Event, BatchPayload } from "./types";
 import { getSystemProperties } from "./Session";
 import { Configuration } from "./Configuration";
 
+/**
+ * Observer for upload outcomes. Lets optional features react to delivery
+ * without Pusher depending on them.
+ */
+export interface DeliveryListener {
+  /** A batch reached the collector. */
+  onDelivered?(batch: Event[]): void;
+  /** A batch could not be delivered and stays queued for retry. */
+  onFailed?(batch: Event[]): void;
+  /** The page is being hidden and these batches are being sent with keepalive. */
+  onUnloadSend?(batches: Event[][]): void;
+}
+
 export class Pusher {
   private static _isUploadInProgress = false;
   private static _failedAttempts = 0;
   private static _retryAt = 0;
   private static _retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private static _listeners: DeliveryListener[] = [];
+
+  static addDeliveryListener(listener: DeliveryListener): void {
+    this._listeners.push(listener);
+  }
+
+  private static notify(call: (listener: DeliveryListener) => void): void {
+    for (const listener of this._listeners) {
+      try {
+        call(listener);
+      } catch (error) {
+        console.error("Delivery listener error:", error);
+      }
+    }
+  }
 
   private static get endpoint(): string {
     return Configuration.endpoint;
@@ -50,10 +78,12 @@ export class Pusher {
     const success = await this.sendNormally(payload);
     this._isUploadInProgress = false;
     if (!success) {
+      this.notify((listener) => listener.onFailed?.(batch));
       this.scheduleRetry();
       return null;
     }
     this._failedAttempts = 0;
+    this.notify((listener) => listener.onDelivered?.(batch));
     return batch;
   }
 
@@ -89,9 +119,13 @@ export class Pusher {
    */
   private static sendAllWithKeepalive(): void {
     const batches = Batcher.takeAllPending(this._isUploadInProgress);
+    if (batches.length > 0) this.notify((listener) => listener.onUnloadSend?.(batches));
     for (const batch of batches) {
       void this.sendWithKeepalive(this.transformBatch(batch)).then((success) => {
-        if (!success) {
+        if (success) {
+          this.notify((listener) => listener.onDelivered?.(batch));
+        } else {
+          this.notify((listener) => listener.onFailed?.(batch));
           Batcher.requeue(batch, this._isUploadInProgress);
           // Several batches can fail together; count that as one failed attempt.
           if (!this.isBackingOff()) this.scheduleRetry();
@@ -178,6 +212,7 @@ export class Pusher {
     this._retryAt = 0;
     this._failedAttempts = 0;
     this._isUploadInProgress = false;
+    this._listeners = [];
   }
 
   static async startScheduler(time: number) {

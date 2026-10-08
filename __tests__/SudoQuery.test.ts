@@ -1,6 +1,7 @@
 import { SudoQuery } from '../src/SudoQuery';
 import { Batcher } from '../src/Batcher';
 import { Configuration } from '../src/Configuration';
+import { resetSequence } from '../src/Sequence';
 
 describe('SudoQuery', () => {
   beforeEach(() => {
@@ -163,6 +164,33 @@ describe('SudoQuery', () => {
           tenant_id: 'tenant-1',
           properties,
         }));
+      });
+    });
+
+    describe('sequence numbers', () => {
+      it('should stamp events with one stream id and increasing seq', () => {
+        resetSequence();
+        Configuration.setBatchSize(10);
+
+        SudoQuery.track('a');
+        SudoQuery.track('b');
+        SudoQuery.track('c');
+
+        const batch = Batcher.fetchBatchToUpload() ?? [];
+        expect(batch.map((e) => e.seq)).toEqual([0, 1, 2]);
+        expect(new Set(batch.map((e) => e.stream_id)).size).toBe(1);
+        expect(batch[0].stream_id).toMatch(/^[0-9a-f-]{36}$/);
+      });
+
+      it('should not consume a seq when tracking throws', () => {
+        resetSequence();
+        Configuration.setTenantId(null);
+        expect(() => SudoQuery.track('a')).toThrow();
+
+        Configuration.setTenantId('tenant-1');
+        SudoQuery.track('b');
+
+        expect(Batcher.fetchBatchToUpload()?.[0].seq).toBe(0);
       });
     });
 

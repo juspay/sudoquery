@@ -7,6 +7,8 @@ import { Pusher } from "./Pusher";
 import { Configuration } from "./Configuration";
 import { getSessionId } from "./Session";
 import { generateUuid } from "./Uuid";
+import { nextSequence } from "./Sequence";
+import { Outbox } from "./Outbox";
 
 export interface SudoQueryConfig {
   flushInterval?: number;
@@ -20,6 +22,7 @@ export interface SudoQueryConfig {
   sessionId?: string | null;
   retryBaseDelay?: number;
   retryMaxDelay?: number;
+  persistence?: boolean;
 }
 
 class SudoQuery {
@@ -75,6 +78,10 @@ class SudoQuery {
       Configuration.setRetryMaxDelay(config.retryMaxDelay);
     }
 
+    if (config?.persistence) {
+      this.enablePersistence();
+    }
+
     // Start periodic auto-flush if configured
     if (config?.flushInterval !== undefined && config.flushInterval > 0) {
       Configuration.setFlushInterval(config.flushInterval);
@@ -89,6 +96,22 @@ class SudoQuery {
         }
       });
     }
+  }
+
+  /**
+   * Store undelivered events in browser storage and send them on a later page load.
+   */
+  private static enablePersistence(): void {
+    const outbox = new Outbox();
+    Pusher.addDeliveryListener(outbox);
+    outbox
+      .start()
+      .then((events) => {
+        if (events.length === 0) return;
+        Batcher.addRestored(events);
+        return this.flush(false);
+      })
+      .catch((err) => console.error("Outbox restore error:", err));
   }
 
   private static startPeriodicFlush(intervalMs: number): void {
@@ -196,6 +219,7 @@ class SudoQuery {
       correlation_id: null,
       trace_id: null,
       system_properties: null,
+      ...nextSequence(),
     };
 
     Batcher.addToBatch(event);

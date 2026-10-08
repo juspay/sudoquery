@@ -51,6 +51,10 @@ type Event = {
     correlation_id: string | null;
     trace_id: string | null;
     system_properties: SystemProperties | null;
+    /** Stream the event was tracked in: one per page load (browser) or process (Node.js). */
+    stream_id: string;
+    /** Position of the event in its stream, starting at 0. Gaps indicate lost events. */
+    seq: number;
 };
 /**
  * Complete batch payload sent to the collector.
@@ -72,12 +76,17 @@ interface SudoQueryConfig {
     sessionId?: string | null;
     retryBaseDelay?: number;
     retryMaxDelay?: number;
+    persistence?: boolean;
 }
 declare class SudoQuery {
     private static didInit;
     private static currentUser;
     private static flushTimer;
     static init(config?: SudoQueryConfig): void;
+    /**
+     * Store undelivered events in browser storage and send them on a later page load.
+     */
+    private static enablePersistence;
     private static startPeriodicFlush;
     /**
      * Check if the SDK has been initialized
