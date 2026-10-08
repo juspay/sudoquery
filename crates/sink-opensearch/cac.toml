@@ -7,7 +7,7 @@
 # Every setting is one `section.name` key, so a single setting can be
 # overridden. Everything is read once at startup with no org context,
 # except `opensearch.index`, which is resolved per event for the event's
-# org_id and proj_id. The file is re-read every 30 seconds, so org
+# org_id and project_id. The file is re-read every 30 seconds, so org
 # overrides of `opensearch.index` apply without a restart; anything else needs
 # a restart.
 #
@@ -52,7 +52,7 @@
 
 [dimensions]
 org_id = { position = 1, schema = { type = "string" } }
-proj_id = { position = 2, schema = { type = "string" } }
+project_id = { position = 2, schema = { type = "string" } }
 
 # Per-org index. For example, move one org to a dedicated index, and put
 # a group of small orgs in one shared index. Keep names under `events-*` so

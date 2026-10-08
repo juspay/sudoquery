@@ -92,7 +92,7 @@ A partition's batches are written strictly in order, and a batch's retries finis
 
 `_id` is the canonical event's `id` (UUID). The action is always `create`, so a replay gets a 409, which counts as success. `create` also works with data streams.
 
-The target comes from the CAC key `opensearch.index`, resolved for each event's `org_id` and `proj_id`, so CAC overrides can move an org, or one of its projects, to another index. In the resolved value, `{org_id}` is replaced with the event's org: `events-{org_id}` gives each org its own index or data stream.
+The target comes from the CAC key `opensearch.index`, resolved for each event's `org_id` and `project_id`, so CAC overrides can move an org, or one of its projects, to another index. In the resolved value, `{org_id}` is replaced with the event's org: `events-{org_id}` gives each org its own index or data stream.
 
 - **Checks:** the default's fixed parts are checked against OpenSearch's naming rules at startup. Each org's resolved value is checked when the org is first seen, and every full name is checked per event.
 - **Invalid org ID:** an org ID that can't form a valid name is dead-lettered as `invalid_org`. Org IDs are never lowercased or cleaned up, because that could put two orgs in one index.
@@ -153,7 +153,7 @@ A fatal consumer error skips the drain: in-flight batches are cancelled, complet
 
 ## Configuration
 
-See [README.md](README.md#configuration). Settings come from a CAC (Superposition) file with one `section.name` key per setting and `org_id` and `proj_id` dimensions, loaded the same way as the collector's `cac.toml`. Environment overrides use the collector's variable names. Unknown keys are rejected, and values are validated at startup: index naming rules, URL scheme, DLQ topic not consumed, and both or neither credential. Process-wide settings are resolved once with no org; `opensearch.index` is resolved per org.
+See [README.md](README.md#configuration). Settings come from a CAC (Superposition) file with one `section.name` key per setting and `org_id` and `project_id` dimensions, loaded the same way as the collector's `cac.toml`. Environment overrides use the collector's variable names. Unknown keys are rejected, and values are validated at startup: index naming rules, URL scheme, DLQ topic not consumed, and both or neither credential. Process-wide settings are resolved once with no org; `opensearch.index` is resolved per org.
 
 ## Observability
 

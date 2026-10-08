@@ -29,21 +29,21 @@ log verbosity (defaults to `info`).
 ## S3 key layout
 
 ```
-{S3_PREFIX?}/{org_id}/{proj_id}/dt=YYYY-MM-DD/hour=HH/{hash}.jsonl.zst
+{S3_PREFIX?}/{org_id}/{project_id}/dt=YYYY-MM-DD/hour=HH/{hash}.jsonl.zst
 {S3_PREFIX?}/_quarantine/{hash}.jsonl.zst
 ```
 
 - `dt`/`hour` come from the event's `arrived_at` (UTC); if `arrived_at` is
   absent or unparseable the service falls back to `occured_at` and logs a
   warning. The hour is zero-padded (`hour=03`).
-- `proj_id` absent routes the event to the literal `default` directory
+- `project_id` absent routes the event to the literal `default` directory
   (with a warning).
 - `hash` is the first 16 lowercase hex chars of the sha256 of the uncompressed
   JSONL body. Identical content produces an identical key; different content
   produces a different key.
 - File content is the raw Kafka payload bytes, one event per line, in
   consumption order — events are never re-serialized.
-- One file per `(org, proj, dt, hour)` per flush cycle, merged across
+- One file per `(org, project_id, dt, hour)` per flush cycle, merged across
   all topics and partitions. Per-partition consumption order is preserved
   within a file; cross-partition ordering is not guaranteed — downstream
   consumers sort by `arrived_at` as needed.

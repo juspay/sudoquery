@@ -38,7 +38,7 @@ The differences from the collector's file:
 
 - **One key per setting,** named `section.name`: `"batch.max_docs"`, `"opensearch.index"`, and so on. That way an override can change one setting without repeating a whole section.
 - **Unknown or misspelled keys** stop the sink at startup.
-- **Only `opensearch.index` is resolved per org,** for each event's `org_id` and `proj_id`, so `[[overrides]]` on those dimensions change where an org's events go. Everything else is resolved once at startup with no org, and org overrides of it are ignored.
+- **Only `opensearch.index` is resolved per org,** for each event's `org_id` and `project_id`, so `[[overrides]]` on those dimensions change where an org's events go. Everything else is resolved once at startup with no org, and org overrides of it are ignored.
 - **Org overrides apply live.** The sink re-reads the file every 30 seconds and re-resolves each org's index at most every 30 seconds, so an org override applies within about a minute without a restart. Other settings need a restart.
 
 | Key | Default | Notes |

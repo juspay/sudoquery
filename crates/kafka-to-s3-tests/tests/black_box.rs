@@ -109,7 +109,7 @@ fn hour_base(hour: u32) -> DateTime<Utc> {
 struct ExpectedEvent {
     id: Uuid,
     org_id: String,
-    proj_id: String,
+    project_id: String,
     arrived_at: DateTime<Utc>,
 }
 
@@ -120,10 +120,10 @@ fn expected_of(events: &[CanonicalEvent]) -> Vec<ExpectedEvent> {
         .map(|event| ExpectedEvent {
             id: event_id(event),
             org_id: event.org_id.clone(),
-            proj_id: event
-                .proj_id
+            project_id: event
+                .project_id
                 .clone()
-                .expect("harness events always set proj_id"),
+                .expect("harness events always set project_id"),
             arrived_at: event
                 .arrived_at
                 .expect("harness events always set arrived_at"),
@@ -150,9 +150,9 @@ fn assert_event_matches(actual: &ArchivedEvent, expected: &ExpectedEvent) {
         expected.id
     );
     assert_eq!(
-        actual.proj_id.as_deref(),
-        Some(expected.proj_id.as_str()),
-        "archived proj_id mismatch for event {}",
+        actual.project_id.as_deref(),
+        Some(expected.project_id.as_str()),
+        "archived project_id mismatch for event {}",
         expected.id
     );
     assert_eq!(

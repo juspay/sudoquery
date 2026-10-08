@@ -2,6 +2,10 @@ use chrono::SecondsFormat;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_with::skip_serializing_none;
 
+pub mod ids;
+
+pub use ids::{InvalidSlugError, OrgId, ProjectId, is_valid_slug};
+
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct Geo {
     pub country: Option<String>,
@@ -27,7 +31,7 @@ pub struct CanonicalEvent {
     )]
     pub arrived_at: Option<chrono::DateTime<chrono::Utc>>,
     pub org_id: String,
-    pub proj_id: Option<String>,
+    pub project_id: Option<String>,
     pub session_id: Option<String>,
     pub anon_id: String,
     pub actor_id: Option<String>,
@@ -116,7 +120,7 @@ pub struct CanonicalEventBuilder {
     occured_at: Option<chrono::DateTime<chrono::Utc>>,
     arrived_at: Option<chrono::DateTime<chrono::Utc>>,
     org_id: String,
-    proj_id: Option<String>,
+    project_id: Option<String>,
     session_id: Option<String>,
     anon_id: String,
     actor_id: Option<String>,
@@ -159,8 +163,8 @@ impl CanonicalEventBuilder {
         self
     }
 
-    pub fn proj_id(mut self, proj_id: Option<String>) -> Self {
-        self.proj_id = proj_id;
+    pub fn project_id(mut self, project_id: Option<String>) -> Self {
+        self.project_id = project_id;
         self
     }
 
@@ -217,7 +221,7 @@ impl CanonicalEventBuilder {
             occured_at: self.occured_at.unwrap_or_else(chrono::Utc::now),
             arrived_at: self.arrived_at,
             org_id: self.org_id,
-            proj_id: self.proj_id,
+            project_id: self.project_id,
             session_id: self.session_id,
             anon_id: self.anon_id,
             actor_id: self.actor_id,
@@ -285,6 +289,7 @@ mod tests {
         let canonical_event = CanonicalEvent::builder()
             .name("payment_initiated".into())
             .org_id("merchant-1".into())
+            .project_id(Some("acme-shop-42".into()))
             .anon_id("anon-42".into())
             .arrived_at(Some(arrived_at))
             .properties(Some(serde_json::json!({ "amount": 100 })))
@@ -297,6 +302,13 @@ mod tests {
             ))
             .build();
         let payload = serde_json::to_vec(&canonical_event).unwrap();
+        let json = serde_json::to_value(&canonical_event).unwrap();
+
+        assert_eq!(
+            json.get("project_id").and_then(serde_json::Value::as_str),
+            Some("acme-shop-42")
+        );
+        assert!(!json.as_object().unwrap().contains_key("proj_id"));
 
         let decoded: CanonicalEvent = serde_json::from_slice(&payload).unwrap();
 
@@ -317,5 +329,6 @@ mod tests {
             "0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c"
         );
         assert!(decoded.arrived_at.is_none());
+        assert!(decoded.project_id.is_none());
     }
 }

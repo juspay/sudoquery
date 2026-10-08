@@ -120,7 +120,7 @@ impl Stack {
 
 [dimensions]
 org_id = {{ position = 1, schema = {{ type = "string" }} }}
-proj_id = {{ position = 2, schema = {{ type = "string" }} }}
+project_id = {{ position = 2, schema = {{ type = "string" }} }}
 {overrides}
 "#,
             topic = names.topic,

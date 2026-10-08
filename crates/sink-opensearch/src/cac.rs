@@ -1,6 +1,6 @@
 //! Reads the sink's settings from CAC (Superposition), the same way the event
 //! collector reads its `cac.toml`: a local file resolved against the
-//! `org_id` and `proj_id` dimensions.
+//! `org_id` and `project_id` dimensions.
 //!
 //! The file is checked for changes every 30 seconds. Process-wide settings
 //! are read once at startup; per-org values are resolved as events arrive,
@@ -19,7 +19,7 @@ use tracing::warn;
 const REFRESH_INTERVAL_MS: u64 = 30_000;
 
 const ORG_DIMENSION: &str = "org_id";
-const PROJ_DIMENSION: &str = "proj_id";
+const PROJ_DIMENSION: &str = "project_id";
 
 #[derive(Debug, thiserror::Error)]
 pub enum CacError {
@@ -70,17 +70,17 @@ impl Cac {
     }
 
     /// One key, resolved for an org, so `[[overrides]]` on `org_id` or
-    /// `proj_id` apply.
+    /// `project_id` apply.
     pub async fn resolve_for_org(
         &self,
         key: &str,
         org_id: &str,
-        proj_id: Option<&str>,
+        project_id: Option<&str>,
     ) -> Result<Option<Value>, CacError> {
         let mut context = EvaluationContext::default();
         context.add_custom_field(ORG_DIMENSION, org_id.to_owned());
-        if let Some(proj_id) = proj_id {
-            context.add_custom_field(PROJ_DIMENSION, proj_id.to_owned());
+        if let Some(project_id) = project_id {
+            context.add_custom_field(PROJ_DIMENSION, project_id.to_owned());
         }
 
         let mut values = self

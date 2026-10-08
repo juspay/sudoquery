@@ -40,7 +40,7 @@
 //! - Every archived object carries provenance S3 metadata: `source` (the
 //!   service's `SOURCE_ID`, when configured), `event-count`, and `ranges`
 //!   (`topic:partition:first:last` entries joined by `;`).
-//! - Events without a `proj_id` are out of scope: every harness-produced
+//! - Events without a `project_id` are out of scope: every harness-produced
 //!   event sets one.
 //!
 //! ## Environment variables

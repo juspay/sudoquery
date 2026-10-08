@@ -19,7 +19,7 @@ const CACHE_TTL: Duration = Duration::from_secs(30);
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Org {
     org_id: String,
-    proj_id: Option<String>,
+    project_id: Option<String>,
 }
 
 struct Cached {
@@ -41,16 +41,16 @@ impl OrgIndexes {
     }
 
     /// The org's `opensearch.index`, with CAC overrides for its
-    /// `org_id` and `proj_id` applied. Fails when the configured value
+    /// `org_id` and `project_id` applied. Fails when the configured value
     /// isn't a valid index template.
     pub async fn index_for(
         &self,
         org_id: &str,
-        proj_id: Option<&str>,
+        project_id: Option<&str>,
     ) -> Result<IndexTemplate, String> {
         let org = Org {
             org_id: org_id.to_owned(),
-            proj_id: proj_id.map(str::to_owned),
+            project_id: project_id.map(str::to_owned),
         };
         if let Some(cached) = self.lock().get(&org)
             && cached.resolved_at.elapsed() < CACHE_TTL
@@ -58,7 +58,7 @@ impl OrgIndexes {
             return cached.index.clone();
         }
 
-        let index = self.resolve(org_id, proj_id).await;
+        let index = self.resolve(org_id, project_id).await;
         self.lock().insert(
             org,
             Cached {
@@ -69,10 +69,14 @@ impl OrgIndexes {
         index
     }
 
-    async fn resolve(&self, org_id: &str, proj_id: Option<&str>) -> Result<IndexTemplate, String> {
+    async fn resolve(
+        &self,
+        org_id: &str,
+        project_id: Option<&str>,
+    ) -> Result<IndexTemplate, String> {
         let value = self
             .cac
-            .resolve_for_org(INDEX_KEY, org_id, proj_id)
+            .resolve_for_org(INDEX_KEY, org_id, project_id)
             .await
             .map_err(|error| error.to_string())?
             .ok_or_else(|| format!("CAC has no `{INDEX_KEY}`"))?;
@@ -101,14 +105,14 @@ mod tests {
 
 [dimensions]
 org_id = { position = 1, schema = { type = "string" } }
-proj_id = { position = 2, schema = { type = "string" } }
+project_id = { position = 2, schema = { type = "string" } }
 
 [[overrides]]
 _context_ = { org_id = "merchant-1" }
 "opensearch.index" = "events-merchant-1-dedicated"
 
 [[overrides]]
-_context_ = { org_id = "merchant-2", proj_id = "eu" }
+_context_ = { org_id = "merchant-2", project_id = "eu" }
 "opensearch.index" = "events-merchant-2-eu"
 
 [[overrides]]
@@ -125,8 +129,8 @@ _context_ = { org_id = "broken" }
         (OrgIndexes::new(Cac::load(&path).await.unwrap()), path)
     }
 
-    async fn index_name(indexes: &OrgIndexes, org_id: &str, proj_id: Option<&str>) -> String {
-        let template = indexes.index_for(org_id, proj_id).await.unwrap();
+    async fn index_name(indexes: &OrgIndexes, org_id: &str, project_id: Option<&str>) -> String {
+        let template = indexes.index_for(org_id, project_id).await.unwrap();
         template.render(org_id).unwrap().into_owned()
     }
 
@@ -157,7 +161,7 @@ _context_ = { org_id = "broken" }
     }
 
     #[tokio::test]
-    async fn proj_overrides_apply() {
+    async fn project_overrides_apply() {
         let (indexes, path) = indexes().await;
 
         assert_eq!(

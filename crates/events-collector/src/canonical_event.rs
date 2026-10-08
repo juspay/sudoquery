@@ -68,7 +68,7 @@ fn from_collector_event_with_system_properties(
         id,
         name,
         org_id,
-        proj_id,
+        project_id,
         session_id,
         anon_id,
         actor_id,
@@ -90,7 +90,7 @@ fn from_collector_event_with_system_properties(
         .occured_at(occured_at)
         .arrived_at(None)
         .org_id(org_id)
-        .proj_id(proj_id)
+        .project_id(project_id)
         .session_id(session_id)
         .anon_id(anon_id)
         .actor_id(actor_id)
@@ -255,7 +255,7 @@ mod tests {
             id: uuid::Uuid::new_v4(),
             name: "payment_submitted".to_string(),
             org_id: "org-1".to_string(),
-            proj_id: None,
+            project_id: None,
             session_id: None,
             anon_id: "anon-1".to_string(),
             actor_id: None,

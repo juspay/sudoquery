@@ -14,7 +14,7 @@ pub struct CollectorEvent {
     pub id: uuid::Uuid,
     pub name: String,
     pub org_id: String,
-    pub proj_id: Option<String>,
+    pub project_id: Option<String>,
     pub session_id: Option<String>,
     pub anon_id: String,
     pub actor_id: Option<String>,

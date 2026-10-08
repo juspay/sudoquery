@@ -14,7 +14,7 @@
         "occured_at": { "type": "date" },
         "arrived_at": { "type": "date" },
         "org_id": { "type": "keyword" },
-        "proj_id": { "type": "keyword" },
+        "project_id": { "type": "keyword" },
         "session_id": { "type": "keyword" },
         "anon_id": { "type": "keyword" },
         "actor_id": { "type": "keyword" },

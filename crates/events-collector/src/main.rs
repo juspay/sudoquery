@@ -7,6 +7,7 @@ use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use canonical_event::is_valid_slug;
 use event_collector::auth;
 use event_collector::config::{
     ServerConfig, get_config_from_local_file, get_default_config_from_local_file,
@@ -133,8 +134,8 @@ struct RequestContext {
 
 impl RequestContext {
     fn from_headers(headers: &HeaderMap, peer_addr: Option<SocketAddr>) -> Result<Self, ApiError> {
-        let tenant_id = required_header(headers, TENANT_ID_HEADER)?;
-        let workspace_id = optional_header(headers, WORKSPACE_ID_HEADER)?;
+        let tenant_id = required_slug_header(headers, TENANT_ID_HEADER)?;
+        let workspace_id = optional_slug_header(headers, WORKSPACE_ID_HEADER)?;
         let ip_address =
             forwarded_ip(headers)?.or_else(|| peer_addr.map(|addr| addr.ip().to_string()));
 
@@ -162,6 +163,39 @@ fn optional_header(headers: &HeaderMap, name: &'static str) -> Result<Option<Str
         .trim();
 
     Ok((!value.is_empty()).then(|| value.to_string()))
+}
+
+/// Reads a required header whose value must be a valid slug
+/// ([`is_valid_slug`]). The tenant/workspace ids flow into Kafka message
+/// keys and OpenSearch index names, so malformed values are rejected here,
+/// before any processing.
+fn required_slug_header(headers: &HeaderMap, name: &'static str) -> Result<String, ApiError> {
+    let value = required_header(headers, name)?;
+    validate_slug_header(name, &value)?;
+    Ok(value)
+}
+
+fn optional_slug_header(
+    headers: &HeaderMap,
+    name: &'static str,
+) -> Result<Option<String>, ApiError> {
+    let Some(value) = optional_header(headers, name)? else {
+        return Ok(None);
+    };
+    validate_slug_header(name, &value)?;
+    Ok(Some(value))
+}
+
+fn validate_slug_header(name: &'static str, value: &str) -> Result<(), ApiError> {
+    if is_valid_slug(value) {
+        Ok(())
+    } else {
+        Err(ApiError::bad_request(format!(
+            "`{}` header must be a valid slug: 6-30 characters of lowercase letters, digits, and \
+             hyphens, starting with a lowercase letter and ending with a lowercase letter or digit",
+            name
+        )))
+    }
 }
 
 fn forwarded_ip(headers: &HeaderMap) -> Result<Option<String>, ApiError> {
@@ -279,6 +313,52 @@ mod tests {
     #[test]
     fn request_context_requires_tenant_id() {
         let headers = HeaderMap::new();
+
+        assert!(matches!(
+            RequestContext::from_headers(&headers, None),
+            Err(ApiError::BadRequest(_))
+        ));
+    }
+
+    #[test]
+    fn request_context_accepts_valid_slug_header_values() {
+        let mut headers = HeaderMap::new();
+        headers.insert(TENANT_ID_HEADER, "acme-k3x9qa".parse().unwrap());
+        headers.insert(WORKSPACE_ID_HEADER, "blue-ocean-7".parse().unwrap());
+
+        let context = RequestContext::from_headers(&headers, None).unwrap();
+
+        assert_eq!(context.tenant_id, "acme-k3x9qa");
+        assert_eq!(context.workspace_id.as_deref(), Some("blue-ocean-7"));
+    }
+
+    #[test]
+    fn request_context_rejects_invalid_tenant_id_slugs() {
+        for invalid_tenant_id in [
+            "acme",
+            "acme-store-k3x9qa-with-a-very-long-suffix",
+            "Acme-k3x9qa",
+            "9acme-k3x9qa",
+            "acme_k3x9qa",
+        ] {
+            let mut headers = HeaderMap::new();
+            headers.insert(TENANT_ID_HEADER, invalid_tenant_id.parse().unwrap());
+
+            assert!(
+                matches!(
+                    RequestContext::from_headers(&headers, None),
+                    Err(ApiError::BadRequest(_))
+                ),
+                "`{invalid_tenant_id}` should be rejected as a tenant id"
+            );
+        }
+    }
+
+    #[test]
+    fn request_context_rejects_invalid_workspace_id_slug() {
+        let mut headers = HeaderMap::new();
+        headers.insert(TENANT_ID_HEADER, "acme-k3x9qa".parse().unwrap());
+        headers.insert(WORKSPACE_ID_HEADER, "Acme-k3x9qa".parse().unwrap());
 
         assert!(matches!(
             RequestContext::from_headers(&headers, None),

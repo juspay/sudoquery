@@ -25,7 +25,7 @@ pub struct ArchivedEvent {
     /// Org the event was segregated under.
     pub org_id: String,
     /// Project the event was segregated under.
-    pub proj_id: Option<String>,
+    pub project_id: Option<String>,
     /// Arrival time the event was segregated under (UTC).
     pub arrived_at: chrono::DateTime<chrono::Utc>,
 }
@@ -291,7 +291,16 @@ pub fn is_hash_file_name(file_name: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::is_hash_file_name;
+    use super::{ArchivedEvent, is_hash_file_name};
+
+    #[test]
+    fn parses_archived_line_project_id() {
+        let event = serde_json::from_str::<ArchivedEvent>(
+            r#"{"id":"0b6f8b5e-6f1a-4c1e-9f0d-3b2c1a0d9e11","org_id":"acme-store-k3x9qa","project_id":"acme-shop-9x2k1a","arrived_at":"2026-09-23T13:00:00Z"}"#,
+        )
+        .expect("archived line carrying project_id must parse");
+        assert_eq!(event.project_id.as_deref(), Some("acme-shop-9x2k1a"));
+    }
 
     #[test]
     fn accepts_sixteen_lowercase_hex_chars() {

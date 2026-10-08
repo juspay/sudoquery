@@ -47,7 +47,7 @@ impl Writer for OpenSearchWriter {
         let event = &decoded.event;
         let index = self
             .indexes
-            .index_for(&event.org_id, event.proj_id.as_deref())
+            .index_for(&event.org_id, event.project_id.as_deref())
             .await
             .map_err(|reason| {
                 Rejection::new("invalid_index", format!("org `{}`: {reason}", event.org_id))

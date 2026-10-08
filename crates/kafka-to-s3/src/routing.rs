@@ -3,11 +3,11 @@
 use chrono::{DateTime, Timelike, Utc};
 use serde::Deserialize;
 
-/// S3 segregation key: one file per `(org, proj, dt, hour)` per flush (D3).
+/// S3 segregation key: one file per `(org, project_id, dt, hour)` per flush (D3).
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct GroupKey {
     pub org: String,
-    pub proj: String,
+    pub project_id: String,
     /// UTC bucket date, `YYYY-MM-DD`.
     pub dt: String,
     /// UTC bucket hour, 0-23.
@@ -65,16 +65,16 @@ pub fn classify(payload: &[u8]) -> Classification {
         );
         return Classification::Quarantined(QuarantineReason::MissingTimestamp);
     };
-    let proj = match non_empty(raw.proj_id) {
-        Some(proj) => proj,
+    let project_id = match non_empty(raw.project_id) {
+        Some(project_id) => project_id,
         None => {
-            tracing::warn!(org, "proj_id missing; routing to 'default' (D11)");
+            tracing::warn!(org, "project_id missing; routing to 'default' (D11)");
             "default".to_string()
         }
     };
     Classification::Routed(GroupKey {
         org,
-        proj,
+        project_id,
         dt: bucket.format("%Y-%m-%d").to_string(),
         hour: bucket.hour(),
     })
@@ -88,7 +88,7 @@ struct RawRoutingMeta {
     arrived_at: Option<String>,
     occured_at: Option<String>,
     org_id: Option<String>,
-    proj_id: Option<String>,
+    project_id: Option<String>,
 }
 
 /// Resolve the hour-bucket timestamp: `arrived_at` UTC, else `occured_at` with a
@@ -131,14 +131,14 @@ mod tests {
     #[test]
     fn valid_event_routes_by_arrived_at() {
         let classification = classify_str(
-            r#"{"id":"e1","org_id":"org-1","proj_id":"proj-9",
+            r#"{"id":"e1","org_id":"org-1","project_id":"proj-9",
                 "occured_at":"garbage-timestamp","arrived_at":"2026-09-24T03:35:00Z"}"#,
         );
         let Classification::Routed(key) = classification else {
             panic!("expected routed, got {classification:?}");
         };
         assert_eq!(key.org, "org-1");
-        assert_eq!(key.proj, "proj-9");
+        assert_eq!(key.project_id, "proj-9");
         assert_eq!(key.dt, "2026-09-24");
         assert_eq!(key.hour, 3);
     }
@@ -177,12 +177,12 @@ mod tests {
     }
 
     #[test]
-    fn missing_proj_defaults() {
+    fn missing_project_id_defaults() {
         let classification = classify_str(r#"{"org_id":"o","occured_at":"2026-01-02T23:59:59Z"}"#);
         let Classification::Routed(key) = classification else {
             panic!("expected routed, got {classification:?}");
         };
-        assert_eq!(key.proj, "default");
+        assert_eq!(key.project_id, "default");
     }
 
     #[test]
@@ -238,7 +238,7 @@ mod tests {
     fn unknown_fields_are_ignored() {
         let classification = classify_str(
             r#"{"envelop_version":"1.0","id":"x","name":"n","anon_id":"a",
-                "future_field":{"nested":[1,2,3]},"org_id":"o","proj_id":"p",
+                "future_field":{"nested":[1,2,3]},"org_id":"o","project_id":"p",
                 "occured_at":"2026-03-04T05:06:07Z","arrived_at":"2026-03-04T05:06:08Z"}"#,
         );
         let Classification::Routed(key) = classification else {
@@ -248,7 +248,7 @@ mod tests {
             key,
             GroupKey {
                 org: "o".to_string(),
-                proj: "p".to_string(),
+                project_id: "p".to_string(),
                 dt: "2026-03-04".to_string(),
                 hour: 5,
             }
