@@ -7,6 +7,7 @@ import { useProject } from '../../contexts/ProjectContext';
 import { useOrganization } from '../../contexts/OrganizationContext';
 import { useToast } from '../../contexts/ToastContext';
 import { projectService } from '../../services/projectService';
+import { CopyableId } from '../shared/CopyableId';
 import { colorInk, colorCream2, colorBluePale, fontFamilyMono } from '../../theme/tokens';
 
 interface TimezoneOption {
@@ -156,6 +157,12 @@ export function ProjectSettingsForm() {
           fullWidth
         />
 
+        <CopyableId
+          label="Project ID"
+          value={currentProject.id}
+          helperText="Server-generated slug that identifies your project in API calls and the SDK. It cannot be changed."
+        />
+
         <Autocomplete
           value={selectedTimezoneOption}
           onChange={(_, newValue) => {
@@ -234,6 +241,22 @@ export function ProjectSettingsForm() {
 
       <Collapse in={tokenExpanded}>
       <Paper elevation={0} sx={{ bgcolor: colorBluePale, p: 3, borderRadius: 2, mb: 3 }}>
+        {currentOrganization?.id ? (
+          <Box sx={{ mb: 2 }}>
+            <CopyableId
+              label="Organization ID"
+              value={currentOrganization.id}
+              helperText="Sent as the X-Organization-Id header in API requests."
+            />
+          </Box>
+        ) : null}
+        <Box sx={{ mb: 2 }}>
+          <CopyableId
+            label="Project ID"
+            value={currentProject.id}
+            helperText="Sent as the X-Project-Id header in API requests."
+          />
+        </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2 }}>
           <Typography
             variant="body2"

@@ -31,6 +31,6 @@ export interface UserProjectConsole {
   created_at: string;
   updated_at: string;
   user_id?: string;
-  proj_id?: string;
+  project_id?: string;
   console?: string | null;
 }

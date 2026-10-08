@@ -31,6 +31,72 @@ describe('SudoQuery', () => {
         SudoQuery.init();
       }).not.toThrow();
     });
+
+    describe('slug-shaped id guard', () => {
+      it('should warn without throwing when tenantId does not match the slug shape', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        expect(() => SudoQuery.init({ tenantId: 'Acme_Store!' })).not.toThrow();
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('tenantId'));
+
+        warnSpy.mockRestore();
+      });
+
+      it('should warn naming workspaceId when workspaceId does not match the slug shape', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        SudoQuery.init({ tenantId: 'acme-store-k3x9qa', workspaceId: 'NOT_A_SLUG' });
+
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('workspaceId'));
+
+        warnSpy.mockRestore();
+      });
+
+      it('should describe the expected slug shape in the warning', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        SudoQuery.init({ tenantId: 'tenant@1' });
+
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/slug/));
+
+        warnSpy.mockRestore();
+      });
+
+      it('should not warn when ids match the slug shape', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        SudoQuery.init({
+          tenantId: 'acme-store-k3x9qa',
+          workspaceId: 'acme-store-web-q8r2zt',
+        });
+
+        expect(warnSpy).not.toHaveBeenCalled();
+
+        warnSpy.mockRestore();
+      });
+
+      it('should not warn when ids are omitted', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        SudoQuery.init();
+
+        expect(warnSpy).not.toHaveBeenCalled();
+
+        warnSpy.mockRestore();
+      });
+
+      it('should not warn for explicitly nulled ids', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        SudoQuery.init({ tenantId: null, workspaceId: null });
+
+        expect(warnSpy).not.toHaveBeenCalled();
+
+        warnSpy.mockRestore();
+      });
+    });
   });
 
   describe('track', () => {

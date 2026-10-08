@@ -50,10 +50,12 @@ class SudoQuery {
     }
 
     if (config?.tenantId !== undefined) {
+      warnIfNotSlug("tenantId", config.tenantId);
       Configuration.setTenantId(config.tenantId);
     }
 
     if (config?.workspaceId !== undefined) {
+      warnIfNotSlug("workspaceId", config.workspaceId);
       Configuration.setWorkspaceId(config.workspaceId);
     }
 
@@ -176,7 +178,7 @@ class SudoQuery {
       id: generateUuid(),
       name: eventName.toString(),
       org_id: tenantId,
-      proj_id: Configuration.workspaceId,
+      project_id: Configuration.workspaceId,
       session_id: Configuration.sessionId ?? getSessionId(),
       anon_id: AnonymousId.getOrCreate(),
       actor_id: this.currentUser,
@@ -204,6 +206,25 @@ function mergeProperties(
   }
 
   return properties;
+}
+
+const SLUG_PATTERN = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+
+/**
+ * Org and project ids are server-generated slugs (e.g. "acme-store-k3x9qa").
+ * Warn — never throw — when a provided id deviates from that shape so the
+ * misconfiguration is visible without breaking the host application.
+ */
+function warnIfNotSlug(field: "tenantId" | "workspaceId", value: string | null): void {
+  if (value === null || SLUG_PATTERN.test(value)) {
+    return;
+  }
+
+  console.warn(
+    `SudoQuery: config option "${field}" value "${value}" does not match the expected ` +
+      `server-generated slug shape /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/ ` +
+      `(e.g. "acme-store-k3x9qa"); the collector may reject events carrying it.`,
+  );
 }
 
 function isJsonRecord(value: JSONSerializable): value is Record<string, JSONSerializable> {

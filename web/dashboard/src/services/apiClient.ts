@@ -1,5 +1,6 @@
 import { authService } from './authService';
 import { API_CONFIG } from '../config/api';
+import { ORG_STORAGE_KEY, PROJECT_STORAGE_KEY } from '../config/storage';
 
 export class ApiError extends Error {
   constructor(
@@ -24,8 +25,6 @@ interface RequestOptions extends Omit<RequestInit, 'headers'> {
  */
 class ApiClient {
   private baseUrl: string;
-  private static readonly ORG_STORAGE_KEY = 'current_organization_id';
-  private static readonly PROJECT_STORAGE_KEY = 'current_project_id';
 
   constructor() {
     this.baseUrl = API_CONFIG.API_BASE;
@@ -36,7 +35,7 @@ class ApiClient {
    */
   private getOrganizationId(): string | null {
     try {
-      return localStorage.getItem(ApiClient.ORG_STORAGE_KEY);
+      return localStorage.getItem(ORG_STORAGE_KEY);
     } catch {
       return null;
     }
@@ -47,7 +46,7 @@ class ApiClient {
    */
   private getProjectId(): string | null {
     try {
-      return localStorage.getItem(ApiClient.PROJECT_STORAGE_KEY);
+      return localStorage.getItem(PROJECT_STORAGE_KEY);
     } catch {
       return null;
     }

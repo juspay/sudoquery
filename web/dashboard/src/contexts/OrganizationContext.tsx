@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { organizationService, type Organization } from '../services/organizationService';
 import { useAuth } from './AuthContext';
+import { ORG_STORAGE_KEY } from '../config/storage';
 
 interface OrganizationContextType {
   organizations: Organization[];
@@ -14,8 +15,6 @@ interface OrganizationContextType {
 }
 
 const OrganizationContext = createContext<OrganizationContextType | null>(null);
-
-const STORAGE_KEY = 'current_organization_id';
 
 export function OrganizationProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -47,7 +46,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       setOrganizations(orgs);
 
       // Restore previously selected organization
-      const storedOrgId = localStorage.getItem(STORAGE_KEY);
+      const storedOrgId = localStorage.getItem(ORG_STORAGE_KEY);
       if (storedOrgId) {
         const storedOrg = orgs.find(o => o.id === storedOrgId);
         if (storedOrg) {
@@ -61,7 +60,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       if (orgs.length > 0) {
         console.log('[OrganizationContext] Setting first org:', orgs[0].id);
         setCurrentOrganization(orgs[0]);
-        localStorage.setItem(STORAGE_KEY, orgs[0].id);
+        localStorage.setItem(ORG_STORAGE_KEY, orgs[0].id);
       } else {
         console.log('[OrganizationContext] No organizations found');
         setCurrentOrganization(null);
@@ -79,9 +78,9 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   const handleSetCurrentOrganization = (org: Organization | null) => {
     setCurrentOrganization(org);
     if (org) {
-      localStorage.setItem(STORAGE_KEY, org.id);
+      localStorage.setItem(ORG_STORAGE_KEY, org.id);
     } else {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(ORG_STORAGE_KEY);
     }
   };
 

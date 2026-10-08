@@ -44,7 +44,7 @@ Tracked events are queued using the collector envelope:
   id: 'uuid',
   name: 'event_name',
   org_id: 'localclient',
-  proj_id: null,
+  project_id: null,
   session_id: 'session-id',
   anon_id: 'anonymous-id',
   actor_id: 'user_id',

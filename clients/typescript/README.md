@@ -26,7 +26,7 @@ import { SudoQuery } from 'sudo-query';
 
 // Initialize the SDK
 SudoQuery.init({
-  tenantId: 'tenant-1'
+  tenantId: 'acme-store-k3x9qa'
 });
 
 // Track an event
@@ -49,8 +49,8 @@ SudoQuery.init({
   flushInterval: 5000,    // Auto-flush every 5 seconds (optional)
   batchSize: 20,          // Batch 20 events before flushing (default: 10)
   endpoint: 'https://api.example.com/batch',  // Custom endpoint (default: http://localhost:3000/batch)
-  tenantId: 'tenant-1',    // Required by the collector
-  workspaceId: 'workspace-1', // Optional collector workspace
+  tenantId: 'acme-store-k3x9qa',    // Required by the collector (server-generated slug)
+  workspaceId: 'acme-store-web-9t2r4m', // Optional collector workspace (server-generated slug)
   source: 'checkout-web',  // Optional source label (default: typescript)
   sessionId: 'session-1',  // Optional session id; generated if omitted
   token: 'YOUR_PROJECT_TOKEN',  // Optional bearer token for proxies/gateways
@@ -146,14 +146,14 @@ All configuration is done through the `init()` method:
 
 **Default configuration:**
 ```typescript
-SudoQuery.init({ tenantId: 'tenant-1' });
+SudoQuery.init({ tenantId: 'acme-store-k3x9qa' });
 // Uses: batchSize=10, endpoint="http://localhost:3000/batch", source="typescript", no periodic flush
 ```
 
 **High-frequency tracking:**
 ```typescript
 SudoQuery.init({
-  tenantId: 'tenant-1',
+  tenantId: 'acme-store-k3x9qa',
   flushInterval: 2000,   // Flush every 2 seconds
   batchSize: 50,         // Larger batches
   endpoint: 'https://analytics.example.com/batch'
@@ -163,7 +163,7 @@ SudoQuery.init({
 **Low-latency mode:**
 ```typescript
 SudoQuery.init({
-  tenantId: 'tenant-1',
+  tenantId: 'acme-store-k3x9qa',
   flushInterval: 1000,   // Flush every second
   batchSize: 5            // Small batches
 });
@@ -197,7 +197,7 @@ type Event = {
   id: string;
   name: string;
   org_id: string;
-  proj_id: string | null;
+  project_id: string | null;
   session_id: string | null;
   anon_id: string;
   actor_id: string | null;

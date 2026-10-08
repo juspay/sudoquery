@@ -41,7 +41,7 @@ type Event = {
     id: string;
     name: string;
     org_id: string;
-    proj_id: string | null;
+    project_id: string | null;
     session_id: string | null;
     anon_id: string;
     actor_id: string | null;

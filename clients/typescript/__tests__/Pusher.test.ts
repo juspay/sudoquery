@@ -324,7 +324,7 @@ describe("Pusher", () => {
       Configuration.setWorkspaceId("workspace-1");
 
       for (let i = 1; i <= 2; i++) {
-        Batcher.addToBatch(createMockEvent(i, { proj_id: "workspace-1" }));
+        Batcher.addToBatch(createMockEvent(i, { project_id: "workspace-1" }));
       }
 
       await Pusher.pushLogs();

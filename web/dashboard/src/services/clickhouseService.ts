@@ -1,11 +1,12 @@
 import type { QueryResponse } from '../types/api';
 import { trackQueryExecuted, trackQueryError } from '../utils/analytics';
+import { PROJECT_STORAGE_KEY } from '../config/storage';
 import { apiClient } from './apiClient';
 
 const QUERY_ENDPOINT = '/query';
 
 export async function executeQuery(query: string): Promise<QueryResponse> {
-  const projectId = localStorage.getItem('current_project_id');
+  const projectId = localStorage.getItem(PROJECT_STORAGE_KEY);
   const headers: Record<string, string> = {};
   if (projectId) {
     headers['X-Project-Id'] = projectId;

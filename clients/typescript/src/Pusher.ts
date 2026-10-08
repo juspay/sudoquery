@@ -101,7 +101,7 @@ export class Pusher {
       return null;
     }
 
-    const workspaceId = Configuration.workspaceId ?? payload.events[0]?.proj_id ?? null;
+    const workspaceId = Configuration.workspaceId ?? payload.events[0]?.project_id ?? null;
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...Configuration.headers,

@@ -208,7 +208,7 @@ var ShopifySudoQueryPixel = (() => {
         console.error("Cannot send analytics batch: tenantId is required by the collector.");
         return null;
       }
-      const workspaceId = Configuration.workspaceId ?? payload.events[0]?.proj_id ?? null;
+      const workspaceId = Configuration.workspaceId ?? payload.events[0]?.project_id ?? null;
       const headers = {
         "Content-Type": "application/json",
         ...Configuration.headers,
@@ -399,9 +399,11 @@ var ShopifySudoQueryPixel = (() => {
         Configuration.setHeaders(config.headers);
       }
       if (config?.tenantId !== void 0) {
+        warnIfNotSlug("tenantId", config.tenantId);
         Configuration.setTenantId(config.tenantId);
       }
       if (config?.workspaceId !== void 0) {
+        warnIfNotSlug("workspaceId", config.workspaceId);
         Configuration.setWorkspaceId(config.workspaceId);
       }
       if (config?.source !== void 0) {
@@ -504,7 +506,7 @@ var ShopifySudoQueryPixel = (() => {
         id: generateUuid(),
         name: eventName.toString(),
         org_id: tenantId,
-        proj_id: Configuration.workspaceId,
+        project_id: Configuration.workspaceId,
         session_id: Configuration.sessionId ?? getSessionId(),
         anon_id: AnonymousId.getOrCreate(),
         actor_id: this.currentUser,
@@ -529,6 +531,15 @@ var ShopifySudoQueryPixel = (() => {
       };
     }
     return properties;
+  }
+  var SLUG_PATTERN = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+  function warnIfNotSlug(field, value) {
+    if (value === null || SLUG_PATTERN.test(value)) {
+      return;
+    }
+    console.warn(
+      `SudoQuery: config option "${field}" value "${value}" does not match the expected server-generated slug shape /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/ (e.g. "acme-store-k3x9qa"); the collector may reject events carrying it.`
+    );
   }
   function isJsonRecord(value) {
     return typeof value === "object" && value !== null && !Array.isArray(value);
