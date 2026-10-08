@@ -20,8 +20,8 @@
 --
 -- Column mapping (wire -> fact tables):
 --   id -> event_id, name -> event_name, occured_at -> event_timestamp,
---   actor_id -> actor_id, org_id/session_id/anon_id/source/correlation_id/
---   trace_id/authenticated/properties/arrived_at -> same names,
+--   actor_id -> actor_id, org_id/project_id/session_id/anon_id/source/
+--   correlation_id/trace_id/authenticated/properties/arrived_at -> same names,
 --   country/timezone/ip_address <- system_properties.geo.country /
 --   system_properties.timezone / system_properties.ip_address
 --
@@ -35,7 +35,7 @@
 
 CREATE TABLE IF NOT EXISTS default.events_v2
 (
-    `proj_id`         UUID,
+    `project_id`      LowCardinality(String),
     `org_id`          LowCardinality(String)     DEFAULT '',
     `event_id`        UUID,
     `event_name`      LowCardinality(String),
@@ -58,7 +58,7 @@ CREATE TABLE IF NOT EXISTS default.events_v2
 )
 ENGINE = ReplacingMergeTree(updated_at, is_deleted)
 PARTITION BY toYYYYMM(event_timestamp)
-ORDER BY (proj_id, event_name, event_timestamp, event_id)
+ORDER BY (project_id, event_name, event_timestamp, event_id)
 SETTINGS index_granularity = 8192;
 
 
@@ -69,7 +69,7 @@ SETTINGS index_granularity = 8192;
 
 CREATE TABLE IF NOT EXISTS default.user_events_v2
 (
-    `proj_id`         UUID,
+    `project_id`      LowCardinality(String),
     `org_id`          LowCardinality(String)     DEFAULT '',
     `actor_id`        String                     DEFAULT '',
     `anon_id`         String,
@@ -92,7 +92,7 @@ CREATE TABLE IF NOT EXISTS default.user_events_v2
 )
 ENGINE = ReplacingMergeTree(updated_at, is_deleted)
 PARTITION BY toYYYYMM(event_timestamp)
-ORDER BY (proj_id, actor_id, event_timestamp, event_id)
+ORDER BY (project_id, actor_id, event_timestamp, event_id)
 SETTINGS index_granularity = 8192;
 
 
@@ -115,7 +115,7 @@ CREATE TABLE IF NOT EXISTS default.events_kafka
     `occured_at`        DateTime64(3),
     `arrived_at`        Nullable(DateTime64(3)),
     `org_id`            LowCardinality(String),
-    `proj_id`           UUID,
+    `project_id`        LowCardinality(String),
     `session_id`        String,
     `anon_id`           String,
     `actor_id`          String,
@@ -159,7 +159,7 @@ SELECT
     occured_at            AS event_timestamp,
     arrived_at,
     org_id,
-    proj_id,
+    project_id,
     session_id,
     anon_id,
     actor_id,
@@ -190,7 +190,7 @@ SELECT
     occured_at            AS event_timestamp,
     arrived_at,
     org_id,
-    proj_id,
+    project_id,
     session_id,
     anon_id,
     actor_id,
@@ -219,13 +219,13 @@ FROM default.events_kafka;
 
 CREATE TABLE IF NOT EXISTS default.event_schema_catalog
 (
-    `proj_id`    UUID,
+    `project_id` LowCardinality(String),
     `event_name` String,
     `property`   String,
     `type`       String
 )
 ENGINE = ReplacingMergeTree()
-ORDER BY (proj_id, event_name, property, type);
+ORDER BY (project_id, event_name, property, type);
 
 
 -- ============================================================================
@@ -235,7 +235,7 @@ ORDER BY (proj_id, event_name, property, type);
 
 CREATE TABLE IF NOT EXISTS default.event_schema_catalog_kafka
 (
-    `proj_id`     UUID,
+    `project_id`  LowCardinality(String),
     `event_name`  String,
     `property`    String,
     `type`        String
@@ -257,7 +257,7 @@ CREATE MATERIALIZED VIEW IF NOT EXISTS default.event_schema_catalog_mv
 TO default.event_schema_catalog
 AS
 SELECT
-    proj_id,
+    project_id,
     event_name,
     property,
     type
@@ -266,8 +266,8 @@ FROM default.event_schema_catalog_kafka;
 
 -- ============================================================================
 -- 9. Row-Level Security.
---    Every ClickHouse user whose name equals their proj_id UUID can only see
---    rows where proj_id matches their username (currentUser()).
+--    Every ClickHouse user whose name equals their project slug can only see
+--    rows where project_id matches their username (currentUser()).
 --    The 'default' user is NOT assigned this role and retains full access.
 -- ============================================================================
 
@@ -282,19 +282,19 @@ GRANT SELECT ON default.event_schema_catalog TO project_user;
 CREATE ROW POLICY IF NOT EXISTS proj_filter_events_v2
     ON default.events_v2
     AS PERMISSIVE FOR SELECT
-    USING proj_id = toUUID(currentUser())
+    USING project_id = currentUser()
     TO project_user;
 
 
 CREATE ROW POLICY IF NOT EXISTS proj_filter_user_events_v2
     ON default.user_events_v2
     AS PERMISSIVE FOR SELECT
-    USING proj_id = toUUID(currentUser())
+    USING project_id = currentUser()
     TO project_user;
 
 
 CREATE ROW POLICY IF NOT EXISTS proj_filter_schema_catalog
     ON default.event_schema_catalog
     AS PERMISSIVE FOR SELECT
-    USING proj_id = toUUID(currentUser())
+    USING project_id = currentUser()
     TO project_user;
