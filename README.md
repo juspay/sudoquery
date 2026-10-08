@@ -11,6 +11,8 @@ A lightweight TypeScript analytics SDK for tracking events in browser and Node.j
 - **Auto-Flush** - Sends all pending events with `fetch` keepalive when the page is hidden
 - **Periodic Auto-Flush** - Configurable interval-based automatic event flushing
 - **Retry with Backoff** - Failed uploads are retried with exponential backoff and jitter
+- **Offline Persistence** - Optionally keeps undelivered events in `localStorage` and sends them on the next visit
+- **Delivery Measurement** - Every event carries a stream id and sequence number so the collector can count lost events
 - **Cross-Platform** - Works in both browsers and Node.js
 - **TypeScript Support** - Full type definitions included
 
@@ -61,7 +63,8 @@ SudoQuery.init({
     'X-Custom-Header': 'custom-value'
   },
   retryBaseDelay: 1000,   // First retry delay after a failed upload, doubling each time (default: 1000)
-  retryMaxDelay: 60000    // Cap on the retry delay (default: 60000)
+  retryMaxDelay: 60000,   // Cap on the retry delay (default: 60000)
+  persistence: true       // Keep undelivered events in localStorage for the next visit (default: false)
 });
 ```
 
@@ -141,7 +144,27 @@ await SudoQuery.flush();
 - **Retries** - If an upload fails (network error or non-2xx response), the batch stays queued and is retried after `retryBaseDelay`, doubling on each consecutive failure up to `retryMaxDelay`, with jitter. Uploads are paused while waiting; a successful upload resets the delay.
 - **Page hide/unload** - When the page is hidden, every pending batch is sent with `fetch` keepalive, even during a retry wait. If a send fails and the page is still open, the batch is queued again.
 - **Duplicates** - Each event has a unique `id`; collectors can deduplicate on it.
-- **Limitations** - The queue is held in memory only, so events not yet sent are lost if the page is reloaded or the process exits. The queue has no size limit. Browsers cap keepalive request bodies at about 64 KB in total, so a very large backlog may not all be delivered on unload.
+- **Limitations** - Without `persistence`, the queue is held in memory only, so events not yet sent are lost if the page is reloaded or closed while delivery is failing, or the process exits. The in-memory queue has no size limit. Browsers cap keepalive request bodies at about 64 KB in total, so a very large backlog may not all be delivered on unload.
+
+### Offline Persistence
+
+Set `persistence: true` to keep events that could not be delivered in `localStorage` and send them on the user's next visit to the site.
+
+- Events are stored only when delivery is known to be failing: a send failed, or the browser is offline when the page is hidden. On a healthy network nothing is written to storage.
+- Stored events are removed once delivered. At most 1,000 events are kept per page load, and events older than 7 days are discarded.
+- Each page load stores events under its own key. On the next page load, events from closed pages are sent; events from tabs that are still open are left to those tabs. This uses the Web Locks API; in browsers without it (Safari before 15.4), an open tab's stored events may be sent twice.
+- **Duplicates are possible.** If the page closes just as the network recovers, a stored event may already have been delivered and is sent again on the next visit. Deduplicate on event `id` in the collector before enabling this broadly.
+- **Stored data is readable by any script on the site.** Events are kept as plain JSON, including their properties. Don't enable persistence if events contain data that should not stay on the device.
+- Has no effect in Node.js or where `localStorage` is unavailable (such as sandboxed iframes).
+
+### Measuring Delivery
+
+Every event includes `stream_id` (one per page load in browsers, one per process in Node.js) and `seq`, which counts up from 0 within the stream. In the collector:
+
+- **Lost events** - gaps in `seq` within a `stream_id`.
+- **Duplicates** - the same event `id` received more than once.
+
+Gaps only show events lost before a later event arrived. If the last events of a stream are lost (for example, the page closed before they were sent), there is no later event to reveal the gap.
 
 ### Anonymous IDs and Sessions
 
@@ -165,6 +188,7 @@ All configuration is done through the `init()` method:
 | `headers` | `Record<string, string> \| undefined` | `{}` | Custom headers to include in all requests to the endpoint. |
 | `retryBaseDelay` | `number \| undefined` | `1000` | Delay in milliseconds before the first retry after a failed upload. Doubles on each consecutive failure (with jitter). Values ≤ 0 are ignored. |
 | `retryMaxDelay` | `number \| undefined` | `60000` | Maximum delay in milliseconds between retries. Values ≤ 0 are ignored. |
+| `persistence` | `boolean \| undefined` | `false` | Keep undelivered events in `localStorage` and send them on the next visit. See [Offline Persistence](#offline-persistence). |
 
 ### Example Configurations
 
@@ -232,6 +256,8 @@ type Event = {
   correlation_id: string | null;
   trace_id: string | null;
   system_properties: SystemProperties | null;
+  stream_id: string; // one per page load (browser) or process (Node.js)
+  seq: number;       // position in the stream, from 0
 };
 
 type BatchPayload = {

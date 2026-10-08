@@ -59,6 +59,10 @@ export type Event = {
   correlation_id: string | null;
   trace_id: string | null;
   system_properties: SystemProperties | null;
+  /** Stream the event was tracked in: one per page load (browser) or process (Node.js). */
+  stream_id: string;
+  /** Position of the event in its stream, starting at 0. Gaps indicate lost events. */
+  seq: number;
 };
 
 /**

@@ -147,6 +147,18 @@ var ShopifySudoQueryPixel = (() => {
 
   // src/Pusher.ts
   var Pusher = class {
+    static addDeliveryListener(listener) {
+      this._listeners.push(listener);
+    }
+    static notify(call) {
+      for (const listener of this._listeners) {
+        try {
+          call(listener);
+        } catch (error) {
+          console.error("Delivery listener error:", error);
+        }
+      }
+    }
     static get endpoint() {
       return Configuration.endpoint;
     }
@@ -179,10 +191,12 @@ var ShopifySudoQueryPixel = (() => {
       const success = await this.sendNormally(payload);
       this._isUploadInProgress = false;
       if (!success) {
+        this.notify((listener) => listener.onFailed?.(batch));
         this.scheduleRetry();
         return null;
       }
       this._failedAttempts = 0;
+      this.notify((listener) => listener.onDelivered?.(batch));
       return batch;
     }
     static isBackingOff() {
@@ -214,9 +228,13 @@ var ShopifySudoQueryPixel = (() => {
      */
     static sendAllWithKeepalive() {
       const batches = Batcher.takeAllPending(this._isUploadInProgress);
+      if (batches.length > 0) this.notify((listener) => listener.onUnloadSend?.(batches));
       for (const batch of batches) {
         void this.sendWithKeepalive(this.transformBatch(batch)).then((success) => {
-          if (!success) {
+          if (success) {
+            this.notify((listener) => listener.onDelivered?.(batch));
+          } else {
+            this.notify((listener) => listener.onFailed?.(batch));
             Batcher.requeue(batch, this._isUploadInProgress);
             if (!this.isBackingOff()) this.scheduleRetry();
           }
@@ -290,6 +308,7 @@ var ShopifySudoQueryPixel = (() => {
       this._retryAt = 0;
       this._failedAttempts = 0;
       this._isUploadInProgress = false;
+      this._listeners = [];
     }
     static async startScheduler(time) {
       setInterval(() => {
@@ -301,6 +320,7 @@ var ShopifySudoQueryPixel = (() => {
   Pusher._failedAttempts = 0;
   Pusher._retryAt = 0;
   Pusher._retryTimer = null;
+  Pusher._listeners = [];
 
   // src/Flush.ts
   async function flush(useBeacon = false) {
@@ -358,6 +378,15 @@ var ShopifySudoQueryPixel = (() => {
      */
     static requeue(batch, afterHead) {
       this.batches.splice(afterHead ? 1 : 0, 0, batch);
+    }
+    /**
+     * Queue events restored from storage ahead of the batch currently accumulating.
+     */
+    static addRestored(events) {
+      const size = Math.max(1, Configuration.batchSize);
+      for (let i = 0; i < events.length; i += size) {
+        this.batches.splice(this.batches.length - 1, 0, events.slice(i, i + size));
+      }
     }
     static accumulatingBatch() {
       return this.batches[this.batches.length - 1];
@@ -472,6 +501,167 @@ var ShopifySudoQueryPixel = (() => {
   // In-memory storage for Node.js environment
   AnonymousId.inMemoryAnonId = null;
 
+  // src/Sequence.ts
+  var streamId = null;
+  var nextSeq = 0;
+  function nextSequence() {
+    if (!streamId) {
+      streamId = generateUuid();
+    }
+    return { stream_id: streamId, seq: nextSeq++ };
+  }
+
+  // src/Outbox.ts
+  var KEY_PREFIX = "sudoquery_outbox:";
+  var OWNER_LOCK_PREFIX = "sudoquery_outbox_owner:";
+  var CLAIM_LOCK = "sudoquery_outbox_claim";
+  var DEFAULT_MAX_EVENTS = 1e3;
+  var DEFAULT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1e3;
+  var Outbox = class {
+    constructor(options = {}) {
+      this.ownerId = generateUuid();
+      this.key = KEY_PREFIX + this.ownerId;
+      this.failing = false;
+      this.hasStored = false;
+      this.storage = options.storage !== void 0 ? options.storage : defaultStorage();
+      this.locks = options.locks !== void 0 ? options.locks : defaultLocks();
+      this.isOffline = options.isOffline ?? defaultIsOffline;
+      this.maxEvents = options.maxEvents ?? DEFAULT_MAX_EVENTS;
+      this.maxAgeMs = options.maxAgeMs ?? DEFAULT_MAX_AGE_MS;
+      this.now = options.now ?? Date.now;
+    }
+    /**
+     * Take ownership of this page's storage key and return events left behind by
+     * earlier page loads. Returned events are removed from storage; they are stored
+     * again if sending them fails.
+     */
+    async start() {
+      if (!this.storage) return [];
+      try {
+        const locks = this.locks;
+        if (!locks) return this.claim(/* @__PURE__ */ new Set());
+        await this.holdOwnerLock(locks);
+        return await locks.request(CLAIM_LOCK, async () => this.claim(await liveOwners(locks)));
+      } catch (error) {
+        console.error("Outbox restore failed:", error);
+        return [];
+      }
+    }
+    onFailed(batch) {
+      this.failing = true;
+      this.save(batch);
+    }
+    onDelivered(batch) {
+      this.failing = false;
+      if (!this.hasStored) return;
+      const ids = new Set(batch.map((event) => event.id));
+      const stored = this.read(this.key);
+      const kept = stored.filter((event) => !ids.has(event.id));
+      if (kept.length !== stored.length) this.write(kept);
+    }
+    onUnloadSend(batches) {
+      if (this.failing || this.isOffline()) {
+        this.save(batches.flat());
+      }
+    }
+    holdOwnerLock(locks) {
+      return new Promise((resolve) => {
+        locks.request(OWNER_LOCK_PREFIX + this.ownerId, () => {
+          resolve();
+          return new Promise(() => {
+          });
+        }).catch(() => resolve());
+      });
+    }
+    claim(liveOwnerIds) {
+      const keys = this.outboxKeys().filter(
+        (key) => key !== this.key && !liveOwnerIds.has(key.slice(KEY_PREFIX.length))
+      );
+      const events = [];
+      for (const key of keys) {
+        events.push(...this.read(key));
+        try {
+          this.storage?.removeItem(key);
+        } catch (_) {
+        }
+      }
+      return this.prune(events);
+    }
+    save(events) {
+      if (!this.storage || events.length === 0) return;
+      this.write(this.prune([...this.read(this.key), ...events]));
+    }
+    /**
+     * Drop duplicates and expired events, order by time, and keep the newest maxEvents.
+     */
+    prune(events) {
+      const oldest = this.now() - this.maxAgeMs;
+      const seen = /* @__PURE__ */ new Set();
+      const kept = [];
+      for (const event of events) {
+        const time = Date.parse(event.occured_at);
+        if (seen.has(event.id) || !(time >= oldest)) continue;
+        seen.add(event.id);
+        kept.push({ event, time });
+      }
+      kept.sort((a, b) => a.time - b.time);
+      return kept.slice(-this.maxEvents).map(({ event }) => event);
+    }
+    outboxKeys() {
+      const keys = [];
+      try {
+        for (let i = 0; i < (this.storage?.length ?? 0); i++) {
+          const key = this.storage?.key(i);
+          if (key?.startsWith(KEY_PREFIX)) keys.push(key);
+        }
+      } catch (_) {
+      }
+      return keys;
+    }
+    read(key) {
+      try {
+        const parsed = JSON.parse(this.storage?.getItem(key) ?? "[]");
+        return Array.isArray(parsed) ? parsed : [];
+      } catch (_) {
+        return [];
+      }
+    }
+    write(events) {
+      try {
+        if (events.length === 0) {
+          this.storage?.removeItem(this.key);
+        } else {
+          this.storage?.setItem(this.key, JSON.stringify(events));
+        }
+        this.hasStored = events.length > 0;
+      } catch (_) {
+      }
+    }
+  };
+  async function liveOwners(locks) {
+    const snapshot = await locks.query();
+    const ids = /* @__PURE__ */ new Set();
+    for (const lock of snapshot.held ?? []) {
+      if (lock.name?.startsWith(OWNER_LOCK_PREFIX)) {
+        ids.add(lock.name.slice(OWNER_LOCK_PREFIX.length));
+      }
+    }
+    return ids;
+  }
+  function defaultStorage() {
+    try {
+      return typeof window !== "undefined" && window.localStorage ? window.localStorage : null;
+    } catch (_) {
+      return null;
+    }
+  }
+  function defaultLocks() {
+    return typeof navigator !== "undefined" && navigator.locks ? navigator.locks : null;
+  }
+  function defaultIsOffline() {
+    return typeof navigator !== "undefined" && navigator.onLine === false;
+  }
+
   // src/SudoQuery.ts
   var SudoQuery = class {
     static init(config) {
@@ -507,6 +697,9 @@ var ShopifySudoQueryPixel = (() => {
       if (config?.retryMaxDelay !== void 0 && config.retryMaxDelay > 0) {
         Configuration.setRetryMaxDelay(config.retryMaxDelay);
       }
+      if (config?.persistence) {
+        this.enablePersistence();
+      }
       if (config?.flushInterval !== void 0 && config.flushInterval > 0) {
         Configuration.setFlushInterval(config.flushInterval);
         this.startPeriodicFlush(config.flushInterval);
@@ -518,6 +711,18 @@ var ShopifySudoQueryPixel = (() => {
           }
         });
       }
+    }
+    /**
+     * Store undelivered events in browser storage and send them on a later page load.
+     */
+    static enablePersistence() {
+      const outbox = new Outbox();
+      Pusher.addDeliveryListener(outbox);
+      outbox.start().then((events) => {
+        if (events.length === 0) return;
+        Batcher.addRestored(events);
+        return this.flush(false);
+      }).catch((err) => console.error("Outbox restore error:", err));
     }
     static startPeriodicFlush(intervalMs) {
       if (this.flushTimer !== null) return;
@@ -610,7 +815,8 @@ var ShopifySudoQueryPixel = (() => {
         properties: mergedProperties,
         correlation_id: null,
         trace_id: null,
-        system_properties: null
+        system_properties: null,
+        ...nextSequence()
       };
       Batcher.addToBatch(event);
     }

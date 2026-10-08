@@ -262,4 +262,33 @@ describe('Batcher', () => {
       expect(batch).toHaveLength(2);
     });
   });
+
+  describe('addRestored', () => {
+    it('should queue restored events in batches ahead of the accumulating batch', () => {
+      Configuration.setBatchSize(2);
+      Batcher.addToBatch(createMockEvent(10));
+
+      Batcher.addRestored([createMockEvent(1), createMockEvent(2), createMockEvent(3)]);
+
+      const names: string[][] = [];
+      let batch;
+      while ((batch = Batcher.fetchBatchToUpload())) {
+        names.push(batch.map((e) => e.name));
+        Batcher.setMarkLastBatchUploaded();
+      }
+      expect(names).toEqual([['event_1', 'event_2'], ['event_3'], ['event_10']]);
+    });
+
+    it('should not disturb a batch that is being uploaded', () => {
+      Configuration.setBatchSize(2);
+      Batcher.addToBatch(createMockEvent(10));
+      const inFlight = Batcher.fetchBatchToUpload();
+
+      Batcher.addRestored([createMockEvent(1)]);
+      Batcher.setMarkLastBatchUploaded();
+
+      expect(inFlight?.map((e) => e.name)).toEqual(['event_10']);
+      expect(Batcher.fetchBatchToUpload()?.map((e) => e.name)).toEqual(['event_1']);
+    });
+  });
 });

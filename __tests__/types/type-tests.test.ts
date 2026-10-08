@@ -57,6 +57,8 @@ describe('Type Tests', () => {
         correlation_id: null,
         trace_id: null,
         system_properties: systemProperties,
+        stream_id: 'stream-1',
+        seq: 0,
       };
 
       expect(event.name).toBe('page_view');
@@ -85,6 +87,8 @@ describe('Type Tests', () => {
         correlation_id: null,
         trace_id: null,
         system_properties: null,
+        stream_id: 'stream-1',
+        seq: 0,
       };
 
       expect(event.workspace_id).toBeNull();
@@ -112,6 +116,8 @@ describe('Type Tests', () => {
         correlation_id: null,
         trace_id: null,
         system_properties: null,
+        stream_id: 'stream-1',
+        seq: 0,
       };
 
       const payload: BatchPayload = {

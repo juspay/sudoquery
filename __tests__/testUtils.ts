@@ -16,6 +16,8 @@ export function createMockEvent(id: number, overrides: Partial<Event> = {}): Eve
     correlation_id: null,
     trace_id: null,
     system_properties: null,
+    stream_id: "stream-1",
+    seq: id,
     ...overrides,
   };
 }
