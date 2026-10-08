@@ -9,7 +9,7 @@ describe('flush', () => {
   beforeEach(() => {
     // Reset state before each test
     Configuration.setBatchSize(10);
-    Pusher['_isUploadInProgress'] = false;
+    Pusher.reset();
     Batcher.reset();
     jest.clearAllMocks();
   });

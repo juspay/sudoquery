@@ -31,6 +31,7 @@ describe("Pusher", () => {
     Configuration.setTenantId("tenant-1");
     jest.clearAllMocks();
     Batcher.reset();
+    Pusher.reset();
   });
 
   describe("pushLogs", () => {
@@ -158,6 +159,72 @@ describe("Pusher", () => {
           }),
         })
       );
+    });
+
+    it("should send every pending batch on unload and dequeue them", async () => {
+      Configuration.setBatchSize(2);
+      for (let i = 1; i <= 5; i++) {
+        Batcher.addToBatch(createMockEvent(i));
+      }
+
+      await Pusher.pushLogs(true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const sentEvents = (fetch as jest.Mock).mock.calls.flatMap(
+        ([, options]) => JSON.parse(options.body).events
+      );
+      expect(fetch).toHaveBeenCalledTimes(3);
+      expect(sentEvents).toHaveLength(5);
+      // Nothing left for a later flush to resend
+      expect(Batcher.fetchBatchToUpload()).toBeNull();
+    });
+
+    it("should requeue unload batches whose send fails", async () => {
+      Configuration.setBatchSize(2);
+      for (let i = 1; i <= 3; i++) {
+        Batcher.addToBatch(createMockEvent(i));
+      }
+      (fetch as jest.Mock).mockRejectedValue(new Error("offline"));
+      jest.spyOn(console, "error").mockImplementation(() => {});
+
+      await Pusher.pushLogs(true);
+      await new Promise((resolve) => setTimeout(resolve, 0));
+
+      const requeued: number[] = [];
+      let batch;
+      while ((batch = Batcher.fetchBatchToUpload())) {
+        requeued.push(batch.length);
+        Batcher.setMarkLastBatchUploaded();
+      }
+      expect(requeued.sort()).toEqual([1, 2]);
+
+      (fetch as jest.Mock).mockResolvedValue({ ok: true });
+      (console.error as jest.Mock).mockRestore();
+    });
+
+    it("should leave an in-flight batch to its normal upload on unload", async () => {
+      Configuration.setBatchSize(2);
+      for (let i = 1; i <= 4; i++) {
+        Batcher.addToBatch(createMockEvent(i));
+      }
+      let resolveInFlight: (value: { ok: boolean }) => void = () => {};
+      (fetch as jest.Mock).mockImplementationOnce(
+        () => new Promise((resolve) => (resolveInFlight = resolve))
+      );
+
+      const inFlight = Pusher.pushLogs();
+      await Pusher.pushLogs(true);
+      resolveInFlight({ ok: true });
+      const uploaded = await inFlight;
+      Batcher.setMarkLastBatchUploaded();
+
+      const ids = (fetch as jest.Mock).mock.calls.flatMap(
+        ([, options]) => JSON.parse(options.body).events.map((e: { id: string }) => e.id)
+      );
+      expect(uploaded).toHaveLength(2);
+      expect(new Set(ids).size).toBe(4);
+      expect(ids).toHaveLength(4);
+      expect(Batcher.fetchBatchToUpload()).toBeNull();
     });
 
     it("should be async and return Promise", async () => {
@@ -358,6 +425,101 @@ describe("Pusher", () => {
       expect(result).toBeNull();
       expect(fetch).not.toHaveBeenCalled();
       consoleErrorSpy.mockRestore();
+    });
+  });
+
+  describe("retry backoff", () => {
+    const { flush } = jest.requireMock("../src/Flush") as { flush: jest.Mock };
+
+    beforeEach(() => {
+      jest.useFakeTimers();
+      jest.spyOn(Math, "random").mockReturnValue(1); // upper end of the jitter range
+      jest.spyOn(console, "error").mockImplementation(() => {});
+      Configuration.setBatchSize(2);
+      Batcher.addToBatch(createMockEvent(1));
+      Batcher.addToBatch(createMockEvent(2));
+    });
+
+    afterEach(() => {
+      Pusher.reset();
+      jest.useRealTimers();
+      jest.restoreAllMocks();
+      (fetch as jest.Mock).mockResolvedValue({ ok: true });
+    });
+
+    it("should skip uploads while backing off and retry when the delay ends", async () => {
+      (fetch as jest.Mock).mockResolvedValueOnce({ ok: false });
+
+      expect(await Pusher.pushLogs()).toBeNull();
+      expect(await Pusher.pushLogs()).toBeNull();
+      expect(fetch).toHaveBeenCalledTimes(1);
+
+      flush.mockClear();
+      jest.advanceTimersByTime(999);
+      expect(flush).not.toHaveBeenCalled();
+      jest.advanceTimersByTime(1);
+      expect(flush).toHaveBeenCalledWith(false);
+
+      expect(await Pusher.pushLogs()).toHaveLength(2);
+      expect(fetch).toHaveBeenCalledTimes(2);
+    });
+
+    it("should double the delay on each failure up to 60s", async () => {
+      (fetch as jest.Mock).mockResolvedValue({ ok: false });
+      const delays: number[] = [];
+
+      for (let i = 0; i < 8; i++) {
+        const start = Date.now();
+        await Pusher.pushLogs();
+        delays.push(Pusher["_retryAt"] - start);
+        jest.advanceTimersByTime(delays[i]);
+      }
+
+      expect(delays).toEqual([1000, 2000, 4000, 8000, 16000, 32000, 60000, 60000]);
+    });
+
+    it("should use the configured retry delays", async () => {
+      Configuration.setRetryBaseDelay(200);
+      Configuration.setRetryMaxDelay(1000);
+      (fetch as jest.Mock).mockResolvedValue({ ok: false });
+      const delays: number[] = [];
+
+      for (let i = 0; i < 5; i++) {
+        const start = Date.now();
+        await Pusher.pushLogs();
+        delays.push(Pusher["_retryAt"] - start);
+        jest.advanceTimersByTime(delays[i]);
+      }
+
+      expect(delays).toEqual([200, 400, 800, 1000, 1000]);
+    });
+
+    it("should reset the delay after a successful upload", async () => {
+      (fetch as jest.Mock).mockResolvedValueOnce({ ok: false }).mockResolvedValueOnce({ ok: false });
+      await Pusher.pushLogs();
+      jest.advanceTimersByTime(1000);
+      await Pusher.pushLogs();
+      jest.advanceTimersByTime(2000);
+      await Pusher.pushLogs(); // succeeds
+
+      Batcher.addToBatch(createMockEvent(3));
+      Batcher.addToBatch(createMockEvent(4));
+      (fetch as jest.Mock).mockResolvedValueOnce({ ok: false });
+      const start = Date.now();
+      await Pusher.pushLogs();
+      expect(Pusher["_retryAt"] - start).toBe(1000);
+    });
+
+    it("should still send on unload while backing off", async () => {
+      (fetch as jest.Mock).mockResolvedValueOnce({ ok: false });
+      await Pusher.pushLogs();
+      expect(fetch).toHaveBeenCalledTimes(1);
+
+      await Pusher.pushLogs(true);
+      expect(fetch).toHaveBeenCalledTimes(2);
+      expect((fetch as jest.Mock).mock.calls[1][1]).toEqual(
+        expect.objectContaining({ keepalive: true })
+      );
     });
   });
 });

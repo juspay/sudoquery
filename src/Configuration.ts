@@ -1,6 +1,8 @@
 class Configuration {
   private static readonly DEFAULT_ENDPOINT = "http://localhost:3000/batch";
   private static readonly DEFAULT_SOURCE = "typescript";
+  private static readonly DEFAULT_RETRY_BASE_DELAY = 1000;
+  private static readonly DEFAULT_RETRY_MAX_DELAY = 60000;
 
   private static _batchSize: number = 10;
   private static _flushInterval: number | null = null;
@@ -11,6 +13,8 @@ class Configuration {
   private static _workspaceId: string | null = null;
   private static _source: string | null = Configuration.DEFAULT_SOURCE;
   private static _sessionId: string | null = null;
+  private static _retryBaseDelay: number = Configuration.DEFAULT_RETRY_BASE_DELAY;
+  private static _retryMaxDelay: number = Configuration.DEFAULT_RETRY_MAX_DELAY;
 
   static get batchSize(): number {
     return Configuration._batchSize;
@@ -46,6 +50,14 @@ class Configuration {
 
   static get sessionId(): string | null {
     return Configuration._sessionId;
+  }
+
+  static get retryBaseDelay(): number {
+    return Configuration._retryBaseDelay;
+  }
+
+  static get retryMaxDelay(): number {
+    return Configuration._retryMaxDelay;
   }
 
   static setBatchSize(value: number): void {
@@ -84,6 +96,14 @@ class Configuration {
     Configuration._sessionId = value;
   }
 
+  static setRetryBaseDelay(value: number): void {
+    Configuration._retryBaseDelay = value;
+  }
+
+  static setRetryMaxDelay(value: number): void {
+    Configuration._retryMaxDelay = value;
+  }
+
   static reset(): void {
     Configuration._batchSize = 10;
     Configuration._flushInterval = null;
@@ -94,6 +114,8 @@ class Configuration {
     Configuration._workspaceId = null;
     Configuration._source = Configuration.DEFAULT_SOURCE;
     Configuration._sessionId = null;
+    Configuration._retryBaseDelay = Configuration.DEFAULT_RETRY_BASE_DELAY;
+    Configuration._retryMaxDelay = Configuration.DEFAULT_RETRY_MAX_DELAY;
   }
 }
 

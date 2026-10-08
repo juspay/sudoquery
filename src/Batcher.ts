@@ -41,6 +41,24 @@ export class Batcher {
     }
   }
 
+  /**
+   * Remove every pending batch for a page-unload send. When keepHead is true the
+   * head batch is already being uploaded, so it stays queued for that upload to mark.
+   */
+  static takeAllPending(keepHead: boolean): Event[][] {
+    const pending = this.batches.splice(keepHead ? 1 : 0).filter(batch => batch.length > 0);
+    this.batches.push([]);
+    return pending;
+  }
+
+  /**
+   * Put back a batch whose unload send failed so the next flush retries it.
+   * When afterHead is true it goes behind the batch currently being uploaded.
+   */
+  static requeue(batch: Event[], afterHead: boolean) {
+    this.batches.splice(afterHead ? 1 : 0, 0, batch);
+  }
+
   private static accumulatingBatch(): Event[] {
     return this.batches[this.batches.length - 1];
   }

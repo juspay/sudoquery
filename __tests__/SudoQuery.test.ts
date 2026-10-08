@@ -12,6 +12,20 @@ describe('SudoQuery', () => {
   });
 
   describe('init', () => {
+    it('should apply retry delay options', () => {
+      SudoQuery.init({ retryBaseDelay: 500, retryMaxDelay: 10000 });
+
+      expect(Configuration.retryBaseDelay).toBe(500);
+      expect(Configuration.retryMaxDelay).toBe(10000);
+    });
+
+    it('should ignore non-positive retry delay options', () => {
+      SudoQuery.init({ retryBaseDelay: 0, retryMaxDelay: -1 });
+
+      expect(Configuration.retryBaseDelay).toBe(1000);
+      expect(Configuration.retryMaxDelay).toBe(60000);
+    });
+
     it('should initialize the analytics SDK', () => {
       // First call should succeed
       expect(() => SudoQuery.init()).not.toThrow();

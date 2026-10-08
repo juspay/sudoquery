@@ -18,6 +18,8 @@ export interface SudoQueryConfig {
   workspaceId?: string | null;
   source?: string | null;
   sessionId?: string | null;
+  retryBaseDelay?: number;
+  retryMaxDelay?: number;
 }
 
 class SudoQuery {
@@ -63,6 +65,14 @@ class SudoQuery {
 
     if (config?.sessionId !== undefined) {
       Configuration.setSessionId(config.sessionId);
+    }
+
+    if (config?.retryBaseDelay !== undefined && config.retryBaseDelay > 0) {
+      Configuration.setRetryBaseDelay(config.retryBaseDelay);
+    }
+
+    if (config?.retryMaxDelay !== undefined && config.retryMaxDelay > 0) {
+      Configuration.setRetryMaxDelay(config.retryMaxDelay);
     }
 
     // Start periodic auto-flush if configured

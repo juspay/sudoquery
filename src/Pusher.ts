@@ -6,6 +6,9 @@ import { Configuration } from "./Configuration";
 
 export class Pusher {
   private static _isUploadInProgress = false;
+  private static _failedAttempts = 0;
+  private static _retryAt = 0;
+  private static _retryTimer: ReturnType<typeof setTimeout> | null = null;
 
   private static get endpoint(): string {
     return Configuration.endpoint;
@@ -22,7 +25,14 @@ export class Pusher {
   }
 
   static async pushLogs(useBeacon: boolean = false): Promise<Event[] | null> {
-    if (this._isUploadInProgress) return null;
+    if (useBeacon) {
+      // Page is being hidden: send everything queued, not just the next batch.
+      this.sendAllWithKeepalive();
+      return null;
+    }
+
+    // While backing off after a failure, leave the queue for the retry timer.
+    if (this._isUploadInProgress || this.isBackingOff()) return null;
     this._isUploadInProgress = true;
     const batch = Batcher.fetchBatchToUpload();
     if (!batch) {
@@ -37,20 +47,60 @@ export class Pusher {
       return null;
     }
 
-    if (useBeacon) {
-      // Use keepalive fetch during unload so collector-required headers are sent.
-      this.sendWithKeepalive(payload);
-      this._isUploadInProgress = false;
-      return null; // Don't mark batch as uploaded since we don't know if it succeeded
-    } else {
-      // Use normal fetch for regular operations
-      const success = await this.sendNormally(payload);
-      this._isUploadInProgress = false;
-      return success ? batch : null;
+    const success = await this.sendNormally(payload);
+    this._isUploadInProgress = false;
+    if (!success) {
+      this.scheduleRetry();
+      return null;
+    }
+    this._failedAttempts = 0;
+    return batch;
+  }
+
+  private static isBackingOff(): boolean {
+    return Date.now() < this._retryAt;
+  }
+
+  /**
+   * Back off exponentially (retryBaseDelay, doubling, capped at retryMaxDelay) with jitter so many
+   * clients recovering from the same outage don't retry in lockstep, then retry.
+   */
+  private static scheduleRetry(): void {
+    this._failedAttempts++;
+    const maxDelay = Math.min(
+      Configuration.retryMaxDelay,
+      Configuration.retryBaseDelay * 2 ** (this._failedAttempts - 1),
+    );
+    const delay = maxDelay / 2 + Math.random() * (maxDelay / 2);
+    this._retryAt = Date.now() + delay;
+
+    if (this._retryTimer !== null) clearTimeout(this._retryTimer);
+    this._retryTimer = setTimeout(() => {
+      this._retryTimer = null;
+      this._retryAt = 0;
+      flush(false).catch((err) => console.error("Retry flush error:", err));
+    }, delay);
+  }
+
+  /**
+   * Send all pending batches with keepalive so they survive page unload.
+   * Batches leave the queue before sending so a later flush can't resend them;
+   * if the page is still alive when a send fails, the batch is requeued.
+   */
+  private static sendAllWithKeepalive(): void {
+    const batches = Batcher.takeAllPending(this._isUploadInProgress);
+    for (const batch of batches) {
+      void this.sendWithKeepalive(this.transformBatch(batch)).then((success) => {
+        if (!success) {
+          Batcher.requeue(batch, this._isUploadInProgress);
+          // Several batches can fail together; count that as one failed attempt.
+          if (!this.isBackingOff()) this.scheduleRetry();
+        }
+      });
     }
   }
 
-  private static sendWithKeepalive(payload: BatchPayload): boolean {
+  private static async sendWithKeepalive(payload: BatchPayload): Promise<boolean> {
     if (typeof fetch === "undefined") {
       return false;
     }
@@ -61,13 +111,13 @@ export class Pusher {
     }
 
     try {
-      void fetch(this.endpoint, {
+      const response = await fetch(this.endpoint, {
         method: "POST",
         headers,
         body: JSON.stringify(payload),
         keepalive: true,
       });
-      return true;
+      return response.ok;
     } catch (error) {
       console.error("Keepalive fetch failed:", error);
       return false;
@@ -117,6 +167,17 @@ export class Pusher {
     }
 
     return headers;
+  }
+
+  /**
+   * Reset upload and backoff state. Useful for testing.
+   */
+  static reset(): void {
+    if (this._retryTimer !== null) clearTimeout(this._retryTimer);
+    this._retryTimer = null;
+    this._retryAt = 0;
+    this._failedAttempts = 0;
+    this._isUploadInProgress = false;
   }
 
   static async startScheduler(time: number) {
