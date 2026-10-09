@@ -235,6 +235,10 @@ fn get_clickhouse_project_password() -> String {
     std::env::var("CLICKHOUSE_PROJECT_PASSWORD").unwrap_or_default()
 }
 
+fn get_bind_addr() -> String {
+    std::env::var("DASHBOARD_BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_string())
+}
+
 fn get_llm_api_key() -> String {
     std::env::var("LLM_API_KEY").unwrap_or_default()
 }
@@ -612,8 +616,8 @@ async fn main() {
 
     let app = router.layer(cors);
 
-    let addr = "0.0.0.0:3000";
+    let addr = get_bind_addr();
     tracing::info!("Listening on {}", addr);
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }

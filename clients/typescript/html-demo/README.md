@@ -27,12 +27,13 @@ The demo initializes the SDK with:
 
 ```javascript
 SudoQuery.init({
-  tenantId: 'localclient',
+  orgId: 'localclient',
+  projectId: 'localproject',
   batchSize: 3
 });
 ```
 
-The local collector requires `tenantId`; the SDK writes it into each event as `org_id` and sends it as the `x-tenant-id` header.
+The local collector requires `orgId` and `projectId`; the SDK writes them into each event as `org_id` / `project_id` and sends them as the `x-org-id` / `x-project-id` headers.
 
 ## Event Shape
 
@@ -44,7 +45,7 @@ Tracked events are queued using the collector envelope:
   id: 'uuid',
   name: 'event_name',
   org_id: 'localclient',
-  project_id: null,
+  project_id: 'localproject',
   session_id: 'session-id',
   anon_id: 'anonymous-id',
   actor_id: 'user_id',

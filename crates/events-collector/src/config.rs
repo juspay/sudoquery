@@ -10,13 +10,14 @@ use superposition_provider::{
 
 use crate::collector_event::CollectorEvent;
 use crate::enrichment::EnrichmentConfig;
-use crate::kafka_connector::KafkaConnectorConfig;
+use crate::kafka_connector::{KafkaConnectorConfig, render_topic};
 use crate::result;
 
 /// Kafka settings can be overridden via environment variables, taking priority
 /// over the values resolved from `cac.toml`:
 ///
-/// - `KAFKA_TOPIC`: overrides `kafka_connector.topic`
+/// - `KAFKA_TOPIC`: overrides `kafka_connector.topic` (may use the same
+///   `{org_id}` / `{project_id}` placeholders)
 /// - `KAFKA_BOOTSTRAP_SERVERS`: overrides `kafka_connector.client_config["bootstrap.servers"]`
 /// - `KAFKA_CLIENT_CONFIG`: JSON object merged into `kafka_connector.client_config`
 ///   using the same keys as `cac.toml` (e.g. `{"message.timeout.ms": "10000"}`);
@@ -194,16 +195,17 @@ impl ConfigBuilder {
 }
 
 pub async fn get_config_from_local_file(
-    tenant_id: String,
-    workspace_id: Option<String>,
+    org_id: String,
+    project_id: String,
 ) -> result::Result<Config> {
     let mut evaluation_context = EvaluationContext::default();
-    evaluation_context.add_custom_field("tenant_id", tenant_id);
-    if let Some(workspace_id) = workspace_id {
-        evaluation_context.add_custom_field("workspace_id", workspace_id);
-    }
+    evaluation_context.add_custom_field("org_id", org_id.clone());
+    evaluation_context.add_custom_field("project_id", project_id.clone());
 
-    get_config_from_local_file_for_context(evaluation_context).await
+    let mut config = get_config_from_local_file_for_context(evaluation_context).await?;
+    config.kafka_connector.topic =
+        render_topic(&config.kafka_connector.topic, &org_id, &project_id)?;
+    Ok(config)
 }
 
 pub async fn get_default_config_from_local_file() -> result::Result<Config> {
@@ -245,9 +247,10 @@ mod tests {
     async fn loads_config_from_cac_toml() {
         chdir_to_workspace_root();
 
-        let config = get_config_from_local_file("tenant-1".to_string(), None)
-            .await
-            .unwrap();
+        let config =
+            get_config_from_local_file("acme-k3x9qa".to_string(), "blue-ocean-7".to_string())
+                .await
+                .unwrap();
 
         assert_eq!(config.kafka_connector.topic, "events.generic");
         assert_eq!(

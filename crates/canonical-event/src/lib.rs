@@ -31,7 +31,7 @@ pub struct CanonicalEvent {
     )]
     pub arrived_at: Option<chrono::DateTime<chrono::Utc>>,
     pub org_id: String,
-    pub project_id: Option<String>,
+    pub project_id: String,
     pub session_id: Option<String>,
     pub anon_id: String,
     pub actor_id: Option<String>,
@@ -120,7 +120,7 @@ pub struct CanonicalEventBuilder {
     occured_at: Option<chrono::DateTime<chrono::Utc>>,
     arrived_at: Option<chrono::DateTime<chrono::Utc>>,
     org_id: String,
-    project_id: Option<String>,
+    project_id: String,
     session_id: Option<String>,
     anon_id: String,
     actor_id: Option<String>,
@@ -163,7 +163,7 @@ impl CanonicalEventBuilder {
         self
     }
 
-    pub fn project_id(mut self, project_id: Option<String>) -> Self {
+    pub fn project_id(mut self, project_id: String) -> Self {
         self.project_id = project_id;
         self
     }
@@ -289,7 +289,7 @@ mod tests {
         let canonical_event = CanonicalEvent::builder()
             .name("payment_initiated".into())
             .org_id("merchant-1".into())
-            .project_id(Some("acme-shop-42".into()))
+            .project_id("acme-shop-42".into())
             .anon_id("anon-42".into())
             .arrived_at(Some(arrived_at))
             .properties(Some(serde_json::json!({ "amount": 100 })))
@@ -320,7 +320,7 @@ mod tests {
     #[test]
     fn deserializes_without_optional_fields() {
         let decoded: CanonicalEvent = serde_json::from_str(
-            r#"{"envelop_version":"1.0","id":"0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c","name":"checkout_viewed","org_id":"merchant-1","anon_id":"anon-42","occured_at":"2026-09-02T10:29:00Z"}"#,
+            r#"{"envelop_version":"1.0","id":"0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c","name":"checkout_viewed","org_id":"merchant-1","project_id":"acme-shop-42","anon_id":"anon-42","occured_at":"2026-09-02T10:29:00Z"}"#,
         )
         .unwrap();
 
@@ -329,6 +329,15 @@ mod tests {
             "0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c"
         );
         assert!(decoded.arrived_at.is_none());
-        assert!(decoded.project_id.is_none());
+        assert_eq!(decoded.project_id, "acme-shop-42");
+    }
+
+    #[test]
+    fn rejects_events_without_project_id() {
+        let result = serde_json::from_str::<CanonicalEvent>(
+            r#"{"envelop_version":"1.0","id":"0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c","name":"checkout_viewed","org_id":"merchant-1","anon_id":"anon-42","occured_at":"2026-09-02T10:29:00Z"}"#,
+        );
+
+        assert!(result.is_err());
     }
 }

@@ -104,17 +104,17 @@ describe('Configuration', () => {
   });
 
   describe('collector identity config', () => {
-    it('should default tenant and workspace to null', () => {
-      expect(Configuration.tenantId).toBeNull();
-      expect(Configuration.workspaceId).toBeNull();
+    it('should default org and project to null', () => {
+      expect(Configuration.orgId).toBeNull();
+      expect(Configuration.projectId).toBeNull();
     });
 
-    it('should allow setting tenant and workspace IDs', () => {
-      Configuration.setTenantId('tenant-1');
-      Configuration.setWorkspaceId('workspace-1');
+    it('should allow setting org and project IDs', () => {
+      Configuration.setOrgId('acme-org-1');
+      Configuration.setProjectId('acme-project-1');
 
-      expect(Configuration.tenantId).toBe('tenant-1');
-      expect(Configuration.workspaceId).toBe('workspace-1');
+      expect(Configuration.orgId).toBe('acme-org-1');
+      expect(Configuration.projectId).toBe('acme-project-1');
     });
 
     it('should default source to typescript', () => {

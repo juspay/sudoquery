@@ -49,7 +49,7 @@ export type Event = {
   id: string;
   name: string;
   org_id: string;
-  project_id: string | null;
+  project_id: string;
   session_id: string | null;
   anon_id: string;
   actor_id: string | null;

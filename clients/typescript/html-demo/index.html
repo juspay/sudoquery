@@ -281,7 +281,8 @@
         // Initialize analytics on page load
         window.addEventListener('DOMContentLoaded', () => {
             SudoQuery.init({
-                tenantId: 'localclient',
+                orgId: 'localclient',
+                projectId: 'localproject',
                 batchSize: 3,
                 endpoint: 'https://73g8lnmf-3000.inc1.devtunnels.ms/batch'
             });

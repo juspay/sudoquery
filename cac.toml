@@ -1,7 +1,26 @@
+# events-collector settings, resolved per request with CAC (Superposition)
+# for the request's `x-org-id` / `x-project-id` headers (the `org_id` and
+# `project_id` dimensions below), so `[[overrides]]` can change any setting
+# for one org or project.
+#
+# `kafka_connector.topic` may use `{org_id}` and `{project_id}`; the collector
+# replaces them with the request's ids before publishing. For example
+# `events.{org_id}.{project_id}` gives every project its own topic. The
+# rendered name must be a legal Kafka topic, and the topic must exist (or the
+# broker must auto-create topics). KAFKA_TOPIC overrides the value here and
+# may use the same placeholders.
+
 [default-configs]
 kafka_connector = { value = { topic = "events.generic", client_config = { "bootstrap.servers" = "b-1.cdploadtest.voagco.c3.kafka.ap-south-1.amazonaws.com:9092,b-3.cdploadtest.voagco.c3.kafka.ap-south-1.amazonaws.com:9092,b-2.cdploadtest.voagco.c3.kafka.ap-south-1.amazonaws.com:9092", "message.timeout.ms" = "5000", "socket.timeout.ms" = "5000" } }, schema = { type = "object" } }
 enrichment = { value = { country = { override_existing = false, resolution = "IpAddress" }, arrived_at = { enabled = true, override_existing = false }, ip_address = { override_existing = false } }, schema = { type = "object" } }
 
 [dimensions]
-tenant_id = { position = 1, schema = { type = "string" } }
-workspace_id = { position = 2, schema = { type = "string" } }
+org_id = { position = 1, schema = { type = "string" } }
+project_id = { position = 2, schema = { type = "string" } }
+
+# Give one project its own topic, keeping the shared default for everyone else
+# (objects are merged, so only `topic` needs to be set):
+#
+# [[overrides]]
+# _context_ = { project_id = "web-shop-9x2k1a" }
+# kafka_connector = { topic = "events.{org_id}.{project_id}" }

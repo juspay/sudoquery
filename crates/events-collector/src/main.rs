@@ -15,14 +15,14 @@ use event_collector::config::{
 use event_collector::kafka_connector::test_connection;
 use event_collector::result::AppError;
 use event_collector::{
-    CollectionStatus, collect_events, collect_events_authenticated, collect_events_batch,
+    CollectionStatus, Scope, collect_events, collect_events_authenticated, collect_events_batch,
 };
 use serde::Serialize;
 use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
-const TENANT_ID_HEADER: &str = "x-tenant-id";
-const WORKSPACE_ID_HEADER: &str = "x-workspace-id";
+const ORG_ID_HEADER: &str = "x-org-id";
+const PROJECT_ID_HEADER: &str = "x-project-id";
 const FORWARDED_FOR_HEADER: &str = "x-forwarded-for";
 const REAL_IP_HEADER: &str = "x-real-ip";
 const ROUTE_PREFIX: &str = "/v1";
@@ -88,9 +88,16 @@ async fn push_batch(
     body: Bytes,
 ) -> Result<Json<CollectionStatus>, ApiError> {
     let context = RequestContext::from_headers(&headers, Some(peer_addr))?;
-    let config = get_config_from_local_file(context.tenant_id, context.workspace_id).await?;
+    let config =
+        get_config_from_local_file(context.org_id.clone(), context.project_id.clone()).await?;
     let body = request_body_as_str(&body)?;
-    let status = collect_events_batch(body, &config, context.ip_address.as_deref()).await?;
+    let status = collect_events_batch(
+        body,
+        &config,
+        &context.scope(),
+        context.ip_address.as_deref(),
+    )
+    .await?;
 
     Ok(Json(status))
 }
@@ -101,9 +108,16 @@ async fn push_events(
     body: Bytes,
 ) -> Result<Json<CollectionStatus>, ApiError> {
     let context = RequestContext::from_headers(&headers, Some(peer_addr))?;
-    let config = get_config_from_local_file(context.tenant_id, context.workspace_id).await?;
+    let config =
+        get_config_from_local_file(context.org_id.clone(), context.project_id.clone()).await?;
     let body = request_body_as_str(&body)?;
-    let status = collect_events(body, &config, context.ip_address.as_deref()).await?;
+    let status = collect_events(
+        body,
+        &config,
+        &context.scope(),
+        context.ip_address.as_deref(),
+    )
+    .await?;
 
     Ok(Json(status))
 }
@@ -115,9 +129,16 @@ async fn push_events_authenticated(
 ) -> Result<Json<CollectionStatus>, ApiError> {
     auth::validate_bearer_token(&headers).await?;
     let context = RequestContext::from_headers(&headers, Some(peer_addr))?;
-    let config = get_config_from_local_file(context.tenant_id, context.workspace_id).await?;
+    let config =
+        get_config_from_local_file(context.org_id.clone(), context.project_id.clone()).await?;
     let body = request_body_as_str(&body)?;
-    let status = collect_events_authenticated(body, &config, context.ip_address.as_deref()).await?;
+    let status = collect_events_authenticated(
+        body,
+        &config,
+        &context.scope(),
+        context.ip_address.as_deref(),
+    )
+    .await?;
 
     Ok(Json(status))
 }
@@ -127,21 +148,28 @@ fn request_body_as_str(body: &Bytes) -> Result<&str, ApiError> {
 }
 
 struct RequestContext {
-    tenant_id: String,
-    workspace_id: Option<String>,
+    org_id: String,
+    project_id: String,
     ip_address: Option<String>,
 }
 
 impl RequestContext {
+    fn scope(&self) -> Scope<'_> {
+        Scope {
+            org_id: &self.org_id,
+            project_id: &self.project_id,
+        }
+    }
+
     fn from_headers(headers: &HeaderMap, peer_addr: Option<SocketAddr>) -> Result<Self, ApiError> {
-        let tenant_id = required_slug_header(headers, TENANT_ID_HEADER)?;
-        let workspace_id = optional_slug_header(headers, WORKSPACE_ID_HEADER)?;
+        let org_id = required_slug_header(headers, ORG_ID_HEADER)?;
+        let project_id = required_slug_header(headers, PROJECT_ID_HEADER)?;
         let ip_address =
             forwarded_ip(headers)?.or_else(|| peer_addr.map(|addr| addr.ip().to_string()));
 
         Ok(Self {
-            tenant_id,
-            workspace_id,
+            org_id,
+            project_id,
             ip_address,
         })
     }
@@ -166,24 +194,12 @@ fn optional_header(headers: &HeaderMap, name: &'static str) -> Result<Option<Str
 }
 
 /// Reads a required header whose value must be a valid slug
-/// ([`is_valid_slug`]). The tenant/workspace ids flow into Kafka message
-/// keys and OpenSearch index names, so malformed values are rejected here,
-/// before any processing.
+/// ([`is_valid_slug`]). The org/project ids select the CAC config for the
+/// request, so malformed values are rejected here, before any processing.
 fn required_slug_header(headers: &HeaderMap, name: &'static str) -> Result<String, ApiError> {
     let value = required_header(headers, name)?;
     validate_slug_header(name, &value)?;
     Ok(value)
-}
-
-fn optional_slug_header(
-    headers: &HeaderMap,
-    name: &'static str,
-) -> Result<Option<String>, ApiError> {
-    let Some(value) = optional_header(headers, name)? else {
-        return Ok(None);
-    };
-    validate_slug_header(name, &value)?;
-    Ok(Some(value))
 }
 
 fn validate_slug_header(name: &'static str, value: &str) -> Result<(), ApiError> {
@@ -251,6 +267,9 @@ impl IntoResponse for ApiError {
             Self::BadRequest(message) => (StatusCode::BAD_REQUEST, message, false),
             Self::ServiceUnavailable(message) => (StatusCode::SERVICE_UNAVAILABLE, message, false),
             Self::App(AppError::Json(error)) => (StatusCode::BAD_REQUEST, error.to_string(), false),
+            Self::App(AppError::ScopeMismatch(message)) => {
+                (StatusCode::BAD_REQUEST, message, false)
+            }
             Self::App(AppError::Kafka(error)) => {
                 (StatusCode::BAD_GATEWAY, error.to_string(), false)
             }
@@ -284,8 +303,8 @@ mod tests {
     #[test]
     fn request_context_reads_headers() {
         let mut headers = HeaderMap::new();
-        headers.insert(TENANT_ID_HEADER, "tenant-1".parse().unwrap());
-        headers.insert(WORKSPACE_ID_HEADER, "workspace-1".parse().unwrap());
+        headers.insert(ORG_ID_HEADER, "acme-k3x9qa".parse().unwrap());
+        headers.insert(PROJECT_ID_HEADER, "blue-ocean-7".parse().unwrap());
         headers.insert(
             FORWARDED_FOR_HEADER,
             "203.0.113.1, 203.0.113.2".parse().unwrap(),
@@ -294,15 +313,16 @@ mod tests {
         let peer_addr = "127.0.0.1:51000".parse().unwrap();
         let context = RequestContext::from_headers(&headers, Some(peer_addr)).unwrap();
 
-        assert_eq!(context.tenant_id, "tenant-1");
-        assert_eq!(context.workspace_id.as_deref(), Some("workspace-1"));
+        assert_eq!(context.org_id, "acme-k3x9qa");
+        assert_eq!(context.project_id, "blue-ocean-7");
         assert_eq!(context.ip_address.as_deref(), Some("203.0.113.1"));
     }
 
     #[test]
     fn request_context_falls_back_to_peer_ip() {
         let mut headers = HeaderMap::new();
-        headers.insert(TENANT_ID_HEADER, "tenant-1".parse().unwrap());
+        headers.insert(ORG_ID_HEADER, "acme-k3x9qa".parse().unwrap());
+        headers.insert(PROJECT_ID_HEADER, "blue-ocean-7".parse().unwrap());
         let peer_addr = "127.0.0.1:51000".parse().unwrap();
 
         let context = RequestContext::from_headers(&headers, Some(peer_addr)).unwrap();
@@ -311,8 +331,9 @@ mod tests {
     }
 
     #[test]
-    fn request_context_requires_tenant_id() {
-        let headers = HeaderMap::new();
+    fn request_context_requires_org_id() {
+        let mut headers = HeaderMap::new();
+        headers.insert(PROJECT_ID_HEADER, "blue-ocean-7".parse().unwrap());
 
         assert!(matches!(
             RequestContext::from_headers(&headers, None),
@@ -321,49 +342,52 @@ mod tests {
     }
 
     #[test]
-    fn request_context_accepts_valid_slug_header_values() {
+    fn request_context_requires_project_id() {
         let mut headers = HeaderMap::new();
-        headers.insert(TENANT_ID_HEADER, "acme-k3x9qa".parse().unwrap());
-        headers.insert(WORKSPACE_ID_HEADER, "blue-ocean-7".parse().unwrap());
+        headers.insert(ORG_ID_HEADER, "acme-k3x9qa".parse().unwrap());
 
-        let context = RequestContext::from_headers(&headers, None).unwrap();
-
-        assert_eq!(context.tenant_id, "acme-k3x9qa");
-        assert_eq!(context.workspace_id.as_deref(), Some("blue-ocean-7"));
+        assert!(matches!(
+            RequestContext::from_headers(&headers, None),
+            Err(ApiError::BadRequest(_))
+        ));
     }
 
     #[test]
-    fn request_context_rejects_invalid_tenant_id_slugs() {
-        for invalid_tenant_id in [
+    fn request_context_rejects_invalid_slugs() {
+        for invalid in [
             "acme",
             "acme-store-k3x9qa-with-a-very-long-suffix",
             "Acme-k3x9qa",
             "9acme-k3x9qa",
             "acme_k3x9qa",
         ] {
-            let mut headers = HeaderMap::new();
-            headers.insert(TENANT_ID_HEADER, invalid_tenant_id.parse().unwrap());
+            for (header, other) in [
+                (ORG_ID_HEADER, PROJECT_ID_HEADER),
+                (PROJECT_ID_HEADER, ORG_ID_HEADER),
+            ] {
+                let mut headers = HeaderMap::new();
+                headers.insert(header, invalid.parse().unwrap());
+                headers.insert(other, "blue-ocean-7".parse().unwrap());
 
-            assert!(
-                matches!(
-                    RequestContext::from_headers(&headers, None),
-                    Err(ApiError::BadRequest(_))
-                ),
-                "`{invalid_tenant_id}` should be rejected as a tenant id"
-            );
+                assert!(
+                    matches!(
+                        RequestContext::from_headers(&headers, None),
+                        Err(ApiError::BadRequest(_))
+                    ),
+                    "`{invalid}` should be rejected in `{header}`"
+                );
+            }
         }
     }
 
     #[test]
-    fn request_context_rejects_invalid_workspace_id_slug() {
-        let mut headers = HeaderMap::new();
-        headers.insert(TENANT_ID_HEADER, "acme-k3x9qa".parse().unwrap());
-        headers.insert(WORKSPACE_ID_HEADER, "Acme-k3x9qa".parse().unwrap());
+    fn scope_mismatch_is_a_bad_request() {
+        let response = ApiError::from(AppError::ScopeMismatch(
+            "event 0 is for another project".into(),
+        ))
+        .into_response();
 
-        assert!(matches!(
-            RequestContext::from_headers(&headers, None),
-            Err(ApiError::BadRequest(_))
-        ));
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
     }
 
     #[test]

@@ -16,11 +16,11 @@ var ShopifySudoQueryPixel = (() => {
     static get headers() {
       return _Configuration._headers;
     }
-    static get tenantId() {
-      return _Configuration._tenantId;
+    static get orgId() {
+      return _Configuration._orgId;
     }
-    static get workspaceId() {
-      return _Configuration._workspaceId;
+    static get projectId() {
+      return _Configuration._projectId;
     }
     static get source() {
       return _Configuration._source;
@@ -43,11 +43,11 @@ var ShopifySudoQueryPixel = (() => {
     static setHeaders(value) {
       _Configuration._headers = value;
     }
-    static setTenantId(value) {
-      _Configuration._tenantId = value;
+    static setOrgId(value) {
+      _Configuration._orgId = value;
     }
-    static setWorkspaceId(value) {
-      _Configuration._workspaceId = value;
+    static setProjectId(value) {
+      _Configuration._projectId = value;
     }
     static setSource(value) {
       _Configuration._source = value;
@@ -61,8 +61,8 @@ var ShopifySudoQueryPixel = (() => {
       _Configuration._endpoint = _Configuration.DEFAULT_ENDPOINT;
       _Configuration._token = null;
       _Configuration._headers = {};
-      _Configuration._tenantId = null;
-      _Configuration._workspaceId = null;
+      _Configuration._orgId = null;
+      _Configuration._projectId = null;
       _Configuration._source = _Configuration.DEFAULT_SOURCE;
       _Configuration._sessionId = null;
     }
@@ -74,8 +74,8 @@ var ShopifySudoQueryPixel = (() => {
   _Configuration._endpoint = _Configuration.DEFAULT_ENDPOINT;
   _Configuration._token = null;
   _Configuration._headers = {};
-  _Configuration._tenantId = null;
-  _Configuration._workspaceId = null;
+  _Configuration._orgId = null;
+  _Configuration._projectId = null;
   _Configuration._source = _Configuration.DEFAULT_SOURCE;
   _Configuration._sessionId = null;
   var Configuration = _Configuration;
@@ -203,20 +203,22 @@ var ShopifySudoQueryPixel = (() => {
       }
     }
     static buildHeaders(payload) {
-      const tenantId = Configuration.tenantId ?? payload.events[0]?.org_id ?? null;
-      if (!tenantId) {
-        console.error("Cannot send analytics batch: tenantId is required by the collector.");
+      const orgId = Configuration.orgId ?? payload.events[0]?.org_id ?? null;
+      if (!orgId) {
+        console.error("Cannot send analytics batch: orgId is required by the collector.");
         return null;
       }
-      const workspaceId = Configuration.workspaceId ?? payload.events[0]?.project_id ?? null;
+      const projectId = Configuration.projectId ?? payload.events[0]?.project_id ?? null;
+      if (!projectId) {
+        console.error("Cannot send analytics batch: projectId is required by the collector.");
+        return null;
+      }
       const headers = {
         "Content-Type": "application/json",
         ...Configuration.headers,
-        "x-tenant-id": tenantId
+        "x-org-id": orgId,
+        "x-project-id": projectId
       };
-      if (workspaceId) {
-        headers["x-workspace-id"] = workspaceId;
-      }
       if (Configuration.token) {
         headers.Authorization = `Bearer ${Configuration.token}`;
       }
@@ -398,13 +400,13 @@ var ShopifySudoQueryPixel = (() => {
       if (config?.headers !== void 0) {
         Configuration.setHeaders(config.headers);
       }
-      if (config?.tenantId !== void 0) {
-        warnIfNotSlug("tenantId", config.tenantId);
-        Configuration.setTenantId(config.tenantId);
+      if (config?.orgId !== void 0) {
+        warnIfNotSlug("orgId", config.orgId);
+        Configuration.setOrgId(config.orgId);
       }
-      if (config?.workspaceId !== void 0) {
-        warnIfNotSlug("workspaceId", config.workspaceId);
-        Configuration.setWorkspaceId(config.workspaceId);
+      if (config?.projectId !== void 0) {
+        warnIfNotSlug("projectId", config.projectId);
+        Configuration.setProjectId(config.projectId);
       }
       if (config?.source !== void 0) {
         Configuration.setSource(config.source);
@@ -495,9 +497,13 @@ var ShopifySudoQueryPixel = (() => {
     }
     static track(eventName, properties) {
       const props = properties ?? {};
-      const tenantId = Configuration.tenantId;
-      if (!tenantId || tenantId.trim().length === 0) {
-        throw new Error("tenantId is required before tracking events");
+      const orgId = Configuration.orgId;
+      if (!orgId || orgId.trim().length === 0) {
+        throw new Error("orgId is required before tracking events");
+      }
+      const projectId = Configuration.projectId;
+      if (!projectId || projectId.trim().length === 0) {
+        throw new Error("projectId is required before tracking events");
       }
       const superProperties = SuperProperties.getSuperProperties();
       const mergedProperties = mergeProperties(props, superProperties);
@@ -505,8 +511,8 @@ var ShopifySudoQueryPixel = (() => {
         envelop_version: "1.0",
         id: generateUuid(),
         name: eventName.toString(),
-        org_id: tenantId,
-        project_id: Configuration.workspaceId,
+        org_id: orgId,
+        project_id: projectId,
         session_id: Configuration.sessionId ?? getSessionId(),
         anon_id: AnonymousId.getOrCreate(),
         actor_id: this.currentUser,
@@ -638,12 +644,12 @@ var ShopifySudoQueryPixel = (() => {
     addIdentifier2 = addIdentifier, buildIdentifiers2 = buildIdentifiers, buildProperties2 = buildProperties, buildContext2 = buildContext, send2 = send;
     const pixelSettings = typeof settings !== "undefined" ? settings : {};
     const COLLECTOR_ENDPOINT = pixelSettings.collectorEndpoint || "https://73g8lnmf-3000.inc1.devtunnels.ms/batch";
-    const TENANT_ID = pixelSettings.tenantId || "breeze";
-    const WORKSPACE_ID = pixelSettings.workspaceId || "d2cmerino";
+    const ORG_ID = pixelSettings.orgId || "breeze";
+    const PROJECT_ID = pixelSettings.projectId || "d2cmerino";
     SudoQuery.init({
       endpoint: COLLECTOR_ENDPOINT,
-      tenantId: TENANT_ID,
-      workspaceId: WORKSPACE_ID,
+      orgId: ORG_ID,
+      projectId: PROJECT_ID,
       source: "shopify",
       batchSize: 1
     });

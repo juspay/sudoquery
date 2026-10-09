@@ -255,7 +255,7 @@ mod tests {
             id: uuid::Uuid::new_v4(),
             name: "payment_submitted".to_string(),
             org_id: "org-1".to_string(),
-            project_id: None,
+            project_id: "proj-1".to_string(),
             session_id: None,
             anon_id: "anon-1".to_string(),
             actor_id: None,

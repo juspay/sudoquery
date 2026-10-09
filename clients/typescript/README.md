@@ -26,7 +26,8 @@ import { SudoQuery } from 'sudo-query';
 
 // Initialize the SDK
 SudoQuery.init({
-  tenantId: 'acme-store-k3x9qa'
+  orgId: 'acme-store-k3x9qa',
+  projectId: 'acme-store-web-9t2r4m'
 });
 
 // Track an event
@@ -49,8 +50,8 @@ SudoQuery.init({
   flushInterval: 5000,    // Auto-flush every 5 seconds (optional)
   batchSize: 20,          // Batch 20 events before flushing (default: 10)
   endpoint: 'https://api.example.com/batch',  // Custom endpoint (default: http://localhost:3000/batch)
-  tenantId: 'acme-store-k3x9qa',    // Required by the collector (server-generated slug)
-  workspaceId: 'acme-store-web-9t2r4m', // Optional collector workspace (server-generated slug)
+  orgId: 'acme-store-k3x9qa',    // Required: org id (server-generated slug)
+  projectId: 'acme-store-web-9t2r4m', // Required: project id (server-generated slug)
   source: 'checkout-web',  // Optional source label (default: typescript)
   sessionId: 'session-1',  // Optional session id; generated if omitted
   token: 'YOUR_PROJECT_TOKEN',  // Optional bearer token for proxies/gateways
@@ -61,7 +62,7 @@ SudoQuery.init({
 });
 ```
 
-**Important:** `tenantId` must be set before tracking events because the collector requires both an `org_id` event field and an `x-tenant-id` request header.
+**Important:** `orgId` and `projectId` must be set before tracking events because the collector requires the `org_id` / `project_id` event fields and the `x-org-id` / `x-project-id` request headers.
 
 This sets up:
 - A page visibility listener to automatically flush events when the user navigates away
@@ -135,8 +136,8 @@ All configuration is done through the `init()` method:
 | `flushInterval` | `number \| undefined` | `undefined` | Interval in milliseconds for periodic auto-flush. If not set, periodic flush is disabled. |
 | `batchSize` | `number \| undefined` | `10` | Number of events to accumulate before auto-flushing. |
 | `endpoint` | `string \| undefined` | `"http://localhost:3000/batch"` | URL where events are sent. |
-| `tenantId` | `string \| null \| undefined` | `undefined` | Collector tenant id. Required before tracking events. |
-| `workspaceId` | `string \| null \| undefined` | `undefined` | Optional collector workspace id. Sent as `x-workspace-id` when set. |
+| `orgId` | `string \| null \| undefined` | `undefined` | Organization id (server-generated slug). Required before `track()`; sent as the event's `org_id` and the `x-org-id` header. |
+| `projectId` | `string \| null \| undefined` | `undefined` | Project id (server-generated slug). Required before `track()`; sent as the event's `project_id` and the `x-project-id` header. |
 | `source` | `string \| null \| undefined` | `"typescript"` | Optional source value written to each event. |
 | `sessionId` | `string \| null \| undefined` | generated | Optional session id written to each event. |
 | `token` | `string \| undefined` | `undefined` | Optional bearer token for proxies/gateways. |
@@ -146,14 +147,15 @@ All configuration is done through the `init()` method:
 
 **Default configuration:**
 ```typescript
-SudoQuery.init({ tenantId: 'acme-store-k3x9qa' });
+SudoQuery.init({ orgId: 'acme-store-k3x9qa', projectId: 'acme-store-web-9t2r4m' });
 // Uses: batchSize=10, endpoint="http://localhost:3000/batch", source="typescript", no periodic flush
 ```
 
 **High-frequency tracking:**
 ```typescript
 SudoQuery.init({
-  tenantId: 'acme-store-k3x9qa',
+  orgId: 'acme-store-k3x9qa',
+  projectId: 'acme-store-web-9t2r4m',
   flushInterval: 2000,   // Flush every 2 seconds
   batchSize: 50,         // Larger batches
   endpoint: 'https://analytics.example.com/batch'
@@ -163,7 +165,8 @@ SudoQuery.init({
 **Low-latency mode:**
 ```typescript
 SudoQuery.init({
-  tenantId: 'acme-store-k3x9qa',
+  orgId: 'acme-store-k3x9qa',
+  projectId: 'acme-store-web-9t2r4m',
   flushInterval: 1000,   // Flush every second
   batchSize: 5            // Small batches
 });
@@ -197,7 +200,7 @@ type Event = {
   id: string;
   name: string;
   org_id: string;
-  project_id: string | null;
+  project_id: string;
   session_id: string | null;
   anon_id: string;
   actor_id: string | null;

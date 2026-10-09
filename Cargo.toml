@@ -15,3 +15,10 @@ superposition_provider = "0.117.1"
 thiserror = "2"
 tokio = { version = "1", features = ["full"] }
 tracing = "0.1"
+
+# RSA key generation in the xtask e2e harness is unusably slow unoptimized.
+[profile.dev.package.num-bigint-dig]
+opt-level = 3
+
+[profile.dev.package.rsa]
+opt-level = 3

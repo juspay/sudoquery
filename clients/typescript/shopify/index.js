@@ -11,13 +11,13 @@ try {
   const pixelSettings = typeof settings !== "undefined" ? settings : {};
   const COLLECTOR_ENDPOINT =
     pixelSettings.collectorEndpoint || "https://73g8lnmf-3000.inc1.devtunnels.ms/batch";
-  const TENANT_ID = pixelSettings.tenantId || "breeze";
-  const WORKSPACE_ID = pixelSettings.workspaceId || "d2cmerino";
+  const ORG_ID = pixelSettings.orgId || "breeze";
+  const PROJECT_ID = pixelSettings.projectId || "d2cmerino";
 
   SudoQuery.init({
     endpoint: COLLECTOR_ENDPOINT,
-    tenantId: TENANT_ID,
-    workspaceId: WORKSPACE_ID,
+    orgId: ORG_ID,
+    projectId: PROJECT_ID,
     source: "shopify",
     batchSize: 1,
   });

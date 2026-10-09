@@ -275,8 +275,7 @@ impl OpenSearch {
 
         let event = CanonicalEvent::deserialize(&reply["_source"]).map_err(decode_error)?;
         // `_doc` takes no query, so the scope is checked on the document.
-        let in_scope = event.org_id == scope.org_id
-            && event.project_id.as_deref() == Some(scope.project_id.as_str());
+        let in_scope = event.org_id == scope.org_id && event.project_id == scope.project_id;
         if !in_scope {
             return Ok(None);
         }
@@ -955,10 +954,8 @@ mod tests {
     async fn get_event_hides_documents_outside_the_scope() {
         let mut other_org = source(1, PROJ);
         other_org["org_id"] = json!("someone-else");
-        let mut no_proj = source(1, PROJ);
-        no_proj.as_object_mut().unwrap().remove("project_id");
 
-        for stored in [source(1, "another-proj"), other_org, no_proj] {
+        for stored in [source(1, "another-proj"), other_org] {
             let server = MockServer::start().await;
             let found = json!({ "found": true, "_source": stored });
             mount(
@@ -1555,7 +1552,7 @@ mod tests {
                 .name(name.into())
                 .occured_at(Utc.with_ymd_and_hms(2026, 9, 1, 10, 0, second).unwrap())
                 .org_id(org.into())
-                .project_id(Some(proj.into()))
+                .project_id(proj.into())
                 .session_id(session.map(Into::into))
                 .anon_id("anon-1".into())
                 .properties(Some(json!({ "plan": "pro" })))

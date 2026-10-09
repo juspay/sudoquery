@@ -41,7 +41,7 @@ type Event = {
     id: string;
     name: string;
     org_id: string;
-    project_id: string | null;
+    project_id: string;
     session_id: string | null;
     anon_id: string;
     actor_id: string | null;
@@ -66,8 +66,8 @@ interface SudoQueryConfig {
     endpoint?: string;
     token?: string;
     headers?: Record<string, string>;
-    tenantId?: string | null;
-    workspaceId?: string | null;
+    orgId?: string | null;
+    projectId?: string | null;
     source?: string | null;
     sessionId?: string | null;
 }

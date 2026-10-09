@@ -94,23 +94,26 @@ export class Pusher {
   }
 
   private static buildHeaders(payload: BatchPayload): Record<string, string> | null {
-    const tenantId = Configuration.tenantId ?? payload.events[0]?.org_id ?? null;
+    const orgId = Configuration.orgId ?? payload.events[0]?.org_id ?? null;
 
-    if (!tenantId) {
-      console.error("Cannot send analytics batch: tenantId is required by the collector.");
+    if (!orgId) {
+      console.error("Cannot send analytics batch: orgId is required by the collector.");
       return null;
     }
 
-    const workspaceId = Configuration.workspaceId ?? payload.events[0]?.project_id ?? null;
+    const projectId = Configuration.projectId ?? payload.events[0]?.project_id ?? null;
+
+    if (!projectId) {
+      console.error("Cannot send analytics batch: projectId is required by the collector.");
+      return null;
+    }
+
     const headers: Record<string, string> = {
       "Content-Type": "application/json",
       ...Configuration.headers,
-      "x-tenant-id": tenantId,
+      "x-org-id": orgId,
+      "x-project-id": projectId,
     };
-
-    if (workspaceId) {
-      headers["x-workspace-id"] = workspaceId;
-    }
 
     if (Configuration.token) {
       headers.Authorization  = `Bearer ${Configuration.token}`;

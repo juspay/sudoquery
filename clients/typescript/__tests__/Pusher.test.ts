@@ -28,7 +28,7 @@ describe("Pusher", () => {
   beforeEach(() => {
     // Reset state before each test
     Configuration.reset();
-    Configuration.setTenantId("tenant-1");
+    Configuration.setOrgId("acme-org-1");
     jest.clearAllMocks();
     Batcher.reset();
   });
@@ -66,7 +66,8 @@ describe("Pusher", () => {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-tenant-id": "tenant-1",
+            "x-org-id": "acme-org-1",
+            "x-project-id": "acme-project-1",
           },
         })
       );
@@ -78,7 +79,7 @@ describe("Pusher", () => {
           expect.objectContaining({
             envelop_version: "1.0",
             name: "event_1",
-            org_id: "tenant-1",
+            org_id: "acme-org-1",
             actor_id: "user_1",
             properties: { id: 1 },
           }),
@@ -154,7 +155,7 @@ describe("Pusher", () => {
         expect.objectContaining({
           keepalive: true,
           headers: expect.objectContaining({
-            "x-tenant-id": "tenant-1",
+            "x-org-id": "acme-org-1",
           }),
         })
       );
@@ -285,7 +286,8 @@ describe("Pusher", () => {
             "Content-Type": "application/json",
             "X-Api-Key": "test-api-key",
             "X-Request-Id": "12345",
-            "x-tenant-id": "tenant-1",
+            "x-org-id": "acme-org-1",
+            "x-project-id": "acme-project-1",
           },
         })
       );
@@ -312,19 +314,20 @@ describe("Pusher", () => {
           headers: {
             "Content-Type": "application/json",
             "X-Custom-Header": "custom-value",
-            "x-tenant-id": "tenant-1",
+            "x-org-id": "acme-org-1",
+            "x-project-id": "acme-project-1",
             "Authorization": "Bearer my-auth-token",
           },
         })
       );
     });
 
-    it("should include workspace header when workspaceId is set", async () => {
+    it("should include project header when projectId is set", async () => {
       Configuration.setBatchSize(2);
-      Configuration.setWorkspaceId("workspace-1");
+      Configuration.setProjectId("acme-project-1");
 
       for (let i = 1; i <= 2; i++) {
-        Batcher.addToBatch(createMockEvent(i, { project_id: "workspace-1" }));
+        Batcher.addToBatch(createMockEvent(i, { project_id: "acme-project-1" }));
       }
 
       await Pusher.pushLogs();
@@ -333,8 +336,8 @@ describe("Pusher", () => {
         "http://localhost:3000/batch",
         expect.objectContaining({
           headers: expect.objectContaining({
-            "x-tenant-id": "tenant-1",
-            "x-workspace-id": "workspace-1",
+            "x-org-id": "acme-org-1",
+            "x-project-id": "acme-project-1",
           }),
         })
       );
@@ -348,10 +351,22 @@ describe("Pusher", () => {
       expect(result).toBeNull();
     });
 
-    it("should not upload without tenantId", async () => {
+    it("should not upload without orgId", async () => {
       const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
-      Configuration.setTenantId(null);
+      Configuration.setOrgId(null);
       Batcher.addToBatch(createMockEvent(1, { org_id: "" }));
+
+      const result = await Pusher.pushLogs();
+
+      expect(result).toBeNull();
+      expect(fetch).not.toHaveBeenCalled();
+      consoleErrorSpy.mockRestore();
+    });
+
+    it("should not upload without projectId", async () => {
+      const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
+      Configuration.setProjectId(null);
+      Batcher.addToBatch(createMockEvent(1, { project_id: "" }));
 
       const result = await Pusher.pushLogs();
 

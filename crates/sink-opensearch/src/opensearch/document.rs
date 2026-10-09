@@ -123,7 +123,7 @@ mod tests {
 
     fn event_for(org: &str) -> String {
         format!(
-            r#"{{"envelop_version":"1.0","id":"{ID}","name":"payment_initiated","org_id":"{org}","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z","properties":{{"amount":100}}}}"#
+            r#"{{"envelop_version":"1.0","id":"{ID}","name":"payment_initiated","org_id":"{org}","project_id":"acme-shop-42","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z","properties":{{"amount":100}}}}"#
         )
     }
 

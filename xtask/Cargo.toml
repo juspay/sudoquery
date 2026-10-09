@@ -6,6 +6,17 @@ publish = false
 
 [dependencies]
 anyhow = "1"
+axum = { workspace = true }
+base64 = "0.22"
+canonical-event = { path = "../crates/canonical-event" }
 chrono = { workspace = true }
-sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "migrate", "tls-rustls"] }
+jsonwebtoken = "9"
+rdkafka = { workspace = true }
+rand = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rsa = "0.9"
+serde = { workspace = true }
+serde_json = { workspace = true }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "migrate", "tls-rustls", "uuid", "chrono"] }
 tokio = { workspace = true }
+uuid = { workspace = true }

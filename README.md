@@ -27,6 +27,8 @@ directory. The first invocation compiles the binary; later runs are fast.
 | `db status` | Check the database is up and all migrations are applied |
 | `db migration` | Apply pending migrations |
 | `db migration add <name>` | Create a new migration file |
+| `e2e dashboard [filter]` | End-to-end org/project tests against dashboard-server |
+| `e2e collector [filter]` | End-to-end ingestion tests through events-collector into Kafka |
 
 ## Docker compose tasks
 
@@ -52,8 +54,9 @@ Starts a chosen subset of the compose stack via `sudo docker compose up -d`.
   listing what is available.
 
 The dev stack: `postgres` (host port 5433, initialized from `pg_schema.sql`
-on first boot), `redpanda` (19092), `minio` (9000, console 9001) and
-`keycloak` (8080).
+on first boot), `redpanda` (19092), `minio` (9000, console 9001), `keycloak`
+(8080), `clickhouse` (8123 HTTP, 19000 native TCP, `ckh/schema.sql` applied
+on every start — idempotent) and `chproxy` (9090).
 
 ## Database tasks
 
@@ -119,3 +122,41 @@ match `^[a-z0-9_]+$`. Write your SQL into it, then apply with
 Keep `pg_schema.sql` in sync: after applying migrations, re-dump the schema
 so fresh docker volumes match — the auto-baseline assumes `pg_schema.sql`
 covers every applied migration.
+
+## End-to-end tests
+
+`cargo xtask e2e <suite> [filter]` builds a service, starts it on a free
+localhost port, and drives it over HTTP. Cases run sequentially; `[filter]`
+runs only those whose name contains it (e.g. `cargo xtask e2e dashboard
+project_`). Exit code 1 if any case fails, with the service log tail printed.
+
+### `e2e dashboard`
+
+Organization and project creation against `dashboard-server`. Needs only the
+compose postgres (`cargo xtask setup postgres`):
+
+- **Database:** a throwaway `dashboard_e2e_<random>` database is created on
+  the dev Postgres (`DATABASE_URL` or the default above), migrated from
+  scratch, and dropped afterwards. Dev data is never touched.
+- **Auth:** an in-process dummy OIDC provider serves the realm JWKS and mints
+  RS256 access tokens shaped like Keycloak's. Keys are generated per run.
+- **ClickHouse:** a dummy admin endpoint records the `CREATE USER` / `GRANT`
+  queries issued for new projects and can be made to fail.
+- **Server:** runs from a scratch directory (`DASHBOARD_BIND_ADDR` sets the
+  port), so a repo `.env` is not loaded.
+
+### `e2e collector`
+
+Event ingestion through `events-collector` into Kafka. Needs the compose
+redpanda (`cargo xtask setup redpanda`), or any brokers in
+`KAFKA_BOOTSTRAP_SERVERS`:
+
+- **Topics:** the collector runs with `KAFKA_TOPIC=e2e-collector-<run>.{org_id}.{project_id}`,
+  so every test org/project publishes to its own topic. Cases create those
+  topics up front and the run deletes them at the end.
+- **Checks:** events are read back from Kafka and checked for ids, org and
+  project, enrichment (`arrived_at`, client IP and country), batch system
+  properties, the record key, per-project topic isolation, and that rejected
+  requests (header/body mismatch, missing or invalid ids, no bearer token)
+  publish nothing.
+- **Server:** runs from the repo root so it reads the real `cac.toml`.

@@ -53,9 +53,9 @@ class ApiClient {
   }
 
   /**
-   * Get tenant/organization/project headers
+   * Get organization/project headers
    */
-  private getTenantHeaders(): Record<string, string> {
+  private getScopeHeaders(): Record<string, string> {
     const headers: Record<string, string> = {};
 
     const orgId = this.getOrganizationId();
@@ -131,10 +131,10 @@ class ApiClient {
 	console.log("~~ ", endpoint, options);
     const url = this.buildUrl(endpoint, params);
 
-    // Merge headers: default < tenant headers < auth headers < custom headers
+    // Merge headers: default < org/project headers < auth headers < custom headers
     const finalHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...this.getTenantHeaders(),
+      ...this.getScopeHeaders(),
       ...(skipAuth ? {} : this.getAuthHeaders()),
       ...headers,
     };
@@ -269,10 +269,10 @@ class ApiClient {
 
     const url = this.buildUrl(endpoint, params);
 
-    // Merge headers: default < tenant headers < auth headers < custom headers
+    // Merge headers: default < org/project headers < auth headers < custom headers
     const finalHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
-      ...this.getTenantHeaders(),
+      ...this.getScopeHeaders(),
       ...(skipAuth ? {} : this.getAuthHeaders()),
       ...headers,
     };

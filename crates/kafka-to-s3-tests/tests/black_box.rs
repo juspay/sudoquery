@@ -120,10 +120,7 @@ fn expected_of(events: &[CanonicalEvent]) -> Vec<ExpectedEvent> {
         .map(|event| ExpectedEvent {
             id: event_id(event),
             org_id: event.org_id.clone(),
-            project_id: event
-                .project_id
-                .clone()
-                .expect("harness events always set project_id"),
+            project_id: event.project_id.clone(),
             arrived_at: event
                 .arrived_at
                 .expect("harness events always set arrived_at"),

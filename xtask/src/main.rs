@@ -1,5 +1,6 @@
 mod compose;
 mod db;
+mod e2e;
 
 use std::env;
 use std::path::PathBuf;
@@ -66,6 +67,10 @@ Tasks:
   db status       Check the database is up and all migrations are applied
   db migration    Apply pending migrations (auto-baselines the pg_schema.sql base)
   db migration add <name>  Create a new migration file
+  e2e dashboard [filter]   End-to-end org/project tests against dashboard-server
+                           (needs the compose postgres)
+  e2e collector [filter]   End-to-end ingestion tests through events-collector
+                           into Kafka (needs the compose redpanda)
   ls              List available tasks
   ps              Show this repo's docker compose containers and status
   setup [svc...]  Choose docker compose services to start";
@@ -86,6 +91,7 @@ fn main() {
         Some("ps") => compose::ps(),
         Some("setup") => compose::setup(&args.collect::<Vec<String>>()),
         Some("db") => db::main(args.collect()),
+        Some("e2e") => e2e::main(args.collect()),
         _ => help(),
     }
 }

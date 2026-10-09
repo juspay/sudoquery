@@ -29,7 +29,7 @@ pub fn make_event(org: &str, proj: &str, arrived_at: DateTime<Utc>, seq: u64) ->
         .id(uuid::Uuid::new_v4())
         .name(EVENT_NAME.to_string())
         .org_id(org.to_string())
-        .project_id(Some(proj.to_string()))
+        .project_id(proj.to_string())
         .anon_id(format!("anon-{seq}"))
         .arrived_at(Some(arrived_at))
         .properties(Some(serde_json::json!({ "seq": seq })))
