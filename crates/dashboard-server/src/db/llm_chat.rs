@@ -1,3 +1,4 @@
+use canonical_event::ProjectId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -8,7 +9,7 @@ use uuid::Uuid;
 pub struct LLMChat {
     pub id: Uuid,
     pub user_id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: ProjectId,
     pub title: String,
     pub version: f64,
     pub chat_type: string,

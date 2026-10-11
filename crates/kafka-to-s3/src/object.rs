@@ -34,11 +34,11 @@ pub fn compress(body: &[u8]) -> std::io::Result<Vec<u8>> {
     zstd::stream::encode_all(body, ZSTD_LEVEL)
 }
 
-/// `{S3_PREFIX?}/{org}/{proj}/dt=YYYY-MM-DD/hour=HH/{hash}.jsonl.zst` (D4).
+/// `{S3_PREFIX?}/{org}/{project_id}/dt=YYYY-MM-DD/hour=HH/{hash}.jsonl.zst` (D4).
 pub fn group_object_key(prefix: Option<&str>, group: &GroupKey, hash16: &str) -> String {
     let path = format!(
         "{}/{}/dt={}/hour={:02}/{}.jsonl.zst",
-        group.org, group.proj, group.dt, group.hour, hash16
+        group.org, group.project_id, group.dt, group.hour, hash16
     );
     match prefix {
         Some(prefix) => format!("{prefix}/{path}"),
@@ -114,10 +114,10 @@ mod tests {
         }
     }
 
-    fn group(org: &str, proj: &str, dt: &str, hour: u32) -> GroupKey {
+    fn group(org: &str, project_id: &str, dt: &str, hour: u32) -> GroupKey {
         GroupKey {
             org: org.to_string(),
-            proj: proj.to_string(),
+            project_id: project_id.to_string(),
             dt: dt.to_string(),
             hour,
         }

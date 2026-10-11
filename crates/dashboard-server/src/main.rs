@@ -15,10 +15,12 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 mod clickhouse;
 mod db;
 mod entities;
+mod ids;
 mod keycloak;
 mod middleware;
 mod models;
 mod opensearch;
+mod provisioning;
 mod routes;
 mod state;
 
@@ -93,7 +95,7 @@ async fn get_events_today_count(
     );
     match clickhouse::execute_project_query(
         &s.clickhouse_url,
-        project.id,
+        &project.id,
         &s.clickhouse_project_password,
         &query,
     )
@@ -118,7 +120,7 @@ async fn get_events(
     let query = "SELECT event_name FROM events_v2 GROUP BY event_name";
     match clickhouse::execute_project_query(
         &s.clickhouse_url,
-        project.id,
+        &project.id,
         &s.clickhouse_project_password,
         query,
     )
@@ -163,7 +165,7 @@ async fn get_event_props(
 
     match clickhouse::execute_project_query(
         &s.clickhouse_url,
-        project.id,
+        &project.id,
         &s.clickhouse_project_password,
         &query,
     )
@@ -203,7 +205,7 @@ async fn run_raw_query(
 
     match clickhouse::execute_project_query(
         &s.clickhouse_url,
-        project.id,
+        &project.id,
         &s.clickhouse_project_password,
         trimmed_query,
     )
@@ -232,6 +234,10 @@ fn get_clickhouse_admin_password() -> String {
 
 fn get_clickhouse_project_password() -> String {
     std::env::var("CLICKHOUSE_PROJECT_PASSWORD").unwrap_or_default()
+}
+
+fn get_bind_addr() -> String {
+    std::env::var("DASHBOARD_BIND_ADDR").unwrap_or_else(|_| "0.0.0.0:3000".to_string())
 }
 
 fn get_llm_api_key() -> String {
@@ -311,19 +317,6 @@ async fn chat_completions(Json(req): Json<ChatCompletionRequest>) -> impl IntoRe
     }
 }
 
-async fn run_migrations(pool: &sqlx::PgPool) -> Result<(), sqlx::Error> {
-    let migration = include_str!("../migrations/20260313000000_init.sql");
-
-    for statement in migration.split(';') {
-        let statement = statement.trim();
-        if !statement.is_empty() {
-            sqlx::query(statement).execute(pool).await?;
-        }
-    }
-
-    Ok(())
-}
-
 #[tokio::main]
 async fn main() {
     tracing_subscriber::registry()
@@ -340,6 +333,8 @@ async fn main() {
     let clickhouse_admin_user = get_clickhouse_admin_user();
     let clickhouse_admin_password = get_clickhouse_admin_password();
     let clickhouse_project_password = get_clickhouse_project_password();
+    let provisioning = provisioning::ProvisioningConfig::from_env(get_kafka_broker_url())
+        .unwrap_or_else(|e| panic!("invalid project provisioning configuration: {e}"));
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
@@ -348,8 +343,6 @@ async fn main() {
         .connect(&database_url)
         .await
         .expect("Failed to connect to database");
-
-    // run_migrations(&db_pool).await.expect("Failed to run migrations");
 
     let keycloak_url = std::env::var("KEYCLOAK_URL").expect("KEYCLOAK_URL must be set");
     println!("keycloak_url {}", &keycloak_url);
@@ -398,6 +391,7 @@ async fn main() {
         clickhouse_admin_password,
         clickhouse_project_password,
         opensearch,
+        provisioning,
     };
 
     let api_routes = Router::new()
@@ -626,8 +620,8 @@ async fn main() {
 
     let app = router.layer(cors);
 
-    let addr = "0.0.0.0:3000";
+    let addr = get_bind_addr();
     tracing::info!("Listening on {}", addr);
-    let listener = tokio::net::TcpListener::bind(addr).await.unwrap();
+    let listener = tokio::net::TcpListener::bind(&addr).await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }

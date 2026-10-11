@@ -41,7 +41,7 @@ pub struct DeleteConsoleQuery {
 pub struct ConsoleResponse {
     pub id: String,
     pub user_id: String,
-    pub proj_id: String,
+    pub project_id: String,
     pub name: Option<String>,
     pub console: Option<String>,
     pub created_at: String,
@@ -60,7 +60,7 @@ pub async fn create_console(
     let console = db::create_console(
         &state.db_pool,
         auth_user.user.id,
-        project.id,
+        &project.id,
         req.name.as_deref(),
         req.console.as_deref(),
     )
@@ -87,7 +87,7 @@ pub async fn list_consoles(
     }: ProjectAccess,
 ) -> Result<Json<Vec<ConsoleListItem>>, ConsoleError> {
     let consoles =
-        db::list_consoles_by_user_and_project(&state.db_pool, auth_user.user.id, project.id)
+        db::list_consoles_by_user_and_project(&state.db_pool, auth_user.user.id, &project.id)
             .await
             .map_err(|e| ConsoleError::Database(e.to_string()))?;
 
@@ -179,7 +179,7 @@ fn console_to_response(c: db::UserProjectConsole) -> ConsoleResponse {
     ConsoleResponse {
         id: c.id.to_string(),
         user_id: c.user_id.to_string(),
-        proj_id: c.proj_id.to_string(),
+        project_id: c.project_id.to_string(),
         name: c.name,
         console: c.console,
         created_at: c.created_at.to_rfc3339(),

@@ -1,4 +1,5 @@
 use axum::response::sse::Event;
+use canonical_event::ProjectId;
 use chrono::{Datelike, Utc};
 use once_cell::sync::Lazy;
 use serde_json::{Value, json};
@@ -21,7 +22,7 @@ pub async fn execute_tool(
     name: &str,
     arguments: &str,
     state: &AppState,
-    project_id: Uuid,
+    project_id: &ProjectId,
     tx: &tokio::sync::mpsc::Sender<Result<Event, Infallible>>,
     tool_call_id: &str,
 ) -> Option<Value> {

@@ -13,7 +13,8 @@ describe('Analytics Flow Integration', () => {
     // Reset all state before each test
     Configuration.reset();
     Configuration.setBatchSize(3);
-    Configuration.setTenantId('tenant-1');
+    Configuration.setOrgId('acme-org-1');
+    Configuration.setProjectId('acme-project-1');
     SudoQuery['didInit'] = false;
     jest.clearAllMocks();
     Batcher.reset();

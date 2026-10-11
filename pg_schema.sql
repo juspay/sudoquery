@@ -91,7 +91,7 @@ SET default_table_access_method = heap;
 
 CREATE TABLE public.chats (
     id uuid NOT NULL,
-    project_id uuid NOT NULL,
+    project_id text NOT NULL,
     user_id uuid NOT NULL,
     created_at timestamp with time zone DEFAULT now() NOT NULL,
     title text NOT NULL,
@@ -108,7 +108,7 @@ ALTER TABLE public.chats OWNER TO hyper_analytics_user;
 
 CREATE TABLE public.event_descriptions (
     id uuid NOT NULL,
-    project_id uuid NOT NULL,
+    project_id text NOT NULL,
     event_name text NOT NULL,
     description text NOT NULL,
     created_at timestamp with time zone DEFAULT now(),
@@ -126,7 +126,7 @@ CREATE TABLE public.invitations (
     id uuid NOT NULL,
     email character varying(255) NOT NULL,
     invitation_type public.invitation_type NOT NULL,
-    target_id uuid NOT NULL,
+    target_id text NOT NULL,
     role character varying(50) NOT NULL,
     invited_by uuid NOT NULL,
     status public.invitation_status DEFAULT 'pending'::public.invitation_status NOT NULL,
@@ -144,7 +144,7 @@ ALTER TABLE public.invitations OWNER TO hyper_analytics_user;
 
 CREATE TABLE public.live_dashboards (
     id uuid NOT NULL,
-    project_id uuid NOT NULL,
+    project_id text NOT NULL,
     query text NOT NULL,
     description text NOT NULL,
     chart_config text,
@@ -182,7 +182,7 @@ ALTER TABLE public.messages OWNER TO hyper_analytics_user;
 CREATE TABLE public.organization_memberships (
     id uuid NOT NULL,
     user_id uuid NOT NULL,
-    organization_id uuid NOT NULL,
+    organization_id text NOT NULL,
     role public.org_role DEFAULT 'org_user'::public.org_role NOT NULL,
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now()
@@ -196,7 +196,7 @@ ALTER TABLE public.organization_memberships OWNER TO hyper_analytics_user;
 --
 
 CREATE TABLE public.organizations (
-    id uuid NOT NULL,
+    id text NOT NULL,
     name character varying(255) NOT NULL,
     deleted_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now(),
@@ -213,7 +213,7 @@ ALTER TABLE public.organizations OWNER TO hyper_analytics_user;
 CREATE TABLE public.project_memberships (
     id uuid NOT NULL,
     user_id uuid NOT NULL,
-    project_id uuid NOT NULL,
+    project_id text NOT NULL,
     role public.project_role DEFAULT 'project_user'::public.project_role NOT NULL,
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now()
@@ -228,7 +228,7 @@ ALTER TABLE public.project_memberships OWNER TO hyper_analytics_user;
 
 CREATE TABLE public.project_tokens (
     id uuid NOT NULL,
-    project_id uuid NOT NULL,
+    project_id text NOT NULL,
     token uuid NOT NULL,
     name character varying(255),
     last_used_at timestamp with time zone,
@@ -243,8 +243,8 @@ ALTER TABLE public.project_tokens OWNER TO hyper_analytics_user;
 --
 
 CREATE TABLE public.projects (
-    id uuid NOT NULL,
-    organization_id uuid,
+    id text NOT NULL,
+    organization_id text,
     name character varying(255) NOT NULL,
     deleted_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now(),
@@ -261,7 +261,7 @@ ALTER TABLE public.projects OWNER TO hyper_analytics_user;
 
 CREATE TABLE public.property_descriptions (
     id uuid NOT NULL,
-    project_id uuid NOT NULL,
+    project_id text NOT NULL,
     event_name text NOT NULL,
     property_name text NOT NULL,
     property_type text NOT NULL,
@@ -280,7 +280,7 @@ ALTER TABLE public.property_descriptions OWNER TO hyper_analytics_user;
 CREATE TABLE public.user_project_consoles (
     id uuid NOT NULL,
     user_id uuid NOT NULL,
-    proj_id uuid NOT NULL,
+    project_id text NOT NULL,
     name character varying(255) NOT NULL,
     console text,
     created_at timestamp with time zone DEFAULT CURRENT_TIMESTAMP,
@@ -372,6 +372,14 @@ ALTER TABLE ONLY public.organization_memberships
 
 
 --
+-- Name: organizations organizations_id_slug_check; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+--
+
+ALTER TABLE ONLY public.organizations
+    ADD CONSTRAINT organizations_id_slug_check CHECK (id ~ '^[a-z][a-z0-9-]{4,28}[a-z0-9]$');
+
+
+--
 -- Name: organizations organizations_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
 --
 
@@ -409,6 +417,14 @@ ALTER TABLE ONLY public.project_tokens
 
 ALTER TABLE ONLY public.project_tokens
     ADD CONSTRAINT project_tokens_token_key UNIQUE (token);
+
+
+--
+-- Name: projects projects_id_slug_check; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+--
+
+ALTER TABLE ONLY public.projects
+    ADD CONSTRAINT projects_id_slug_check CHECK (id ~ '^[a-z][a-z0-9-]{4,28}[a-z0-9]$');
 
 
 --
@@ -607,17 +623,17 @@ CREATE INDEX idx_property_descriptions_project_id ON public.property_description
 
 
 --
--- Name: idx_user_proj_consoles_on_all_three; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_user_project_consoles_all_three; Type: INDEX; Schema: public; Owner: hyper_analytics_user
 --
 
-CREATE INDEX idx_user_proj_consoles_on_all_three ON public.user_project_consoles USING btree (id, user_id, proj_id);
+CREATE INDEX idx_user_project_consoles_all_three ON public.user_project_consoles USING btree (id, user_id, project_id);
 
 
 --
--- Name: idx_user_proj_consoles_on_user_and_proj; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_user_project_consoles_user_and_proj; Type: INDEX; Schema: public; Owner: hyper_analytics_user
 --
 
-CREATE INDEX idx_user_proj_consoles_on_user_and_proj ON public.user_project_consoles USING btree (user_id, proj_id);
+CREATE INDEX idx_user_project_consoles_user_and_proj ON public.user_project_consoles USING btree (user_id, project_id);
 
 
 --
@@ -670,14 +686,6 @@ ALTER TABLE ONLY public.chats
 
 ALTER TABLE ONLY public.event_descriptions
     ADD CONSTRAINT event_descriptions_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;
-
-
---
--- Name: user_project_consoles fk_project; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
---
-
-ALTER TABLE ONLY public.user_project_consoles
-    ADD CONSTRAINT fk_project FOREIGN KEY (proj_id) REFERENCES public.projects(id) ON DELETE CASCADE;
 
 
 --
@@ -766,6 +774,14 @@ ALTER TABLE ONLY public.projects
 
 ALTER TABLE ONLY public.property_descriptions
     ADD CONSTRAINT property_descriptions_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;
+
+
+--
+-- Name: user_project_consoles user_project_consoles_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+--
+
+ALTER TABLE ONLY public.user_project_consoles
+    ADD CONSTRAINT user_project_consoles_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;
 
 
 --

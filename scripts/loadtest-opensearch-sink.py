@@ -9,7 +9,7 @@ rebalance timeline and how many writes OpenSearch already had.
 
 Needs the local stack and a release build:
 
-    docker compose -f tests/docker-compose.yml up -d redpanda opensearch opensearch-init
+    cargo xtask setup redpanda opensearch opensearch-init
     cargo build --release -p sink-opensearch
     python3 scripts/loadtest-opensearch-sink.py           # e.g. --events 300000 --partitions 12
 
@@ -24,6 +24,7 @@ import json
 import os
 import random
 import signal
+import string
 import subprocess
 import sys
 import threading
@@ -35,9 +36,22 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+COMPOSE_FILE = str(ROOT / "docker-compose.yml")
 KAFKA = "localhost:19092"
 OPENSEARCH = "http://localhost:9200"
-ORGS = [f"org-{i:02d}" for i in range(20)]
+# Fixed demo bases; each run turns them into slug ids like acme-store-k3x9qa.
+ORG_BASES = [
+    "acme-store", "globex-mart", "initech-pay", "umbrella-shop",
+    "soylent-foods", "hooli-cloud", "vehement-legal", "massive-dynamic",
+    "wonka-candy", "cyberdyne-robotics", "wayne-enterprises", "stark-industries",
+    "pied-piper", "duff-beer", "bluth-company", "dunder-paper",
+    "paper-street-soap", "pawnee-parks", "los-pollos", "bubba-gump",
+]
+PROJECT_BASES = [
+    "web-checkout", "mobile-app", "payments-api", "admin-console",
+    "marketing-site", "data-pipeline", "ios-sdk", "android-sdk",
+    "growth-experiments", "loyalty-program",
+]
 BAD_ORG = "Bad-Org"  # uppercase can't be part of an index name
 BASE_PORT = 9480
 CONSUMED = "sink_records_consumed_total"
@@ -45,9 +59,16 @@ CREATED = 'sink_docs_written_total{result="created"}'
 ALREADY = 'sink_docs_written_total{result="already_written"}'
 
 
+def slug(base, rng):
+    """The base plus 6 random [a-z0-9] chars, matching the slug spec
+    ^[a-z][a-z0-9-]{4,28}[a-z0-9]$ (lowercase, 6-30 chars, safe in an
+    OpenSearch index name)."""
+    return f"{base}-{''.join(rng.choices(string.ascii_lowercase + string.digits, k=6))}"
+
+
 def rpk(*args, stdin=None):
     result = subprocess.run(
-        ["docker", "exec", "-i", "redpanda", "rpk", *args],
+        ["docker", "compose", "-f", COMPOSE_FILE, "exec", "-T", "redpanda", "rpk", *args],
         input=stdin,
         capture_output=True,
         text=True,
@@ -107,7 +128,7 @@ def dead_letter_sources(topic, count):
         sources.append((headers.get("dlq.source.partition"), headers.get("dlq.source.offset")))
 
 
-def make_events(count, bad_ratio, rng):
+def make_events(count, bad_ratio, orgs, projects, rng):
     start = datetime.now(timezone.utc) - timedelta(hours=1)
     events = []
     for i in range(count):
@@ -117,7 +138,8 @@ def make_events(count, bad_ratio, rng):
             "envelop_version": "1.0",
             "id": str(uuid.UUID(int=rng.getrandbits(128), version=4)),
             "name": rng.choice(["page_viewed", "checkout_viewed", "payment_initiated"]),
-            "org_id": BAD_ORG if bad else rng.choice(ORGS),
+            "org_id": BAD_ORG if bad else rng.choice(orgs),
+            "project_id": rng.choice(projects),
             "anon_id": anon,
             "occured_at": (start + timedelta(milliseconds=i)).isoformat().replace("+00:00", "Z"),
             # Properties change shape between events on purpose.
@@ -155,7 +177,7 @@ def write_cac(path, names, port):
 
 [dimensions]
 org_id = {{ position = 1, schema = {{ type = "string" }} }}
-proj_id = {{ position = 2, schema = {{ type = "string" }} }}
+project_id = {{ position = 2, schema = {{ type = "string" }} }}
 """
     )
 
@@ -245,6 +267,8 @@ def main():
 
     run = uuid.uuid4().hex[:8]
     rng = random.Random(args.seed)
+    orgs = [slug(base, rng) for base in ORG_BASES]
+    projects = [slug(base, rng) for base in PROJECT_BASES]
     names = {
         "topic": f"lt-{run}",
         "dlq": f"lt-{run}.dlq",
@@ -258,7 +282,7 @@ def main():
     rpk("topic", "create", names["topic"], "-p", str(args.partitions))
     rpk("topic", "create", names["dlq"], "-p", "1")
 
-    events = make_events(args.events, args.bad, rng)
+    events = make_events(args.events, args.bad, orgs, projects, rng)
     chunks, resent = plan_chunks(events, args.duplicates, 60, rng)
     bad_count = sum(1 for _, _, bad in events if bad)
     sent = sum(len(chunk) for chunk in chunks)
@@ -375,7 +399,7 @@ def main():
     expected_docs = args.events - bad_count
     checks = [
         (f"OpenSearch holds each valid event exactly once: {docs:,} of {expected_docs:,}", docs == expected_docs),
-        (f"one index per org: {len(indexes)} of {len(ORGS)}", len(indexes) == len(ORGS)),
+        (f"one index per org: {len(indexes)} of {len(orgs)}", len(indexes) == len(orgs)),
         (f"each invalid-org event is in the DLQ: {dead_unique:,} of {bad_count:,}", dead_unique == bad_count),
         (f"every offset committed: {uncommitted:,} uncommitted across {len(offsets)} partitions",
          uncommitted == 0 and len(offsets) == args.partitions),
@@ -396,8 +420,8 @@ def main():
         print(f"\nkept: topics {names['topic']} and {names['dlq']}, consumer group {names['group']}, indexes events-lt-{run}-*")
         print("to delete them:")
         print(f"  curl -X DELETE 'localhost:9200/events-lt-{run}-*'")
-        print(f"  docker exec redpanda rpk topic delete {names['topic']} {names['dlq']}")
-        print(f"  docker exec redpanda rpk group delete {names['group']}")
+        print(f"  docker compose exec redpanda rpk topic delete {names['topic']} {names['dlq']}")
+        print(f"  docker compose exec redpanda rpk group delete {names['group']}")
     print(f"logs: {workdir.relative_to(ROOT)}/sink-*.log")
     sys.exit(0 if all(ok for _, ok in checks) else 1)
 

@@ -1,16 +1,19 @@
 use axum::{extract::State, http::StatusCode, response::Json};
+use canonical_event::ProjectId;
 use sea_orm::{ActiveModelTrait, Set};
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
+use std::str::FromStr;
 
 use crate::{
     AppState, clickhouse, db, entities,
     middleware::{AuthUser, OrgAdmin, OrgContext, ProjectAccess, ProjectAdminOrOrgAdmin},
+    provisioning,
 };
 
 // ============ Create Project ============
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateProjectRequest {
     pub name: String,
 }
@@ -32,39 +35,44 @@ pub async fn create_project(
     }: OrgAdmin,
     Json(req): Json<CreateProjectRequest>,
 ) -> Result<(StatusCode, Json<CreateProjectResponse>), ProjectError> {
-    let project = db::create_project(&state.db_pool, Some(organization.id), &req.name)
+    let project = db::create_project(&state.db_pool, Some(&organization.id), &req.name)
         .await
         .map_err(|e| ProjectError::Database(e.to_string()))?;
 
-    // Create ClickHouse user - fail the API if this fails
-    if let Err(e) = clickhouse::create_project_user(
-        &state.clickhouse_admin_url,
-        &state.clickhouse_admin_user,
-        &state.clickhouse_admin_password,
-        &state.clickhouse_project_password,
-        project.id,
-    )
-    .await
-    {
-        // Clean up the project from DB since ClickHouse creation failed
-        if let Err(cleanup_err) = db::soft_delete_project(&state.db_pool, project.id).await {
+    // Create the project's topic, ClickHouse database and ClickHouse user -
+    // fail the API if any step fails.
+    if let Err(e) = provision(&state, &organization.id, &project.id).await {
+        // Remove whatever was created, then the project row. Best effort:
+        // the original error is what the caller needs to see.
+        if let Err(cleanup_err) = provisioning::deprovision_project(
+            &state.provisioning,
+            &clickhouse_admin(&state),
+            &organization.id,
+            &project.id,
+        )
+        .await
+        {
             tracing::error!(
-                "Failed to cleanup project {} after ClickHouse error: {}",
+                "Failed to remove infrastructure of project {} after provisioning error: {}",
                 project.id,
                 cleanup_err
             );
         }
-        return Err(ProjectError::ClickHouse(format!(
-            "Failed to create ClickHouse user: {}",
-            e
-        )));
+        if let Err(cleanup_err) = db::soft_delete_project(&state.db_pool, &project.id).await {
+            tracing::error!(
+                "Failed to cleanup project {} after provisioning error: {}",
+                project.id,
+                cleanup_err
+            );
+        }
+        return Err(e);
     }
 
     // Add the creator as project admin
     db::add_user_to_project(
         &state.db_pool,
         auth_user.user.id,
-        project.id,
+        &project.id,
         &db::ProjectRole::ProjectAdmin,
     )
     .await
@@ -98,9 +106,10 @@ pub async fn list_projects(
     OrgContext { organization, .. }: OrgContext,
     AuthUser { user, .. }: AuthUser,
 ) -> Result<Json<Vec<ProjectResponse>>, ProjectError> {
-    let projects = db::list_user_projects_in_organization(&state.db_pool, user.id, organization.id)
-        .await
-        .map_err(|e| ProjectError::Database(e.to_string()))?;
+    let projects =
+        db::list_user_projects_in_organization(&state.db_pool, user.id, &organization.id)
+            .await
+            .map_err(|e| ProjectError::Database(e.to_string()))?;
 
     let response: Vec<ProjectResponse> = projects
         .into_iter()
@@ -128,7 +137,7 @@ pub async fn list_my_projects(
 
     let mut projects = Vec::new();
     for project_id in project_ids {
-        if let Some(project) = db::get_project_by_id(&state.db_pool, project_id)
+        if let Some(project) = db::get_project_by_id(&state.db_pool, &project_id)
             .await
             .map_err(|e| ProjectError::Database(e.to_string()))?
         {
@@ -233,7 +242,7 @@ pub async fn get_project_tokens(
     State(state): State<AppState>,
     ProjectAccess { project, .. }: ProjectAccess,
 ) -> Result<Json<Vec<ProjectTokenResponse>>, ProjectError> {
-    let tokens = db::list_tokens_by_project(&state.db_pool, project.id)
+    let tokens = db::list_tokens_by_project(&state.db_pool, &project.id)
         .await
         .map_err(|e| ProjectError::Database(e.to_string()))?;
 
@@ -263,24 +272,69 @@ pub async fn delete_project(
         .and_then(|v| v.to_str().ok())
         .ok_or(ProjectError::InvalidProjectId)?;
 
-    let project_uuid =
-        Uuid::parse_str(project_id_str).map_err(|_| ProjectError::InvalidProjectId)?;
+    let project_id =
+        ProjectId::from_str(project_id_str).map_err(|_| ProjectError::InvalidProjectId)?;
 
     // Verify project belongs to organization
-    let project = db::get_project_by_id(&state.db_pool, project_uuid)
+    let project = db::get_project_by_id(&state.db_pool, &project_id)
         .await
         .map_err(|e| ProjectError::Database(e.to_string()))?
         .ok_or(ProjectError::NotFound)?;
 
-    if project.organization_id != Some(organization.id) {
+    if project.organization_id.as_ref() != Some(&organization.id) {
         return Err(ProjectError::NotFound);
     }
 
-    db::soft_delete_project(&state.db_pool, project_uuid)
+    // Drop the project's topic, database and ClickHouse user before the row,
+    // so a failed drop leaves the project in place to delete again.
+    provisioning::deprovision_project(
+        &state.provisioning,
+        &clickhouse_admin(&state),
+        &organization.id,
+        &project_id,
+    )
+    .await
+    .map_err(|e| ProjectError::ClickHouse(format!("Failed to delete project data: {e}")))?;
+
+    db::soft_delete_project(&state.db_pool, &project_id)
         .await
         .map_err(|e| ProjectError::Database(e.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
+}
+
+fn clickhouse_admin(state: &AppState) -> provisioning::ClickHouseAdmin<'_> {
+    provisioning::ClickHouseAdmin {
+        url: &state.clickhouse_admin_url,
+        user: &state.clickhouse_admin_user,
+        password: &state.clickhouse_admin_password,
+    }
+}
+
+/// Topic and database first, user last, so the user never sees a
+/// half-built database.
+async fn provision(
+    state: &AppState,
+    org_id: &canonical_event::OrgId,
+    project_id: &ProjectId,
+) -> Result<(), ProjectError> {
+    provisioning::provision_project(
+        &state.provisioning,
+        &clickhouse_admin(state),
+        org_id,
+        project_id,
+    )
+    .await
+    .map_err(|e| ProjectError::ClickHouse(format!("Failed to provision project: {e}")))?;
+    clickhouse::create_project_user(
+        &state.clickhouse_admin_url,
+        &state.clickhouse_admin_user,
+        &state.clickhouse_admin_password,
+        &state.clickhouse_project_password,
+        project_id,
+    )
+    .await
+    .map_err(|e| ProjectError::ClickHouse(format!("Failed to create ClickHouse user: {e}")))
 }
 
 // ============ Error Types ============

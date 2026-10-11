@@ -94,7 +94,9 @@ mod tests {
     use super::*;
 
     fn rows(count: usize) -> Vec<(usize, Vec<Value>)> {
-        (0..count).map(|n| (n, vec![json!(n), json!("id")])).collect()
+        (0..count)
+            .map(|n| (n, vec![json!(n), json!("id")]))
+            .collect()
     }
 
     #[test]

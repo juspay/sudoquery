@@ -92,7 +92,7 @@ pub(crate) async fn wait_for_database(url: &str) -> PgConnection {
             Ok(conn) => return conn,
             Err(err) if Instant::now() >= deadline => {
                 eprintln!("database: down ({err})");
-                eprintln!("hint: start the dev database with `sudo docker compose up -d postgres`");
+                eprintln!("hint: start the dev database with `cargo xtask setup postgres`");
                 std::process::exit(1);
             }
             Err(_) => sleep(RETRY_INTERVAL).await,

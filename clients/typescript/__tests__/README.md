@@ -152,11 +152,11 @@ The following bugs are documented in the test suite (tests will fail on these bu
 **Impact**: Runtime error when accessing empty array
 **Test**: `Batcher.test.ts` - "BUG: .at(-1) may fail if batches array is empty"
 
-### 4. SudoQuery.ts - Collector Tenant Configuration
+### 4. SudoQuery.ts - Collector Org Configuration
 **Location**: `src/SudoQuery.ts`
-**Issue**: Collector uploads require a tenant id in both the event payload and request headers
-**Impact**: Tracking fails early when `tenantId` is not configured
-**Test**: `SudoQuery.test.ts` - "should throw when tenantId is missing"
+**Issue**: Collector uploads require an org id in both the event payload and request headers
+**Impact**: Tracking fails early when `orgId` is not configured
+**Test**: `SudoQuery.test.ts` - "should throw when orgId is missing"
 
 ### 5. Pusher.ts:15 - Network Call Not Implemented
 **Location**: `src/Pusher.ts:15`

@@ -1,3 +1,4 @@
+use canonical_event::ProjectId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -6,7 +7,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct EventDescription {
     pub id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: ProjectId,
     pub event_name: String,
     pub description: String,
     pub created_at: DateTime<Utc>,
@@ -16,7 +17,7 @@ pub struct EventDescription {
 /// Create or update event description (upsert)
 pub async fn upsert_event_description(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
     event_name: &str,
     description: &str,
 ) -> Result<EventDescription, sqlx::Error> {
@@ -43,7 +44,7 @@ pub async fn upsert_event_description(
 /// Get a single event description by project_id and event_name
 pub async fn get_event_description(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
     event_name: &str,
 ) -> Result<Option<EventDescription>, sqlx::Error> {
     sqlx::query_as::<_, EventDescription>(
@@ -62,7 +63,7 @@ pub async fn get_event_description(
 /// List all event descriptions for a project
 pub async fn list_event_descriptions_by_project(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<Vec<EventDescription>, sqlx::Error> {
     sqlx::query_as::<_, EventDescription>(
         r#"
@@ -80,7 +81,7 @@ pub async fn list_event_descriptions_by_project(
 /// Delete an event description
 pub async fn delete_event_description(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
     event_name: &str,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(

@@ -41,11 +41,11 @@ var _Configuration = class _Configuration {
   static get headers() {
     return _Configuration._headers;
   }
-  static get tenantId() {
-    return _Configuration._tenantId;
+  static get orgId() {
+    return _Configuration._orgId;
   }
-  static get workspaceId() {
-    return _Configuration._workspaceId;
+  static get projectId() {
+    return _Configuration._projectId;
   }
   static get source() {
     return _Configuration._source;
@@ -68,11 +68,11 @@ var _Configuration = class _Configuration {
   static setHeaders(value) {
     _Configuration._headers = value;
   }
-  static setTenantId(value) {
-    _Configuration._tenantId = value;
+  static setOrgId(value) {
+    _Configuration._orgId = value;
   }
-  static setWorkspaceId(value) {
-    _Configuration._workspaceId = value;
+  static setProjectId(value) {
+    _Configuration._projectId = value;
   }
   static setSource(value) {
     _Configuration._source = value;
@@ -86,8 +86,8 @@ var _Configuration = class _Configuration {
     _Configuration._endpoint = _Configuration.DEFAULT_ENDPOINT;
     _Configuration._token = null;
     _Configuration._headers = {};
-    _Configuration._tenantId = null;
-    _Configuration._workspaceId = null;
+    _Configuration._orgId = null;
+    _Configuration._projectId = null;
     _Configuration._source = _Configuration.DEFAULT_SOURCE;
     _Configuration._sessionId = null;
   }
@@ -99,8 +99,8 @@ _Configuration._flushInterval = null;
 _Configuration._endpoint = _Configuration.DEFAULT_ENDPOINT;
 _Configuration._token = null;
 _Configuration._headers = {};
-_Configuration._tenantId = null;
-_Configuration._workspaceId = null;
+_Configuration._orgId = null;
+_Configuration._projectId = null;
 _Configuration._source = _Configuration.DEFAULT_SOURCE;
 _Configuration._sessionId = null;
 var Configuration = _Configuration;
@@ -228,20 +228,22 @@ var Pusher = class {
     }
   }
   static buildHeaders(payload) {
-    const tenantId = Configuration.tenantId ?? payload.events[0]?.org_id ?? null;
-    if (!tenantId) {
-      console.error("Cannot send analytics batch: tenantId is required by the collector.");
+    const orgId = Configuration.orgId ?? payload.events[0]?.org_id ?? null;
+    if (!orgId) {
+      console.error("Cannot send analytics batch: orgId is required by the collector.");
       return null;
     }
-    const workspaceId = Configuration.workspaceId ?? payload.events[0]?.proj_id ?? null;
+    const projectId = Configuration.projectId ?? payload.events[0]?.project_id ?? null;
+    if (!projectId) {
+      console.error("Cannot send analytics batch: projectId is required by the collector.");
+      return null;
+    }
     const headers = {
       "Content-Type": "application/json",
       ...Configuration.headers,
-      "x-tenant-id": tenantId
+      "x-org-id": orgId,
+      "x-project-id": projectId
     };
-    if (workspaceId) {
-      headers["x-workspace-id"] = workspaceId;
-    }
     if (Configuration.token) {
       headers.Authorization = `Bearer ${Configuration.token}`;
     }
@@ -423,11 +425,13 @@ var SudoQuery = class {
     if (config?.headers !== void 0) {
       Configuration.setHeaders(config.headers);
     }
-    if (config?.tenantId !== void 0) {
-      Configuration.setTenantId(config.tenantId);
+    if (config?.orgId !== void 0) {
+      warnIfNotSlug("orgId", config.orgId);
+      Configuration.setOrgId(config.orgId);
     }
-    if (config?.workspaceId !== void 0) {
-      Configuration.setWorkspaceId(config.workspaceId);
+    if (config?.projectId !== void 0) {
+      warnIfNotSlug("projectId", config.projectId);
+      Configuration.setProjectId(config.projectId);
     }
     if (config?.source !== void 0) {
       Configuration.setSource(config.source);
@@ -518,9 +522,13 @@ var SudoQuery = class {
   }
   static track(eventName, properties) {
     const props = properties ?? {};
-    const tenantId = Configuration.tenantId;
-    if (!tenantId || tenantId.trim().length === 0) {
-      throw new Error("tenantId is required before tracking events");
+    const orgId = Configuration.orgId;
+    if (!orgId || orgId.trim().length === 0) {
+      throw new Error("orgId is required before tracking events");
+    }
+    const projectId = Configuration.projectId;
+    if (!projectId || projectId.trim().length === 0) {
+      throw new Error("projectId is required before tracking events");
     }
     const superProperties = SuperProperties.getSuperProperties();
     const mergedProperties = mergeProperties(props, superProperties);
@@ -528,8 +536,8 @@ var SudoQuery = class {
       envelop_version: "1.0",
       id: generateUuid(),
       name: eventName.toString(),
-      org_id: tenantId,
-      proj_id: Configuration.workspaceId,
+      org_id: orgId,
+      project_id: projectId,
       session_id: Configuration.sessionId ?? getSessionId(),
       anon_id: AnonymousId.getOrCreate(),
       actor_id: this.currentUser,
@@ -554,6 +562,15 @@ function mergeProperties(properties, defaults) {
     };
   }
   return properties;
+}
+var SLUG_PATTERN = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+function warnIfNotSlug(field, value) {
+  if (value === null || SLUG_PATTERN.test(value)) {
+    return;
+  }
+  console.warn(
+    `SudoQuery: config option "${field}" value "${value}" does not match the expected server-generated slug shape /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/ (e.g. "acme-store-k3x9qa"); the collector may reject events carrying it.`
+  );
 }
 function isJsonRecord(value) {
   return typeof value === "object" && value !== null && !Array.isArray(value);

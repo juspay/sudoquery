@@ -1,6 +1,7 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { projectService, type Project } from '../services/projectService';
 import { useOrganization } from './OrganizationContext';
+import { PROJECT_STORAGE_KEY } from '../config/storage';
 
 interface ProjectContextType {
   projects: Project[];
@@ -13,8 +14,6 @@ interface ProjectContextType {
 }
 
 const ProjectContext = createContext<ProjectContextType | null>(null);
-
-const STORAGE_KEY = 'current_project_id';
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const { currentOrganization } = useOrganization();
@@ -37,7 +36,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       const list = await projectService.list(organizationId);
       setProjects(list);
 
-      const storedId = localStorage.getItem(STORAGE_KEY);
+      const storedId = localStorage.getItem(PROJECT_STORAGE_KEY);
       if (storedId) {
         const stored = list.find(p => p.id === storedId);
         if (stored) {
@@ -48,7 +47,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
 
       if (list.length > 0) {
         setCurrentProject(list[0]);
-        localStorage.setItem(STORAGE_KEY, list[0].id);
+        localStorage.setItem(PROJECT_STORAGE_KEY, list[0].id);
       } else {
         setCurrentProject(null);
       }
@@ -62,9 +61,9 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
   const handleSetCurrentProject = (project: Project | null) => {
     setCurrentProject(project);
     if (project) {
-      localStorage.setItem(STORAGE_KEY, project.id);
+      localStorage.setItem(PROJECT_STORAGE_KEY, project.id);
     } else {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(PROJECT_STORAGE_KEY);
     }
   };
 

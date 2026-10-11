@@ -4,10 +4,10 @@ use axum::{
 };
 
 use crate::{
+    AppState,
     middleware::ProjectAccess,
     opensearch::{CursorPage, Event, QueryRequest, SessionSummary, SortOrder},
-    routes::search::{project_scope, SearchError},
-    AppState,
+    routes::search::{SearchError, project_scope},
 };
 
 // ============ List Sessions ============

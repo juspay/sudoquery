@@ -105,7 +105,7 @@ pub async fn save_live_dashboard_from_tool_call(
     // 9. Check if dashboard already exists with this creation_source
     let creation_source = format!("{}-{}", req.message_id, req.tool_call_id);
     if let Some(existing) =
-        db::live_dashboard::get_dashboard_by_source(&state.db_pool, project.id, &creation_source)
+        db::live_dashboard::get_dashboard_by_source(&state.db_pool, &project.id, &creation_source)
             .await
             .map_err(|e| SaveDashboardError::Database(e.to_string()))?
     {
@@ -115,7 +115,7 @@ pub async fn save_live_dashboard_from_tool_call(
     // 10. Create the dashboard
     let dashboard = db::live_dashboard::create_dashboard(
         &state.db_pool,
-        project.id,
+        &project.id,
         &query,
         description,
         title,

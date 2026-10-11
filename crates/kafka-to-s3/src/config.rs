@@ -7,6 +7,9 @@ use std::time::Duration;
 const DEFAULT_BATCH_MAX_EVENTS: usize = 10_000;
 /// Default `FLUSH_INTERVAL_SECS` (window length).
 const DEFAULT_FLUSH_INTERVAL_SECS: u64 = 60;
+/// Default `KAFKA_METADATA_REFRESH_SECS`: how soon a topic pattern picks up
+/// a newly created topic (librdkafka's own default is 5 minutes).
+const DEFAULT_METADATA_REFRESH_SECS: u64 = 30;
 
 /// Boot configuration, parsed from the environment.
 #[derive(Debug, Clone)]
@@ -14,6 +17,7 @@ pub struct Config {
     pub kafka_bootstrap_servers: String,
     pub kafka_topics: Vec<String>,
     pub kafka_group_id: String,
+    pub kafka_metadata_refresh: Duration,
     pub s3_bucket: String,
     pub s3_prefix: Option<String>,
     pub s3_endpoint: Option<String>,
@@ -63,6 +67,10 @@ impl Config {
         let kafka_bootstrap_servers = required(&value, "KAFKA_BOOTSTRAP_SERVERS")?;
         let kafka_topics = parse_topics(&required(&value, "KAFKA_TOPICS")?)?;
         let kafka_group_id = required(&value, "KAFKA_GROUP_ID")?;
+        let metadata_refresh_secs = match value("KAFKA_METADATA_REFRESH_SECS") {
+            Some(raw) => parse_positive("KAFKA_METADATA_REFRESH_SECS", &raw)?,
+            None => DEFAULT_METADATA_REFRESH_SECS,
+        };
         let s3_bucket = required(&value, "S3_BUCKET")?;
         let s3_prefix = value("S3_PREFIX")
             .map(|prefix| prefix.trim_matches('/').to_string())
@@ -86,6 +94,7 @@ impl Config {
             kafka_bootstrap_servers,
             kafka_topics,
             kafka_group_id,
+            kafka_metadata_refresh: Duration::from_secs(metadata_refresh_secs),
             s3_bucket,
             s3_prefix,
             s3_endpoint,
@@ -187,6 +196,7 @@ mod tests {
             ("KAFKA_BOOTSTRAP_SERVERS", "redpanda:9092".to_string()),
             ("KAFKA_TOPICS", "events , other_events".to_string()),
             ("KAFKA_GROUP_ID", "archiver-7".to_string()),
+            ("KAFKA_METADATA_REFRESH_SECS", "5".to_string()),
             ("S3_BUCKET", "bucket-x".to_string()),
             ("S3_PREFIX", "env=prod".to_string()),
             ("S3_ENDPOINT", "http://localhost:9000".to_string()),
@@ -200,6 +210,7 @@ mod tests {
         assert_eq!(config.kafka_bootstrap_servers, "redpanda:9092");
         assert_eq!(config.kafka_topics, vec!["events", "other_events"]);
         assert_eq!(config.kafka_group_id, "archiver-7");
+        assert_eq!(config.kafka_metadata_refresh, Duration::from_secs(5));
         assert_eq!(config.s3_bucket, "bucket-x");
         assert_eq!(config.s3_prefix.as_deref(), Some("env=prod"));
         assert_eq!(config.s3_endpoint.as_deref(), Some("http://localhost:9000"));
@@ -218,7 +229,18 @@ mod tests {
         assert!(!config.s3_force_path_style);
         assert_eq!(config.batch_max_events, 10_000);
         assert_eq!(config.flush_interval, Duration::from_secs(60));
+        assert_eq!(config.kafka_metadata_refresh, Duration::from_secs(30));
         assert_eq!(config.source_id, None);
+    }
+
+    #[test]
+    fn topic_patterns_pass_through_verbatim() {
+        let mut pairs = required_env();
+        pairs.retain(|(name, _)| *name != "KAFKA_TOPICS");
+        pairs.push(("KAFKA_TOPICS", r"^events\..*".to_string()));
+
+        let config = parse(&pairs).unwrap();
+        assert_eq!(config.kafka_topics, vec![r"^events\..*"]);
     }
 
     #[test]

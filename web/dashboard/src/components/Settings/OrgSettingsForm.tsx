@@ -3,6 +3,7 @@ import { Box, Typography, TextField, Button, Alert } from '@mui/material';
 import { useOrganization } from '../../contexts/OrganizationContext';
 import { organizationService } from '../../services/organizationService';
 import { useToast } from '../../contexts/ToastContext';
+import { CopyableId } from '../shared/CopyableId';
 import { colorInk, colorCream2 } from '../../theme/tokens';
 
 export function OrgSettingsForm() {
@@ -51,6 +52,12 @@ export function OrgSettingsForm() {
           disabled={loading}
           fullWidth
           helperText="This is your company or team name."
+        />
+
+        <CopyableId
+          label="Organization ID"
+          value={currentOrganization.id}
+          helperText="Server-generated slug that identifies your organization in API calls. It cannot be changed."
         />
 
         <Box sx={{ display: 'flex', justifyContent: 'flex-end', mt: 2 }}>

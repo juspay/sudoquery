@@ -13,8 +13,8 @@ export interface SudoQueryConfig {
   endpoint?: string;
   token?: string;
   headers?: Record<string, string>;
-  tenantId?: string | null;
-  workspaceId?: string | null;
+  orgId?: string | null;
+  projectId?: string | null;
   source?: string | null;
   sessionId?: string | null;
 }
@@ -48,12 +48,14 @@ class SudoQuery {
       Configuration.setHeaders(config.headers);
     }
 
-    if (config?.tenantId !== undefined) {
-      Configuration.setTenantId(config.tenantId);
+    if (config?.orgId !== undefined) {
+      warnIfNotSlug("orgId", config.orgId);
+      Configuration.setOrgId(config.orgId);
     }
 
-    if (config?.workspaceId !== undefined) {
-      Configuration.setWorkspaceId(config.workspaceId);
+    if (config?.projectId !== undefined) {
+      warnIfNotSlug("projectId", config.projectId);
+      Configuration.setProjectId(config.projectId);
     }
 
     if (config?.source !== undefined) {
@@ -162,9 +164,13 @@ class SudoQuery {
 
   static track(eventName: string, properties?: JSONSerializable): void {
     const props = properties ?? {};
-    const tenantId = Configuration.tenantId;
-    if (!tenantId || tenantId.trim().length === 0) {
-      throw new Error("tenantId is required before tracking events");
+    const orgId = Configuration.orgId;
+    if (!orgId || orgId.trim().length === 0) {
+      throw new Error("orgId is required before tracking events");
+    }
+    const projectId = Configuration.projectId;
+    if (!projectId || projectId.trim().length === 0) {
+      throw new Error("projectId is required before tracking events");
     }
 
     const superProperties = SuperProperties.getSuperProperties();
@@ -174,8 +180,8 @@ class SudoQuery {
       envelop_version: "1.0",
       id: generateUuid(),
       name: eventName.toString(),
-      org_id: tenantId,
-      proj_id: Configuration.workspaceId,
+      org_id: orgId,
+      project_id: projectId,
       session_id: Configuration.sessionId ?? getSessionId(),
       anon_id: AnonymousId.getOrCreate(),
       actor_id: this.currentUser,
@@ -203,6 +209,25 @@ function mergeProperties(
   }
 
   return properties;
+}
+
+const SLUG_PATTERN = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
+
+/**
+ * Org and project ids are server-generated slugs (e.g. "acme-store-k3x9qa").
+ * Warn — never throw — when a provided id deviates from that shape so the
+ * misconfiguration is visible without breaking the host application.
+ */
+function warnIfNotSlug(field: "orgId" | "projectId", value: string | null): void {
+  if (value === null || SLUG_PATTERN.test(value)) {
+    return;
+  }
+
+  console.warn(
+    `SudoQuery: config option "${field}" value "${value}" does not match the expected ` +
+      `server-generated slug shape /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/ ` +
+      `(e.g. "acme-store-k3x9qa"); the collector may reject events carrying it.`,
+  );
 }
 
 function isJsonRecord(value: JSONSerializable): value is Record<string, JSONSerializable> {

@@ -1,0 +1,1045 @@
+//! Org and project creation against a running dashboard-server, backed by
+//! the compose Postgres, Redpanda and ClickHouse (only the identity provider
+//! is a stand-in).
+//!
+//! Project creation provisions a Kafka topic and a ClickHouse database per
+//! project. The server runs with a per-run topic template, and every
+//! project database, user and topic the run created is dropped afterwards.
+//! A second server instance with a wrong ClickHouse admin password produces
+//! real provisioning failures.
+
+use std::time::Duration;
+
+use anyhow::{Context, bail, ensure};
+use canonical_event::is_valid_slug;
+use serde_json::{Value, json};
+use sqlx::PgPool;
+
+use super::clickhouse::{ClickHouse, quote};
+use super::db::TestDb;
+use super::kafka::Kafka;
+use super::mock::{Mock, TestUser};
+use super::server::Service;
+use super::{Http, Response, run_cases, select};
+
+const PACKAGE: &str = "hyper-analytics-dashboard-server";
+
+/// Length of the random suffix appended to every generated slug.
+const SUFFIX_LEN: usize = 6;
+/// Password the server gives every project's ClickHouse user.
+const PROJECT_PASSWORD: &str = "e2e-project-password";
+/// Every object `ckh/project.sql` creates in a project's database.
+const PROJECT_OBJECTS: [&str; 7] = [
+    "event_schema_catalog",
+    "event_schema_catalog_from_events_mv",
+    "events_kafka",
+    "events_v2",
+    "events_v2_mv",
+    "user_events_v2",
+    "user_events_v2_mv",
+];
+/// The tables a project's ClickHouse user may read.
+const PROJECT_TABLES: [&str; 3] = ["event_schema_catalog", "events_v2", "user_events_v2"];
+/// How long an event may take from the project topic to its tables.
+const INGEST_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Everything a dashboard case can touch: the running servers, their
+/// database, Kafka, ClickHouse and the dummy OIDC provider.
+pub(crate) struct Ctx {
+    http: Http,
+    /// A server whose ClickHouse admin password is wrong, so provisioning
+    /// fails after the topic was created.
+    broken_http: Http,
+    pool: PgPool,
+    mock: Mock,
+    kafka: Kafka,
+    clickhouse: ClickHouse,
+    /// Prefix of every project topic the servers create in this run.
+    topic_prefix: String,
+}
+
+impl Ctx {
+    /// A fresh user with a unique OIDC subject.
+    fn user(&self, name: &str) -> TestUser {
+        TestUser::new(name)
+    }
+
+    /// A valid access token for `user`, signed by the published key.
+    fn token(&self, user: &TestUser) -> String {
+        self.mock.token(user)
+    }
+
+    async fn post(
+        &self,
+        path: &str,
+        token: Option<&str>,
+        headers: &[(&str, &str)],
+        body: Value,
+    ) -> anyhow::Result<Response> {
+        self.http.post(path, token, headers, body).await
+    }
+
+    async fn get(
+        &self,
+        path: &str,
+        token: Option<&str>,
+        headers: &[(&str, &str)],
+    ) -> anyhow::Result<Response> {
+        self.http.get(path, token, headers).await
+    }
+
+    /// The topic the server creates for `org_id`/`project_id`.
+    fn topic(&self, org_id: &str, project_id: &str) -> String {
+        format!("{}.{org_id}.{project_id}", self.topic_prefix)
+    }
+}
+
+/// Builds dashboard-server, creates a throwaway database, runs the selected
+/// cases and drops the database and everything provisioned for its projects.
+/// Returns whether every case passed.
+pub(crate) async fn run(filter: Option<&str>) -> anyhow::Result<bool> {
+    let cases = select(CASES, filter)?;
+
+    // Build first: a failed build exits the process, which must not leak a database.
+    Service::build(PACKAGE);
+    let kafka = Kafka::connect().await?;
+    let clickhouse = ClickHouse::connect().await?;
+    let db = TestDb::create().await?;
+    let outcome = run_with_db(&db, kafka, clickhouse, &cases).await;
+    db.drop_database().await?;
+    outcome
+}
+
+async fn run_with_db(
+    db: &TestDb,
+    kafka: Kafka,
+    clickhouse: ClickHouse,
+    cases: &[&super::Case<Ctx>],
+) -> anyhow::Result<bool> {
+    let topic_prefix = format!(
+        "e2e-dashboard-{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..8]
+    );
+    let mock = Mock::start().await?;
+    let env = |admin_password: &str| {
+        vec![
+            ("DATABASE_URL", db.url.clone()),
+            ("KEYCLOAK_URL", mock.keycloak_url().to_owned()),
+            ("KEYCLOAK_REALM", super::mock::REALM.to_owned()),
+            ("KEYCLOAK_ADMIN_USER", "e2e-admin".to_owned()),
+            ("KEYCLOAK_ADMIN_PASS", "e2e-admin".to_owned()),
+            ("CLICKHOUSE_URL", clickhouse.url().to_owned()),
+            ("CLICKHOUSE_ADMIN_URL", clickhouse.url().to_owned()),
+            ("CLICKHOUSE_ADMIN_USER", clickhouse.user().to_owned()),
+            ("CLICKHOUSE_ADMIN_PASSWORD", admin_password.to_owned()),
+            ("CLICKHOUSE_PROJECT_PASSWORD", PROJECT_PASSWORD.to_owned()),
+            (
+                "CLICKHOUSE_KAFKA_BROKERS",
+                clickhouse.kafka_brokers().to_owned(),
+            ),
+            ("KAFKA_BROKER_URL", kafka.bootstrap_servers().to_owned()),
+            (
+                "PROJECT_TOPIC_TEMPLATE",
+                format!("{topic_prefix}.{{org_id}}.{{project_id}}"),
+            ),
+            ("RUST_LOG", "warn".to_owned()),
+        ]
+    };
+    let server = Service::start(
+        PACKAGE,
+        "DASHBOARD_BIND_ADDR",
+        None,
+        &env(clickhouse.password()),
+    )
+    .await?;
+    let broken = Service::start(
+        PACKAGE,
+        "DASHBOARD_BIND_ADDR",
+        None,
+        &env("e2e-wrong-password"),
+    )
+    .await?;
+    let ctx = Ctx {
+        http: Http::new(format!("{}/api", server.base_url())),
+        broken_http: Http::new(format!("{}/api", broken.base_url())),
+        pool: db.pool.clone(),
+        mock,
+        kafka,
+        clickhouse,
+        topic_prefix,
+    };
+
+    let passed = run_cases(
+        &ctx,
+        cases,
+        |_| {},
+        || {
+            server.print_log_tail();
+            broken.print_log_tail();
+        },
+    )
+    .await;
+    // Databases first: dropping them stops ClickHouse consuming the topics.
+    let cleanup = drop_project_databases(&ctx).await;
+    let topics = ctx.kafka.topics_with_prefix(&ctx.topic_prefix).await?;
+    ctx.kafka.adopt(topics);
+    ctx.kafka.delete_created().await?;
+    cleanup?;
+    Ok(passed)
+}
+
+/// Drops the ClickHouse database and user of every project this run's
+/// Postgres database knows, deleted or not.
+async fn drop_project_databases(ctx: &Ctx) -> anyhow::Result<()> {
+    let projects: Vec<String> = sqlx::query_scalar("SELECT id FROM projects")
+        .fetch_all(&ctx.pool)
+        .await?;
+    for project_id in projects {
+        ctx.clickhouse
+            .query(&format!("DROP DATABASE IF EXISTS `{project_id}` SYNC"))
+            .await?;
+        ctx.clickhouse
+            .query(&format!("DROP USER IF EXISTS {}", quote(&project_id)))
+            .await?;
+    }
+    Ok(())
+}
+
+cases![Ctx:
+    org_creation_returns_slug_and_admin_membership,
+    org_ids_are_slugified_from_names,
+    org_same_name_gets_distinct_ids,
+    org_rejects_client_supplied_id,
+    org_creation_requires_valid_token,
+    project_creation_provisions_topic_database_and_user,
+    project_creation_requires_org_admin,
+    project_creation_validates_org_header,
+    project_creation_rolls_back_when_clickhouse_fails,
+    project_rejects_client_supplied_id,
+    project_deletion_drops_topic_database_and_user,
+    project_queries_target_the_project_database,
+];
+
+// ============ Organizations ============
+
+async fn org_creation_returns_slug_and_admin_membership(ctx: &Ctx) -> anyhow::Result<()> {
+    let user = ctx.user("Alice Admin");
+    let token = ctx.token(&user);
+
+    let response = ctx
+        .post(
+            "/organizations",
+            Some(&token),
+            &[],
+            json!({ "name": "Acme Corp" }),
+        )
+        .await?;
+    expect_status(&response, 201)?;
+    let body = response.json()?;
+    let org_id = str_field(&body, "id")?;
+    expect_generated_slug(org_id, "acme-corp")?;
+    ensure!(body["name"] == "Acme Corp", "unexpected name in {body}");
+
+    let name: String = sqlx::query_scalar("SELECT name FROM organizations WHERE id = $1")
+        .bind(org_id)
+        .fetch_one(&ctx.pool)
+        .await
+        .context("organization row missing")?;
+    ensure!(name == "Acme Corp", "stored name is {name:?}");
+
+    let users: i64 = sqlx::query_scalar("SELECT count(*) FROM users WHERE keycloak_user_id = $1")
+        .bind(&user.sub)
+        .fetch_one(&ctx.pool)
+        .await?;
+    ensure!(
+        users == 1,
+        "expected the token's user to be created once, found {users}"
+    );
+
+    let role = org_role(ctx, &user.sub, org_id).await?;
+    ensure!(
+        role.as_deref() == Some("org_admin"),
+        "creator role is {role:?}"
+    );
+
+    let mine = ctx.get("/my/organizations", Some(&token), &[]).await?;
+    expect_status(&mine, 200)?;
+    let mine = mine.json()?;
+    let listed = mine
+        .as_array()
+        .context("/my/organizations is not an array")?
+        .iter()
+        .find(|org| org["id"] == org_id)
+        .with_context(|| format!("{org_id} missing from /my/organizations: {mine}"))?;
+    ensure!(
+        listed["access_level"] == "org_admin",
+        "unexpected listing {listed}"
+    );
+    Ok(())
+}
+
+async fn org_ids_are_slugified_from_names(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Slug Tester"));
+    let long_name = "A very long organization name that keeps going on and on";
+    for (name, base) in [
+        ("Café Ñandú", "cafe-nandu"),
+        ("  Hello,   World!  ", "hello-world"),
+        ("42 Labs", "labs"),
+        ("!!!", "org"),
+        (long_name, "a-very-long-organizatio"),
+    ] {
+        let org_id = create_org(ctx, &token, name).await?;
+        expect_generated_slug(&org_id, base).with_context(|| format!("name {name:?}"))?;
+    }
+    Ok(())
+}
+
+async fn org_same_name_gets_distinct_ids(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Twin Maker"));
+    let first = create_org(ctx, &token, "Twin Org").await?;
+    let second = create_org(ctx, &token, "Twin Org").await?;
+    ensure!(first != second, "both organizations got id {first}");
+    Ok(())
+}
+
+async fn org_rejects_client_supplied_id(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Id Picker"));
+    let response = ctx
+        .post(
+            "/organizations",
+            Some(&token),
+            &[],
+            json!({ "name": "Picked Id Org", "id": "my-chosen-org" }),
+        )
+        .await?;
+    expect_client_error(&response)?;
+
+    let rows: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM organizations WHERE id = 'my-chosen-org' OR name = 'Picked Id Org'",
+    )
+    .fetch_one(&ctx.pool)
+    .await?;
+    ensure!(
+        rows == 0,
+        "rejected request still inserted {rows} organization(s)"
+    );
+    Ok(())
+}
+
+async fn org_creation_requires_valid_token(ctx: &Ctx) -> anyhow::Result<()> {
+    let user = ctx.user("Mallory");
+    let body = json!({ "name": "Unauthorized Org" });
+    let wrong_issuer = ctx
+        .mock
+        .token_with_issuer(&user, "http://127.0.0.1:1/realms/e2e");
+
+    for (label, token) in [
+        ("no token", None),
+        ("unpublished signing key", Some(ctx.mock.rogue_token(&user))),
+        ("wrong issuer", Some(wrong_issuer)),
+        ("garbage", Some("not-a-jwt".to_owned())),
+    ] {
+        let response = ctx
+            .post("/organizations", token.as_deref(), &[], body.clone())
+            .await?;
+        expect_status(&response, 401).with_context(|| label)?;
+    }
+
+    let created: i64 = sqlx::query_scalar(
+        "SELECT (SELECT count(*) FROM organizations WHERE name = 'Unauthorized Org')
+              + (SELECT count(*) FROM users WHERE keycloak_user_id = $1)",
+    )
+    .bind(&user.sub)
+    .fetch_one(&ctx.pool)
+    .await?;
+    ensure!(
+        created == 0,
+        "unauthenticated requests created {created} row(s)"
+    );
+    Ok(())
+}
+
+// ============ Projects ============
+
+async fn project_creation_provisions_topic_database_and_user(ctx: &Ctx) -> anyhow::Result<()> {
+    let user = ctx.user("Paula Project");
+    let token = ctx.token(&user);
+    let org_id = create_org(ctx, &token, "Project Home").await?;
+
+    let response = ctx
+        .post(
+            "/projects",
+            Some(&token),
+            &[("X-Organization-Id", &org_id)],
+            json!({ "name": "Web Shop" }),
+        )
+        .await?;
+    expect_status(&response, 201)?;
+    let body = response.json()?;
+    let project_id = str_field(&body, "id")?;
+    expect_generated_slug(project_id, "web-shop")?;
+    ensure!(
+        body["organization_id"] == org_id.as_str(),
+        "unexpected org in {body}"
+    );
+    let project_token: uuid::Uuid = str_field(&body, "project_token")?
+        .parse()
+        .context("project_token is not a UUID")?;
+
+    let (stored_org, deleted): (Option<String>, bool) = sqlx::query_as(
+        "SELECT organization_id, deleted_at IS NOT NULL FROM projects WHERE id = $1",
+    )
+    .bind(project_id)
+    .fetch_one(&ctx.pool)
+    .await
+    .context("project row missing")?;
+    ensure!(
+        stored_org.as_deref() == Some(org_id.as_str()),
+        "stored org {stored_org:?}"
+    );
+    ensure!(!deleted, "project is soft-deleted");
+
+    let tokens: i64 = sqlx::query_scalar(
+        "SELECT count(*) FROM project_tokens WHERE project_id = $1 AND token = $2",
+    )
+    .bind(project_id)
+    .bind(project_token)
+    .fetch_one(&ctx.pool)
+    .await?;
+    ensure!(
+        tokens == 1,
+        "expected the returned token to be stored, found {tokens}"
+    );
+
+    let role = project_role(ctx, &user.sub, project_id).await?;
+    ensure!(
+        role.as_deref() == Some("project_admin"),
+        "creator role is {role:?}"
+    );
+
+    let topic = ctx.topic(&org_id, project_id);
+    let topics = ctx.kafka.topics_with_prefix(&topic).await?;
+    ensure!(
+        topics.contains(&topic),
+        "project topic {topic} was not created (found {topics:?})"
+    );
+    expect_project_database(ctx, project_id, &topic).await?;
+    expect_events_reach_project(ctx, &token, &org_id, project_id, &topic).await?;
+    expect_project_user_isolated(ctx, project_id).await?;
+
+    let listed = ctx
+        .get("/projects", Some(&token), &[("X-Organization-Id", &org_id)])
+        .await?;
+    expect_status(&listed, 200)?;
+    let listed = listed.json()?;
+    ensure!(
+        listed
+            .as_array()
+            .is_some_and(|projects| projects.iter().any(|p| p["id"] == project_id)),
+        "{project_id} missing from GET /projects: {listed}"
+    );
+    Ok(())
+}
+
+async fn project_creation_requires_org_admin(ctx: &Ctx) -> anyhow::Result<()> {
+    let owner = ctx.token(&ctx.user("Org Owner"));
+    let org_id = create_org(ctx, &owner, "Guarded Org").await?;
+    let outsider = ctx.token(&ctx.user("Outsider"));
+
+    let response = ctx
+        .post(
+            "/projects",
+            Some(&outsider),
+            &[("X-Organization-Id", &org_id)],
+            json!({ "name": "Sneaky Project" }),
+        )
+        .await?;
+    expect_status(&response, 403)?;
+    expect_no_project(ctx, "Sneaky Project").await
+}
+
+async fn project_creation_validates_org_header(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Header Tester"));
+    let body = json!({ "name": "Headerless Project" });
+
+    for (label, headers, status) in [
+        ("missing header", vec![], 400),
+        (
+            "UUID org id",
+            vec![("X-Organization-Id", "0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c")],
+            400,
+        ),
+        (
+            "uppercase org id",
+            vec![("X-Organization-Id", "Acme-Corp-x1y2z3")],
+            400,
+        ),
+        (
+            "unknown org",
+            vec![("X-Organization-Id", "no-such-org-zzzzzz")],
+            404,
+        ),
+    ] {
+        let response = ctx
+            .post("/projects", Some(&token), &headers, body.clone())
+            .await?;
+        expect_status(&response, status).with_context(|| label)?;
+    }
+    expect_no_project(ctx, "Headerless Project").await
+}
+
+async fn project_creation_rolls_back_when_clickhouse_fails(ctx: &Ctx) -> anyhow::Result<()> {
+    let user = ctx.user("Unlucky");
+    let token = ctx.token(&user);
+    let org_id = create_org(ctx, &token, "Flaky Warehouse").await?;
+
+    // The broken server creates the topic, then ClickHouse rejects its
+    // admin password.
+    let response = ctx
+        .broken_http
+        .post(
+            "/projects",
+            Some(&token),
+            &[("X-Organization-Id", &org_id)],
+            json!({ "name": "Doomed Project" }),
+        )
+        .await?;
+    expect_status(&response, 500)?;
+
+    let rows: Vec<(String, bool)> = sqlx::query_as(
+        "SELECT id, deleted_at IS NOT NULL FROM projects WHERE organization_id = $1",
+    )
+    .bind(&org_id)
+    .fetch_all(&ctx.pool)
+    .await?;
+    let [(project_id, deleted)] = rows.as_slice() else {
+        bail!("expected exactly one (soft-deleted) project, found {rows:?}");
+    };
+    ensure!(*deleted, "project {project_id} was not soft-deleted");
+
+    let role = project_role(ctx, &user.sub, project_id).await?;
+    ensure!(role.is_none(), "failed project still granted {role:?}");
+
+    // The topic was created before ClickHouse failed; cleanup removes it.
+    let topics = ctx
+        .kafka
+        .topics_with_prefix(&ctx.topic(&org_id, project_id))
+        .await?;
+    ensure!(topics.is_empty(), "failed project left topics {topics:?}");
+    expect_no_project_database(ctx, project_id).await
+}
+
+async fn project_deletion_drops_topic_database_and_user(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Tidy Admin"));
+    let org_id = create_org(ctx, &token, "Tidy Org").await?;
+    let response = ctx
+        .post(
+            "/projects",
+            Some(&token),
+            &[("X-Organization-Id", &org_id)],
+            json!({ "name": "Short Lived" }),
+        )
+        .await?;
+    expect_status(&response, 201)?;
+    let project_id = str_field(&response.json()?, "id")?.to_owned();
+    let topic = ctx.topic(&org_id, &project_id);
+    expect_project_database(ctx, &project_id, &topic)
+        .await
+        .context("before deletion")?;
+
+    let response = ctx
+        .http
+        .delete(
+            "/project",
+            Some(&token),
+            &[
+                ("X-Organization-Id", &org_id),
+                ("X-Project-Id", &project_id),
+            ],
+        )
+        .await?;
+    expect_status(&response, 204)?;
+
+    expect_no_project_database(ctx, &project_id).await?;
+    let topics = ctx.kafka.topics_with_prefix(&topic).await?;
+    ensure!(topics.is_empty(), "deleted project left topics {topics:?}");
+
+    let deleted: bool =
+        sqlx::query_scalar("SELECT deleted_at IS NOT NULL FROM projects WHERE id = $1")
+            .bind(&project_id)
+            .fetch_one(&ctx.pool)
+            .await?;
+    ensure!(deleted, "project {project_id} was not soft-deleted");
+    Ok(())
+}
+
+/// Two projects in one org, each with its own event: every query path of the
+/// server reads the requesting project's database and nothing else.
+async fn project_queries_target_the_project_database(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Query Admin"));
+    let org_id = create_org(ctx, &token, "Query Org").await?;
+    let shop = create_project(ctx, &token, &org_id, "Shop").await?;
+    let blog = create_project(ctx, &token, &org_id, "Blog").await?;
+
+    let shop_event = produce_event(
+        ctx,
+        &ctx.topic(&org_id, &shop),
+        &org_id,
+        &shop,
+        "purchase",
+        json!({ "amount": 30 }),
+    )
+    .await?;
+    let blog_event = produce_event(
+        ctx,
+        &ctx.topic(&org_id, &blog),
+        &org_id,
+        &blog,
+        "comment",
+        json!({ "text": "hello" }),
+    )
+    .await?;
+    wait_for_events(ctx, &token, &org_id, &shop, &[&shop_event]).await?;
+    wait_for_events(ctx, &token, &org_id, &blog, &[&blog_event]).await?;
+
+    for (project, event, property, other_project, other_event) in [
+        (&shop, "purchase", "amount", &blog, "comment"),
+        (&blog, "comment", "text", &shop, "purchase"),
+    ] {
+        let headers = [
+            ("X-Organization-Id", org_id.as_str()),
+            ("X-Project-Id", project.as_str()),
+        ];
+        let get = |path: String| project_get(ctx, &token, &headers, path);
+
+        let database = project_query(
+            ctx,
+            &token,
+            &org_id,
+            project,
+            "SELECT currentDatabase() AS db",
+        )
+        .await?;
+        ensure!(
+            database == json!([{ "db": project }]),
+            "{project} queries run in {database}"
+        );
+        let events = get("/events".to_owned()).await?;
+        ensure!(events == json!([event]), "{project} /events: {events}");
+        let today = get("/events/today/count".to_owned()).await?;
+        ensure!(
+            today == json!({ "count": 1 }),
+            "{project} /events/today/count: {today}"
+        );
+        let props = get(format!("/event_props?event_name={event}")).await?;
+        ensure!(
+            props == json!([property]),
+            "{project} /event_props: {props}"
+        );
+        let other_props = get(format!("/event_props?event_name={other_event}")).await?;
+        ensure!(
+            other_props == json!([]),
+            "{project} /event_props sees {other_project}'s {other_event}: {other_props}"
+        );
+
+        // Naming the other project's database explicitly is refused.
+        let response = ctx
+            .post(
+                "/query",
+                Some(&token),
+                &headers,
+                json!({ "query": format!("SELECT count() FROM `{other_project}`.events_v2") }),
+            )
+            .await?;
+        expect_status(&response, 200)?;
+        let body = response.json()?;
+        ensure!(
+            body["success"] == false
+                && body["error"]
+                    .as_str()
+                    .is_some_and(|error| error.contains("ACCESS_DENIED")),
+            "{project} could read {other_project}'s database: {body}"
+        );
+    }
+
+    // A user outside the org cannot query the project at all.
+    let outsider = ctx.token(&ctx.user("Query Outsider"));
+    let response = ctx
+        .post(
+            "/query",
+            Some(&outsider),
+            &[("X-Organization-Id", &org_id), ("X-Project-Id", &shop)],
+            json!({ "query": "SELECT count() FROM events_v2" }),
+        )
+        .await?;
+    expect_status(&response, 403)
+}
+
+/// GETs `path` for the project in `headers`, expecting 200 and JSON.
+async fn project_get(
+    ctx: &Ctx,
+    token: &str,
+    headers: &[(&str, &str)],
+    path: String,
+) -> anyhow::Result<Value> {
+    let response = ctx.get(&path, Some(token), headers).await?;
+    expect_status(&response, 200).with_context(|| path.clone())?;
+    response.json()
+}
+
+async fn project_rejects_client_supplied_id(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Project Id Picker"));
+    let org_id = create_org(ctx, &token, "Id Picker Org").await?;
+
+    let response = ctx
+        .post(
+            "/projects",
+            Some(&token),
+            &[("X-Organization-Id", &org_id)],
+            json!({ "name": "Picked Id Project", "id": "my-chosen-project" }),
+        )
+        .await?;
+    expect_client_error(&response)?;
+    expect_no_project(ctx, "Picked Id Project").await
+}
+
+// ============ Helpers ============
+
+/// The project's database holds every object of `ckh/project.sql`, its
+/// Kafka table reads the project topic, and its ClickHouse user may SELECT
+/// exactly the project's tables.
+async fn expect_project_database(ctx: &Ctx, project_id: &str, topic: &str) -> anyhow::Result<()> {
+    let objects = ctx
+        .clickhouse
+        .rows(&format!(
+            "SELECT name FROM system.tables WHERE database = {} ORDER BY name",
+            quote(project_id)
+        ))
+        .await?;
+    ensure!(
+        objects == PROJECT_OBJECTS,
+        "unexpected objects in database {project_id}: {objects:?}"
+    );
+
+    let kafka = ctx
+        .clickhouse
+        .query(&format!(
+            "SELECT engine_full FROM system.tables \
+             WHERE database = {} AND name = 'events_kafka' FORMAT TSVRaw",
+            quote(project_id)
+        ))
+        .await?;
+    ensure!(
+        kafka.contains(&format!("kafka_topic_list = '{topic}'")),
+        "events_kafka does not read {topic}: {kafka}"
+    );
+
+    let grants = ctx
+        .clickhouse
+        .rows(&format!(
+            "SELECT access_type, database, table FROM system.grants \
+             WHERE user_name = {} ORDER BY table",
+            quote(project_id)
+        ))
+        .await?;
+    let expected: Vec<String> = PROJECT_TABLES
+        .iter()
+        .map(|table| format!("SELECT\t{project_id}\t{table}"))
+        .collect();
+    ensure!(
+        grants == expected,
+        "unexpected grants for {project_id}: {grants:?}"
+    );
+    Ok(())
+}
+
+/// An event produced to the project topic reaches the project's tables and
+/// catalog, read back through the server's own query endpoint (which runs
+/// as the project user against the project database).
+async fn expect_events_reach_project(
+    ctx: &Ctx,
+    token: &str,
+    org_id: &str,
+    project_id: &str,
+    topic: &str,
+) -> anyhow::Result<()> {
+    let event_id = produce_event(
+        ctx,
+        topic,
+        org_id,
+        project_id,
+        "checkout",
+        json!({ "amount": 12.5 }),
+    )
+    .await?;
+    wait_for_events(ctx, token, org_id, project_id, &[&event_id]).await?;
+
+    let query = |sql| project_query(ctx, token, org_id, project_id, sql);
+    let users = query("SELECT count() AS n FROM user_events_v2").await?;
+    ensure!(
+        users[0]["n"].to_string().trim_matches('"') == "1",
+        "event missing from user_events_v2: {users}"
+    );
+    let catalog = query("SELECT property, type FROM event_schema_catalog").await?;
+    ensure!(
+        catalog == json!([{ "property": "amount", "type": "Float64" }]),
+        "unexpected catalog: {catalog}"
+    );
+    Ok(())
+}
+
+/// Produces a canonical event happening now to `topic`; returns its id.
+async fn produce_event(
+    ctx: &Ctx,
+    topic: &str,
+    org_id: &str,
+    project_id: &str,
+    name: &str,
+    properties: Value,
+) -> anyhow::Result<String> {
+    let event_id = uuid::Uuid::new_v4().to_string();
+    let now = chrono::Utc::now().to_rfc3339();
+    let event = json!({
+        "envelop_version": "1.0",
+        "id": event_id,
+        "name": name,
+        "org_id": org_id,
+        "project_id": project_id,
+        "anon_id": "anon-e2e",
+        "occured_at": now,
+        "arrived_at": now,
+        "properties": properties,
+    });
+    ctx.kafka
+        .produce(topic, "anon-e2e", event.to_string().as_bytes())
+        .await?;
+    Ok(event_id)
+}
+
+/// Waits until the project's `events_v2`, read through the server, holds
+/// exactly the events `ids`.
+async fn wait_for_events(
+    ctx: &Ctx,
+    token: &str,
+    org_id: &str,
+    project_id: &str,
+    ids: &[&str],
+) -> anyhow::Result<()> {
+    let expected: Vec<Value> = ids.iter().map(|id| json!({ "id": id })).collect();
+    let deadline = tokio::time::Instant::now() + INGEST_TIMEOUT;
+    loop {
+        let rows = project_query(
+            ctx,
+            token,
+            org_id,
+            project_id,
+            "SELECT toString(event_id) AS id FROM events_v2 ORDER BY id",
+        )
+        .await?;
+        let mut sorted = expected.clone();
+        sorted.sort_by_key(|row| row["id"].to_string());
+        if rows == Value::Array(sorted) {
+            return Ok(());
+        }
+        ensure!(
+            tokio::time::Instant::now() < deadline,
+            "{project_id} events_v2 did not become {ids:?} within {INGEST_TIMEOUT:?}: {rows}"
+        );
+        tokio::time::sleep(Duration::from_millis(500)).await;
+    }
+}
+
+/// Runs `sql` through the server's `/query` endpoint for the project and
+/// returns the result rows.
+async fn project_query(
+    ctx: &Ctx,
+    token: &str,
+    org_id: &str,
+    project_id: &str,
+    sql: &str,
+) -> anyhow::Result<Value> {
+    let response = ctx
+        .post(
+            "/query",
+            Some(token),
+            &[("X-Organization-Id", org_id), ("X-Project-Id", project_id)],
+            json!({ "query": sql }),
+        )
+        .await?;
+    expect_status(&response, 200)?;
+    let body = response.json()?;
+    ensure!(body["success"] == true, "query {sql:?} failed: {body}");
+    Ok(body["response"]["data"].clone())
+}
+
+/// The project user can read neither its Kafka table (a SELECT would
+/// consume from the topic) nor another database.
+async fn expect_project_user_isolated(ctx: &Ctx, project_id: &str) -> anyhow::Result<()> {
+    let other = format!(
+        "e2e_other_{}",
+        &uuid::Uuid::new_v4().simple().to_string()[..8]
+    );
+    ctx.clickhouse
+        .query(&format!("CREATE DATABASE `{other}`"))
+        .await?;
+    let result = async {
+        ctx.clickhouse
+            .query(&format!(
+                "CREATE TABLE `{other}`.t (x UInt8) ENGINE = Memory"
+            ))
+            .await?;
+        for (label, sql) in [
+            (
+                "its own Kafka table",
+                "SELECT * FROM events_kafka LIMIT 0".to_owned(),
+            ),
+            ("another database", format!("SELECT * FROM `{other}`.t")),
+        ] {
+            let answer = ctx
+                .clickhouse
+                .query_as(project_id, PROJECT_PASSWORD, Some(project_id), &sql)
+                .await?;
+            ensure!(
+                answer.status != 200 && answer.body.contains("ACCESS_DENIED"),
+                "project user could read {label}: {} {}",
+                answer.status,
+                answer.body.trim()
+            );
+        }
+        Ok(())
+    }
+    .await;
+    ctx.clickhouse
+        .query(&format!("DROP DATABASE `{other}` SYNC"))
+        .await?;
+    result
+}
+
+/// Neither a ClickHouse database nor a ClickHouse user exists for the project.
+async fn expect_no_project_database(ctx: &Ctx, project_id: &str) -> anyhow::Result<()> {
+    let databases = ctx
+        .clickhouse
+        .rows(&format!(
+            "SELECT name FROM system.databases WHERE name = {}",
+            quote(project_id)
+        ))
+        .await?;
+    ensure!(databases.is_empty(), "database {project_id} still exists");
+    let users = ctx
+        .clickhouse
+        .rows(&format!(
+            "SELECT name FROM system.users WHERE name = {}",
+            quote(project_id)
+        ))
+        .await?;
+    ensure!(
+        users.is_empty(),
+        "ClickHouse user {project_id} still exists"
+    );
+    Ok(())
+}
+
+async fn create_project(
+    ctx: &Ctx,
+    token: &str,
+    org_id: &str,
+    name: &str,
+) -> anyhow::Result<String> {
+    let response = ctx
+        .post(
+            "/projects",
+            Some(token),
+            &[("X-Organization-Id", org_id)],
+            json!({ "name": name }),
+        )
+        .await?;
+    expect_status(&response, 201).with_context(|| format!("creating project {name:?}"))?;
+    Ok(str_field(&response.json()?, "id")?.to_owned())
+}
+
+async fn create_org(ctx: &Ctx, token: &str, name: &str) -> anyhow::Result<String> {
+    let response = ctx
+        .post("/organizations", Some(token), &[], json!({ "name": name }))
+        .await?;
+    expect_status(&response, 201).with_context(|| format!("creating organization {name:?}"))?;
+    Ok(str_field(&response.json()?, "id")?.to_owned())
+}
+
+async fn org_role(ctx: &Ctx, sub: &str, org_id: &str) -> anyhow::Result<Option<String>> {
+    Ok(sqlx::query_scalar(
+        "SELECT om.role::text FROM organization_memberships om
+         JOIN users u ON u.id = om.user_id
+         WHERE u.keycloak_user_id = $1 AND om.organization_id = $2",
+    )
+    .bind(sub)
+    .bind(org_id)
+    .fetch_optional(&ctx.pool)
+    .await?)
+}
+
+async fn project_role(ctx: &Ctx, sub: &str, project_id: &str) -> anyhow::Result<Option<String>> {
+    Ok(sqlx::query_scalar(
+        "SELECT pm.role::text FROM project_memberships pm
+         JOIN users u ON u.id = pm.user_id
+         WHERE u.keycloak_user_id = $1 AND pm.project_id = $2",
+    )
+    .bind(sub)
+    .bind(project_id)
+    .fetch_optional(&ctx.pool)
+    .await?)
+}
+
+async fn expect_no_project(ctx: &Ctx, name: &str) -> anyhow::Result<()> {
+    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM projects WHERE name = $1")
+        .bind(name)
+        .fetch_one(&ctx.pool)
+        .await?;
+    ensure!(
+        rows == 0,
+        "rejected request still inserted project {name:?}"
+    );
+    Ok(())
+}
+
+/// `id` is a valid slug of the form `{base}-{6 random [a-z0-9]}`.
+fn expect_generated_slug(id: &str, base: &str) -> anyhow::Result<()> {
+    ensure!(is_valid_slug(id), "{id:?} is not a valid slug");
+    let suffix = id
+        .strip_prefix(base)
+        .and_then(|rest| rest.strip_prefix('-'))
+        .with_context(|| format!("{id:?} does not start with \"{base}-\""))?;
+    ensure!(
+        suffix.len() == SUFFIX_LEN
+            && suffix
+                .bytes()
+                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()),
+        "{id:?} does not end in a {SUFFIX_LEN}-char [a-z0-9] suffix"
+    );
+    Ok(())
+}
+
+fn expect_status(response: &Response, status: u16) -> anyhow::Result<()> {
+    ensure!(
+        response.status == status,
+        "expected HTTP {status}, got {}: {}",
+        response.status,
+        response.body
+    );
+    Ok(())
+}
+
+fn expect_client_error(response: &Response) -> anyhow::Result<()> {
+    ensure!(
+        (400..500).contains(&response.status),
+        "expected a 4xx, got {}: {}",
+        response.status,
+        response.body
+    );
+    Ok(())
+}
+
+fn str_field<'a>(body: &'a Value, field: &str) -> anyhow::Result<&'a str> {
+    body[field]
+        .as_str()
+        .with_context(|| format!("`{field}` missing from {body}"))
+}

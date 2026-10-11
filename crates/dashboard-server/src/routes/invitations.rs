@@ -3,7 +3,9 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
+use canonical_event::{OrgId, ProjectId};
 use serde::{Deserialize, Serialize};
+use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::{
@@ -81,7 +83,7 @@ pub async fn create_organization_invitation(
         &state.db_pool,
         &req.email,
         InvitationType::Organization,
-        organization.id,
+        organization.id.as_ref(),
         role,
         auth_user.user.id,
     )
@@ -116,7 +118,7 @@ pub async fn create_project_invitation(
         &state.db_pool,
         &req.email,
         InvitationType::Project,
-        project.id,
+        project.id.as_ref(),
         role,
         auth_user.user.id,
     )
@@ -162,7 +164,7 @@ pub async fn list_organization_invitations(
 ) -> Result<Json<Vec<InvitationResponse>>, InvitationError> {
     let invitations = db::list_invitations_for_target(
         &state.db_pool,
-        organization.id,
+        organization.id.as_ref(),
         InvitationType::Organization,
     )
     .await
@@ -178,10 +180,13 @@ pub async fn list_project_invitations(
     State(state): State<AppState>,
     ProjectAccess { project, .. }: ProjectAccess,
 ) -> Result<Json<Vec<InvitationResponse>>, InvitationError> {
-    let invitations =
-        db::list_invitations_for_target(&state.db_pool, project.id, InvitationType::Project)
-            .await
-            .map_err(|e| InvitationError::Database(e.to_string()))?;
+    let invitations = db::list_invitations_for_target(
+        &state.db_pool,
+        project.id.as_ref(),
+        InvitationType::Project,
+    )
+    .await
+    .map_err(|e| InvitationError::Database(e.to_string()))?;
 
     let response: Vec<InvitationResponse> = invitations.into_iter().map(Into::into).collect();
     Ok(Json(response))
@@ -234,7 +239,9 @@ pub async fn accept_invitation(
                 "org_admin" => OrgRole::OrgAdmin,
                 _ => OrgRole::OrgUser,
             };
-            db::add_user_to_organization(&state.db_pool, user.id, invitation.target_id, &role)
+            let org_id = OrgId::from_str(&invitation.target_id)
+                .map_err(|_| InvitationError::InvalidTargetId)?;
+            db::add_user_to_organization(&state.db_pool, user.id, &org_id, &role)
                 .await
                 .map_err(|e| InvitationError::Database(e.to_string()))?;
         }
@@ -243,7 +250,9 @@ pub async fn accept_invitation(
                 "project_admin" => ProjectRole::ProjectAdmin,
                 _ => ProjectRole::ProjectUser,
             };
-            db::add_user_to_project(&state.db_pool, user.id, invitation.target_id, &role)
+            let project_id = ProjectId::from_str(&invitation.target_id)
+                .map_err(|_| InvitationError::InvalidTargetId)?;
+            db::add_user_to_project(&state.db_pool, user.id, &project_id, &role)
                 .await
                 .map_err(|e| InvitationError::Database(e.to_string()))?;
         }
@@ -316,6 +325,8 @@ pub enum InvitationError {
     CannotInviteSelf,
     #[error("Invalid invitation ID")]
     InvalidInvitationId,
+    #[error("Invalid invitation target ID")]
+    InvalidTargetId,
     #[error("Invitation not found")]
     NotFound,
     #[error("Invitation already accepted")]
@@ -345,6 +356,10 @@ impl axum::response::IntoResponse for InvitationError {
             InvitationError::InvalidInvitationId => {
                 (StatusCode::BAD_REQUEST, "Invalid invitation ID".to_string())
             }
+            InvitationError::InvalidTargetId => (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "Invalid invitation target ID".to_string(),
+            ),
             InvitationError::NotFound => {
                 (StatusCode::NOT_FOUND, "Invitation not found".to_string())
             }

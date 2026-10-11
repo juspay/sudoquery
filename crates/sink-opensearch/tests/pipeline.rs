@@ -1,13 +1,13 @@
 //! End-to-end tests against the local stack:
 //!
 //! ```text
-//! docker compose -f tests/docker-compose.yml up -d redpanda opensearch
+//! cargo xtask setup redpanda opensearch
 //! cargo test -p sink-opensearch -- --ignored
 //! ```
 //!
-//! `KAFKA_BOOTSTRAP_SERVERS`, `OPENSEARCH_URL` and `OPENSEARCH_CONTAINER`
-//! override the defaults (`localhost:19092`, `http://localhost:9200`,
-//! `opensearch`). Each test uses its own topics, index and consumer group.
+//! `KAFKA_BOOTSTRAP_SERVERS`, `OPENSEARCH_URL` and `OPENSEARCH_SERVICE` (the
+//! compose service in the workspace `docker-compose.yml`) override the
+//! defaults (`localhost:19092`, `http://localhost:9200`, `opensearch`). Each test uses its own topics, index and consumer group.
 
 use std::collections::HashSet;
 use std::path::PathBuf;
@@ -120,7 +120,7 @@ impl Stack {
 
 [dimensions]
 org_id = {{ position = 1, schema = {{ type = "string" }} }}
-proj_id = {{ position = 2, schema = {{ type = "string" }} }}
+project_id = {{ position = 2, schema = {{ type = "string" }} }}
 {overrides}
 "#,
             topic = names.topic,
@@ -418,25 +418,32 @@ impl RunningSink {
     }
 }
 
-/// Unpauses the OpenSearch container even if the test fails while it's paused.
+/// Unpauses the OpenSearch service even if the test fails while it's paused.
 struct PausedContainer(String);
 
 impl PausedContainer {
-    fn pause(name: String) -> Self {
-        docker(&["pause", &name]);
-        Self(name)
+    fn pause(service: String) -> Self {
+        docker_compose(&["pause", &service]);
+        Self(service)
     }
 }
 
 impl Drop for PausedContainer {
     fn drop(&mut self) {
-        docker(&["unpause", &self.0]);
+        docker_compose(&["unpause", &self.0]);
     }
 }
 
-fn docker(args: &[&str]) {
-    let status = Command::new("docker").args(args).status().unwrap();
-    assert!(status.success(), "docker {args:?} failed");
+/// Runs `docker compose` against the workspace `docker-compose.yml`, which
+/// addresses services by name whatever their containers are called.
+fn docker_compose(args: &[&str]) {
+    let compose_file = concat!(env!("CARGO_MANIFEST_DIR"), "/../../docker-compose.yml");
+    let status = Command::new("docker")
+        .args(["compose", "-f", compose_file])
+        .args(args)
+        .status()
+        .unwrap();
+    assert!(status.success(), "docker compose {args:?} failed");
 }
 
 /// Canonical events keyed by `anon_id`. Returns (key, payload, event id).
@@ -476,7 +483,7 @@ fn header(message: &OwnedMessage, key: &str) -> Option<String> {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs the local stack: docker compose -f tests/docker-compose.yml up -d redpanda opensearch"]
+#[ignore = "needs the local stack: cargo xtask setup redpanda opensearch"]
 async fn indexes_every_event_once_and_commits_all_offsets() {
     let _serial = serial().await;
     let stack = Stack::from_env();
@@ -501,7 +508,7 @@ async fn indexes_every_event_once_and_commits_all_offsets() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs the local stack: docker compose -f tests/docker-compose.yml up -d redpanda opensearch"]
+#[ignore = "needs the local stack: cargo xtask setup redpanda opensearch"]
 async fn a_crash_mid_stream_loses_nothing_and_duplicates_nothing() {
     let _serial = serial().await;
     let stack = Stack::from_env();
@@ -531,7 +538,7 @@ async fn a_crash_mid_stream_loses_nothing_and_duplicates_nothing() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs the local stack: docker compose -f tests/docker-compose.yml up -d redpanda opensearch"]
+#[ignore = "needs the local stack: cargo xtask setup redpanda opensearch"]
 async fn documents_that_cannot_be_indexed_go_to_the_dlq() {
     let _serial = serial().await;
     let stack = Stack::from_env();
@@ -617,7 +624,7 @@ async fn documents_that_cannot_be_indexed_go_to_the_dlq() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs the local stack: docker compose -f tests/docker-compose.yml up -d redpanda opensearch"]
+#[ignore = "needs the local stack: cargo xtask setup redpanda opensearch"]
 async fn an_opensearch_outage_blocks_writes_and_then_recovers() {
     let _serial = serial().await;
     let stack = Stack::from_env();
@@ -625,7 +632,7 @@ async fn an_opensearch_outage_blocks_writes_and_then_recovers() {
     stack.create_topics(&names).await;
     stack.produce(&names.topic, &records(&events(500))).await;
 
-    let paused = PausedContainer::pause(env_or("OPENSEARCH_CONTAINER", "opensearch"));
+    let paused = PausedContainer::pause(env_or("OPENSEARCH_SERVICE", "opensearch"));
     let sink = RunningSink::start(stack.sink(&names, 50).await);
     tokio::time::sleep(Duration::from_secs(8)).await;
     stack.produce(&names.topic, &records(&events(500))).await;
@@ -640,7 +647,7 @@ async fn an_opensearch_outage_blocks_writes_and_then_recovers() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs the local stack: docker compose -f tests/docker-compose.yml up -d redpanda opensearch"]
+#[ignore = "needs the local stack: cargo xtask setup redpanda opensearch"]
 async fn each_org_gets_its_own_index() {
     let _serial = serial().await;
     let stack = Stack::from_env();
@@ -700,7 +707,7 @@ _context_ = {{ org_id = "merchant-b" }}
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs the local stack: docker compose -f tests/docker-compose.yml up -d redpanda opensearch"]
+#[ignore = "needs the local stack: cargo xtask setup redpanda opensearch"]
 async fn properties_can_change_shape_without_rejections() {
     let _serial = serial().await;
     let stack = Stack::from_env();
@@ -763,7 +770,7 @@ async fn properties_can_change_shape_without_rejections() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
-#[ignore = "needs the local stack: docker compose -f tests/docker-compose.yml up -d redpanda opensearch"]
+#[ignore = "needs the local stack: cargo xtask setup redpanda opensearch"]
 async fn events_are_timed_by_when_they_happened() {
     let _serial = serial().await;
     let stack = Stack::from_env();

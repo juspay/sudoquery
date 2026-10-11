@@ -1,3 +1,4 @@
+use canonical_event::ProjectId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -7,7 +8,7 @@ use uuid::Uuid;
 pub struct UserProjectConsole {
     pub id: Uuid,
     pub user_id: Uuid,
-    pub proj_id: Uuid,
+    pub project_id: ProjectId,
     pub console: Option<String>,
     pub name: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -18,7 +19,7 @@ pub struct UserProjectConsole {
 pub async fn create_console(
     pool: &PgPool,
     user_id: Uuid,
-    proj_id: Uuid,
+    project_id: &ProjectId,
     name: Option<&str>,
     console: Option<&str>,
 ) -> Result<UserProjectConsole, sqlx::Error> {
@@ -26,14 +27,14 @@ pub async fn create_console(
 
     sqlx::query_as::<_, UserProjectConsole>(
         r#"
-        INSERT INTO user_project_consoles (id, user_id, proj_id, name, console)
+        INSERT INTO user_project_consoles (id, user_id, project_id, name, console)
         VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, user_id, proj_id, console, name, created_at, updated_at
+        RETURNING id, user_id, project_id, console, name, created_at, updated_at
         "#,
     )
     .bind(id)
     .bind(user_id)
-    .bind(proj_id)
+    .bind(project_id)
     .bind(name)
     .bind(console)
     .fetch_one(pool)
@@ -47,7 +48,7 @@ pub async fn get_console_by_id(
 ) -> Result<Option<UserProjectConsole>, sqlx::Error> {
     sqlx::query_as::<_, UserProjectConsole>(
         r#"
-        SELECT id, user_id, proj_id, console, name, created_at, updated_at
+        SELECT id, user_id, project_id, console, name, created_at, updated_at
         FROM user_project_consoles
         WHERE id = $1
         "#,
@@ -65,7 +66,7 @@ pub async fn get_console_by_id_and_user(
 ) -> Result<Option<UserProjectConsole>, sqlx::Error> {
     sqlx::query_as::<_, UserProjectConsole>(
         r#"
-        SELECT id, user_id, proj_id, console, name, created_at, updated_at
+        SELECT id, user_id, project_id, console, name, created_at, updated_at
         FROM user_project_consoles
         WHERE id = $1 AND user_id = $2
         "#,
@@ -88,18 +89,18 @@ pub struct ConsoleSummary {
 pub async fn list_consoles_by_user_and_project(
     pool: &PgPool,
     user_id: Uuid,
-    proj_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<Vec<ConsoleSummary>, sqlx::Error> {
     sqlx::query_as::<_, ConsoleSummary>(
         r#"
         SELECT id, name, created_at, updated_at
         FROM user_project_consoles
-        WHERE user_id = $1 AND proj_id = $2
+        WHERE user_id = $1 AND project_id = $2
         ORDER BY created_at DESC
         "#,
     )
     .bind(user_id)
-    .bind(proj_id)
+    .bind(project_id)
     .fetch_all(pool)
     .await
 }
@@ -117,7 +118,7 @@ pub async fn update_console(
         UPDATE user_project_consoles
         SET name = $2, console = $3, updated_at = NOW()
         WHERE id = $1
-        RETURNING id, user_id, proj_id, console, name, created_at, updated_at
+        RETURNING id, user_id, project_id, console, name, created_at, updated_at
         "#,
     )
     .bind(id)

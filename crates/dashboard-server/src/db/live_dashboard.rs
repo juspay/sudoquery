@@ -1,3 +1,4 @@
+use canonical_event::ProjectId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -7,7 +8,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct LiveDashboard {
     pub id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: ProjectId,
     pub query: String,
     pub description: String,
     pub title: Option<String>,
@@ -22,7 +23,7 @@ pub struct LiveDashboard {
 /// Create a new live dashboard
 pub async fn create_dashboard(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
     query: &str,
     description: &str,
     title: Option<&str>,
@@ -69,7 +70,7 @@ pub async fn get_dashboard(
 /// Get a dashboard by project_id and creation_source (uses idx_project_id_source index)
 pub async fn get_dashboard_by_source(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
     creation_source: &str,
 ) -> Result<Option<LiveDashboard>, sqlx::Error> {
     sqlx::query_as::<_, LiveDashboard>(
@@ -88,7 +89,7 @@ pub async fn get_dashboard_by_source(
 /// Get all live dashboards associated with a project
 pub async fn get_dashboards(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<Vec<LiveDashboard>, sqlx::Error> {
     sqlx::query_as::<_, LiveDashboard>(
         r#"
@@ -106,7 +107,7 @@ pub async fn get_dashboards(
 /// Get minimal dashboard info (id and description) for listing
 pub async fn list_dashboards_summary(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<Vec<(Uuid, String)>, sqlx::Error> {
     sqlx::query_as::<_, (Uuid, String)>(
         r#"

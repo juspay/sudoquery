@@ -22,6 +22,10 @@ pub enum AppError {
 
     #[error("Invalid bearer token")]
     InvalidToken,
+
+    /// An event's `org_id` / `project_id` differ from the request headers.
+    #[error("{0}")]
+    ScopeMismatch(String),
 }
 
 // 2. Define your clean Result alias

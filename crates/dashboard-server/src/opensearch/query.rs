@@ -169,10 +169,12 @@ fn range_is_bounded(range: &Value) -> bool {
 pub fn scoped_query(client: Option<&Value>, scope: &Scope, narrowing: Vec<Value>) -> Value {
     let mut filter = vec![
         json!({ "term": { "org_id": scope.org_id } }),
-        json!({ "term": { "proj_id": scope.proj_id } }),
+        json!({ "term": { "project_id": scope.project_id } }),
     ];
     filter.extend(narrowing);
-    let must = client.cloned().unwrap_or_else(|| json!({ "match_all": {} }));
+    let must = client
+        .cloned()
+        .unwrap_or_else(|| json!({ "match_all": {} }));
 
     json!({ "bool": { "must": [must], "filter": filter } })
 }
@@ -333,7 +335,7 @@ mod tests {
     fn scope() -> Scope {
         Scope {
             org_id: ORG.into(),
-            proj_id: PROJ.into(),
+            project_id: PROJ.into(),
         }
     }
 
@@ -418,7 +420,10 @@ mod tests {
                 "_index",
             ),
             (json!({ "term": { "_index": "events-other" } }), "_index"),
-            (json!({ "wrapper": { "query": "eyJtYXRjaF9hbGwiOnt9fQ==" } }), "wrapper"),
+            (
+                json!({ "wrapper": { "query": "eyJtYXRjaF9hbGwiOnt9fQ==" } }),
+                "wrapper",
+            ),
             (
                 json!({ "bool": { "filter": [{ "bool": { "should": [
                     { "wrapper": { "query": "eyJtYXRjaF9hbGwiOnt9fQ==" } },
@@ -438,7 +443,10 @@ mod tests {
 
     #[test]
     fn a_field_whose_name_only_contains_index_is_allowed() {
-        assert_eq!(check(json!({ "term": { "properties.index": "3" } })), Ok(()));
+        assert_eq!(
+            check(json!({ "term": { "properties.index": "3" } })),
+            Ok(())
+        );
     }
 
     #[test]
@@ -505,7 +513,7 @@ mod tests {
                 "must": [{ "term": { "name": "checkout_viewed" } }],
                 "filter": [
                     { "term": { "org_id": ORG } },
-                    { "term": { "proj_id": PROJ } },
+                    { "term": { "project_id": PROJ } },
                 ],
             }})
         );
@@ -628,7 +636,11 @@ mod tests {
         ];
 
         for (span, interval) in cases {
-            assert_eq!(histogram_interval(from, from + span), Ok(interval), "{span}");
+            assert_eq!(
+                histogram_interval(from, from + span),
+                Ok(interval),
+                "{span}"
+            );
         }
     }
 
@@ -675,9 +687,19 @@ mod tests {
     #[test]
     fn only_aggregatable_fields_can_be_facets() {
         assert_eq!(facet_size("name", None), Ok(DEFAULT_FACET_SIZE));
-        assert_eq!(facet_size("system_properties.geo.country", Some(50)), Ok(50));
+        assert_eq!(
+            facet_size("system_properties.geo.country", Some(50)),
+            Ok(50)
+        );
 
-        for field in ["org_id", "proj_id", "id", "properties.plan", "occured_at", ""] {
+        for field in [
+            "org_id",
+            "project_id",
+            "id",
+            "properties.plan",
+            "occured_at",
+            "",
+        ] {
             assert_eq!(
                 facet_size(field, None),
                 Err(RequestError::UnknownFacetField),

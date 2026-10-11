@@ -5,7 +5,8 @@ import { Configuration } from '../src/Configuration';
 describe('SudoQuery', () => {
   beforeEach(() => {
     Configuration.reset();
-    Configuration.setTenantId('tenant-1');
+    Configuration.setOrgId('acme-org-1');
+    Configuration.setProjectId('acme-project-1');
     Batcher.reset();
     SudoQuery['didInit'] = false;
     SudoQuery.removeUser();
@@ -30,6 +31,72 @@ describe('SudoQuery', () => {
         SudoQuery.init();
         SudoQuery.init();
       }).not.toThrow();
+    });
+
+    describe('slug-shaped id guard', () => {
+      it('should warn without throwing when orgId does not match the slug shape', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        expect(() => SudoQuery.init({ orgId: 'Acme_Store!' })).not.toThrow();
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('orgId'));
+
+        warnSpy.mockRestore();
+      });
+
+      it('should warn naming projectId when projectId does not match the slug shape', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        SudoQuery.init({ orgId: 'acme-store-k3x9qa', projectId: 'NOT_A_SLUG' });
+
+        expect(warnSpy).toHaveBeenCalledTimes(1);
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('projectId'));
+
+        warnSpy.mockRestore();
+      });
+
+      it('should describe the expected slug shape in the warning', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        SudoQuery.init({ orgId: 'org@1' });
+
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringMatching(/slug/));
+
+        warnSpy.mockRestore();
+      });
+
+      it('should not warn when ids match the slug shape', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        SudoQuery.init({
+          orgId: 'acme-store-k3x9qa',
+          projectId: 'acme-store-web-q8r2zt',
+        });
+
+        expect(warnSpy).not.toHaveBeenCalled();
+
+        warnSpy.mockRestore();
+      });
+
+      it('should not warn when ids are omitted', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        SudoQuery.init();
+
+        expect(warnSpy).not.toHaveBeenCalled();
+
+        warnSpy.mockRestore();
+      });
+
+      it('should not warn for explicitly nulled ids', () => {
+        const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
+        SudoQuery.init({ orgId: null, projectId: null });
+
+        expect(warnSpy).not.toHaveBeenCalled();
+
+        warnSpy.mockRestore();
+      });
     });
   });
 
@@ -146,19 +213,27 @@ describe('SudoQuery', () => {
         const batch = Batcher.fetchBatchToUpload();
         expect(batch?.[0]).toEqual(expect.objectContaining({
           name: 'event_name',
-          org_id: 'tenant-1',
+          org_id: 'acme-org-1',
           properties,
         }));
       });
     });
 
     describe('without required collector configuration', () => {
-      it('should throw when tenantId is missing', () => {
-        Configuration.setTenantId(null);
+      it('should throw when orgId is missing', () => {
+        Configuration.setOrgId(null);
 
         expect(() => {
           SudoQuery.track('event_name', {});
-        }).toThrow('tenantId is required before tracking events');
+        }).toThrow('orgId is required before tracking events');
+      });
+
+      it('should throw when projectId is missing', () => {
+        Configuration.setProjectId(null);
+
+        expect(() => {
+          SudoQuery.track('event_name', {});
+        }).toThrow('projectId is required before tracking events');
       });
     });
 

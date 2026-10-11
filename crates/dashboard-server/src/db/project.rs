@@ -1,12 +1,16 @@
+use canonical_event::{OrgId, ProjectId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
+use super::{MAX_SLUG_INSERT_ATTEMPTS, is_unique_violation};
+use crate::ids;
+
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Project {
-    pub id: Uuid,
-    pub organization_id: Option<Uuid>,
+    pub id: ProjectId,
+    pub organization_id: Option<OrgId>,
     pub name: String,
     pub timezone: Option<String>,
     pub deleted_at: Option<DateTime<Utc>>,
@@ -17,7 +21,7 @@ pub struct Project {
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ProjectToken {
     pub id: Uuid,
-    pub project_id: Uuid,
+    pub project_id: ProjectId,
     pub token: Uuid,
     pub name: Option<String>,
     pub last_used_at: Option<DateTime<Utc>>,
@@ -26,8 +30,8 @@ pub struct ProjectToken {
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ProjectWithToken {
-    pub id: Uuid,
-    pub organization_id: Option<Uuid>,
+    pub id: ProjectId,
+    pub organization_id: Option<OrgId>,
     pub name: String,
     pub project_token: Uuid,
     pub created_at: DateTime<Utc>,
@@ -35,53 +39,74 @@ pub struct ProjectWithToken {
 
 pub async fn create_project(
     pool: &PgPool,
-    organization_id: Option<Uuid>,
+    organization_id: Option<&OrgId>,
     name: &str,
 ) -> Result<ProjectWithToken, sqlx::Error> {
-    let project_id = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
-    let token_id = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
-    let project_token = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
+    let mut attempt = 0;
+    loop {
+        let id = ids::generate_project_id(name);
+        let token_id = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
+        let project_token = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
+        attempt += 1;
 
-    let mut tx = pool.begin().await?;
+        let mut tx = pool.begin().await?;
 
-    sqlx::query(
-        r#"
-        INSERT INTO projects (id, organization_id, name)
-        VALUES ($1, $2, $3)
-        "#,
-    )
-    .bind(project_id)
-    .bind(organization_id)
-    .bind(name)
-    .execute(&mut *tx)
-    .await?;
+        let inserted = sqlx::query(
+            r#"
+            INSERT INTO projects (id, organization_id, name)
+            VALUES ($1, $2, $3)
+            "#,
+        )
+        .bind(&id)
+        .bind(organization_id)
+        .bind(name)
+        .execute(&mut *tx)
+        .await;
 
-    sqlx::query(
-        r#"
-        INSERT INTO project_tokens (id, project_id, token, name)
-        VALUES ($1, $2, $3, 'default')
-        "#,
-    )
-    .bind(token_id)
-    .bind(project_id)
-    .bind(project_token)
-    .execute(&mut *tx)
-    .await?;
+        if let Err(err) = inserted {
+            // A unique violation means the random slug suffix collided with
+            // an existing project; dropping `tx` rolls the transaction back
+            // and the loop retries with a fresh suffix.
+            if attempt < MAX_SLUG_INSERT_ATTEMPTS && is_unique_violation(&err) {
+                tracing::warn!(
+                    "generated project slug '{}' collided (attempt {}/{}); regenerating suffix",
+                    id,
+                    attempt,
+                    MAX_SLUG_INSERT_ATTEMPTS
+                );
+                continue;
+            }
+            return Err(err);
+        }
 
-    tx.commit().await?;
+        sqlx::query(
+            r#"
+            INSERT INTO project_tokens (id, project_id, token, name)
+            VALUES ($1, $2, $3, 'default')
+            "#,
+        )
+        .bind(token_id)
+        .bind(&id)
+        .bind(project_token)
+        .execute(&mut *tx)
+        .await?;
 
-    let created_at = Utc::now();
+        tx.commit().await?;
 
-    Ok(ProjectWithToken {
-        id: project_id,
-        organization_id,
-        name: name.to_string(),
-        project_token,
-        created_at,
-    })
+        return Ok(ProjectWithToken {
+            id,
+            organization_id: organization_id.cloned(),
+            name: name.to_string(),
+            project_token,
+            created_at: Utc::now(),
+        });
+    }
 }
 
-pub async fn get_project_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Project>, sqlx::Error> {
+pub async fn get_project_by_id(
+    pool: &PgPool,
+    id: &ProjectId,
+) -> Result<Option<Project>, sqlx::Error> {
     sqlx::query_as::<_, Project>(
         r#"
         SELECT id, organization_id, name, timezone, deleted_at, created_at, updated_at
@@ -96,8 +121,8 @@ pub async fn get_project_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Project
 
 pub async fn get_project_by_id_and_organization(
     pool: &PgPool,
-    project_id: Uuid,
-    organization_id: Uuid,
+    project_id: &ProjectId,
+    organization_id: &OrgId,
 ) -> Result<Option<Project>, sqlx::Error> {
     sqlx::query_as::<_, Project>(
         r#"
@@ -114,7 +139,7 @@ pub async fn get_project_by_id_and_organization(
 
 pub async fn list_projects_by_organization(
     pool: &PgPool,
-    organization_id: Uuid,
+    organization_id: &OrgId,
 ) -> Result<Vec<Project>, sqlx::Error> {
     sqlx::query_as::<_, Project>(
         r#"
@@ -134,7 +159,7 @@ pub async fn list_projects_by_organization(
 pub async fn list_user_projects_in_organization(
     pool: &PgPool,
     user_id: Uuid,
-    organization_id: Uuid,
+    organization_id: &OrgId,
 ) -> Result<Vec<Project>, sqlx::Error> {
     sqlx::query_as::<_, Project>(
         r#"
@@ -163,7 +188,7 @@ pub async fn list_user_projects_in_organization(
     .await
 }
 
-pub async fn soft_delete_project(pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error> {
+pub async fn soft_delete_project(pool: &PgPool, id: &ProjectId) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
         UPDATE projects
@@ -180,8 +205,8 @@ pub async fn soft_delete_project(pool: &PgPool, id: Uuid) -> Result<(), sqlx::Er
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct ProjectWithTokenRow {
-    pub project_id: Uuid,
-    pub organization_id: Option<Uuid>,
+    pub project_id: ProjectId,
+    pub organization_id: Option<OrgId>,
     pub project_name: String,
     pub project_deleted_at: Option<DateTime<Utc>>,
     pub project_created_at: DateTime<Utc>,
@@ -238,7 +263,7 @@ pub async fn update_token_last_used(pool: &PgPool, token: Uuid) -> Result<(), sq
 
 pub async fn create_additional_token(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
     name: &str,
 ) -> Result<ProjectToken, sqlx::Error> {
     let token_id = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
@@ -261,7 +286,7 @@ pub async fn create_additional_token(
 
 pub async fn list_tokens_by_project(
     pool: &PgPool,
-    project_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<Vec<ProjectToken>, sqlx::Error> {
     sqlx::query_as::<_, ProjectToken>(
         r#"

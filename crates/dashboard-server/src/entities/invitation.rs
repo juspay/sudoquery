@@ -30,7 +30,7 @@ pub struct Model {
     pub id: Uuid,
     pub email: String,
     pub invitation_type: InvitationType,
-    pub target_id: Uuid,
+    pub target_id: String,
     pub role: String,
     pub invited_by: Uuid,
     pub status: InvitationStatus,

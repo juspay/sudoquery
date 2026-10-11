@@ -13,6 +13,7 @@ use crate::{
 // ============ Create Organization ============
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CreateOrganizationRequest {
     pub name: String,
 }
@@ -34,7 +35,7 @@ pub async fn create_organization(
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
     // Add creator as org_admin
-    db::add_user_to_organization(&state.db_pool, user.id, org.id, &OrgRole::OrgAdmin)
+    db::add_user_to_organization(&state.db_pool, user.id, &org.id, &OrgRole::OrgAdmin)
         .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
@@ -54,7 +55,7 @@ pub async fn delete_organization(
     State(state): State<AppState>,
     OrgAdmin { organization, .. }: OrgAdmin,
 ) -> Result<StatusCode, OrganizationError> {
-    db::soft_delete_organization(&state.db_pool, organization.id)
+    db::soft_delete_organization(&state.db_pool, &organization.id)
         .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
@@ -167,7 +168,7 @@ pub async fn add_organization_member(
         _ => return Err(OrganizationError::InvalidRole),
     };
 
-    let membership = db::add_user_to_organization(&state.db_pool, user_id, organization.id, &role)
+    let membership = db::add_user_to_organization(&state.db_pool, user_id, &organization.id, &role)
         .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
@@ -198,7 +199,7 @@ pub async fn remove_organization_member(
         return Err(OrganizationError::CannotRemoveSelf);
     }
 
-    db::remove_user_from_organization(&state.db_pool, user_uuid, organization.id)
+    db::remove_user_from_organization(&state.db_pool, user_uuid, &organization.id)
         .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
@@ -219,7 +220,7 @@ pub async fn list_organization_members(
     State(state): State<AppState>,
     OrgContext { organization, .. }: OrgContext,
 ) -> Result<Json<Vec<OrgMemberListResponse>>, OrganizationError> {
-    let members = db::list_organization_members(&state.db_pool, organization.id)
+    let members = db::list_organization_members(&state.db_pool, &organization.id)
         .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 
@@ -257,7 +258,7 @@ pub async fn update_organization_member_role(
         _ => return Err(OrganizationError::InvalidRole),
     };
 
-    db::update_organization_membership_role(&state.db_pool, user_uuid, organization.id, &role)
+    db::update_organization_membership_role(&state.db_pool, user_uuid, &organization.id, &role)
         .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
 

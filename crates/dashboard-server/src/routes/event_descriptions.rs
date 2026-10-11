@@ -3,8 +3,8 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
+use canonical_event::ProjectId;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 
 use crate::{
     AppState, db,
@@ -37,7 +37,7 @@ pub async fn upsert_event_description(
 ) -> Result<(StatusCode, Json<EventDescriptionResponse>), EventDescriptionError> {
     let desc = db::upsert_event_description(
         &state.db_pool,
-        project.id,
+        &project.id,
         &req.event_name,
         &req.description,
     )
@@ -71,7 +71,7 @@ pub async fn upsert_event_description_as_org_admin(
 
     let desc = db::upsert_event_description(
         &state.db_pool,
-        project.id,
+        &project.id,
         &req.event_name,
         &req.description,
     )
@@ -95,7 +95,7 @@ pub async fn upsert_event_description_as_org_admin(
 
 #[derive(Deserialize)]
 pub struct ListEventDescriptionsQuery {
-    pub project_id: Uuid,
+    pub project_id: ProjectId,
 }
 
 #[derive(Serialize)]
@@ -108,7 +108,7 @@ pub async fn list_event_descriptions(
     State(state): State<AppState>,
     ProjectContext { project, .. }: ProjectContext,
 ) -> Result<Json<ListEventDescriptionsResponse>, EventDescriptionError> {
-    let descriptions = db::list_event_descriptions_by_project(&state.db_pool, project.id)
+    let descriptions = db::list_event_descriptions_by_project(&state.db_pool, &project.id)
         .await
         .map_err(|e| EventDescriptionError::Database(e.to_string()))?;
 
@@ -133,7 +133,7 @@ pub async fn list_event_descriptions(
 
 #[derive(Deserialize)]
 pub struct GetEventDescriptionQuery {
-    pub project_id: Uuid,
+    pub project_id: ProjectId,
     pub event_name: String,
 }
 
@@ -144,7 +144,7 @@ pub async fn get_event_description(
     AuthUser { user, .. }: AuthUser,
 ) -> Result<Json<EventDescriptionResponse>, EventDescriptionError> {
     // Check user has access to this project
-    let role = db::get_user_project_role(&state.db_pool, user.id, query.project_id)
+    let role = db::get_user_project_role(&state.db_pool, user.id, &query.project_id)
         .await
         .map_err(|e| EventDescriptionError::Database(e.to_string()))?;
 
@@ -152,7 +152,7 @@ pub async fn get_event_description(
         return Err(EventDescriptionError::Forbidden);
     }
 
-    let desc = db::get_event_description(&state.db_pool, query.project_id, &query.event_name)
+    let desc = db::get_event_description(&state.db_pool, &query.project_id, &query.event_name)
         .await
         .map_err(|e| EventDescriptionError::Database(e.to_string()))?
         .ok_or(EventDescriptionError::NotFound)?;

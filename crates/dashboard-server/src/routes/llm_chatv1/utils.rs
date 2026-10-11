@@ -10,6 +10,7 @@ use axum::{
     http::StatusCode,
     response::sse::{Event, KeepAlive, Sse},
 };
+use canonical_event::ProjectId;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -84,7 +85,7 @@ pub async fn chat_handler_v1(
         None => {
             match chat::create_chat(
                 &state.db_pool,
-                project.id,
+                &project.id,
                 _auth_user.user.id,
                 "New Chat",
                 &req.chat_type,
@@ -430,7 +431,7 @@ async fn talk_to_llm(
     state: &AppState,
     tx: tokio::sync::mpsc::Sender<Result<Event, Infallible>>,
     chat_id: Uuid,
-    project_id: Uuid,
+    project_id: ProjectId,
     chat_type: &ChatType,
 ) {
     let model = "private-large".to_string();
@@ -490,7 +491,7 @@ async fn talk_to_llm(
                         tool_name,
                         &tc.function.arguments,
                         state,
-                        project_id,
+                        &project_id,
                         &tx,
                         tool_call_id,
                     )

@@ -7,8 +7,8 @@ class Configuration {
   private static _endpoint: string = Configuration.DEFAULT_ENDPOINT;
   private static _token: string | null = null;
   private static _headers: Record<string, string> = {};
-  private static _tenantId: string | null = null;
-  private static _workspaceId: string | null = null;
+  private static _orgId: string | null = null;
+  private static _projectId: string | null = null;
   private static _source: string | null = Configuration.DEFAULT_SOURCE;
   private static _sessionId: string | null = null;
 
@@ -32,12 +32,12 @@ class Configuration {
     return Configuration._headers;
   }
 
-  static get tenantId(): string | null {
-    return Configuration._tenantId;
+  static get orgId(): string | null {
+    return Configuration._orgId;
   }
 
-  static get workspaceId(): string | null {
-    return Configuration._workspaceId;
+  static get projectId(): string | null {
+    return Configuration._projectId;
   }
 
   static get source(): string | null {
@@ -68,12 +68,12 @@ class Configuration {
     Configuration._headers = value;
   }
 
-  static setTenantId(value: string | null): void {
-    Configuration._tenantId = value;
+  static setOrgId(value: string | null): void {
+    Configuration._orgId = value;
   }
 
-  static setWorkspaceId(value: string | null): void {
-    Configuration._workspaceId = value;
+  static setProjectId(value: string | null): void {
+    Configuration._projectId = value;
   }
 
   static setSource(value: string | null): void {
@@ -90,8 +90,8 @@ class Configuration {
     Configuration._endpoint = Configuration.DEFAULT_ENDPOINT;
     Configuration._token = null;
     Configuration._headers = {};
-    Configuration._tenantId = null;
-    Configuration._workspaceId = null;
+    Configuration._orgId = null;
+    Configuration._projectId = null;
     Configuration._source = Configuration.DEFAULT_SOURCE;
     Configuration._sessionId = null;
   }

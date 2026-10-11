@@ -13,8 +13,9 @@ message naming the variable.
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `KAFKA_BOOTSTRAP_SERVERS` | yes | — | librdkafka `bootstrap.servers` |
-| `KAFKA_TOPICS` | yes | — | Comma-separated, trimmed, non-empty; the service subscribes to all of them |
+| `KAFKA_TOPICS` | yes | — | Comma-separated, trimmed, non-empty; the service subscribes to all of them. An entry starting with `^` is a regex, e.g. `^events\..*` for every project topic |
 | `KAFKA_GROUP_ID` | yes | — | Consumer group |
+| `KAFKA_METADATA_REFRESH_SECS` | no | `30` | How often topic metadata is refreshed, i.e. how soon a new topic matching a `^` pattern is consumed; must be > 0 |
 | `S3_BUCKET` | yes | — | Target bucket |
 | `S3_PREFIX` | no | — | Key prefix, no leading/trailing `/` |
 | `S3_ENDPOINT` | no | — | Endpoint override (MinIO/local) |
@@ -29,21 +30,21 @@ log verbosity (defaults to `info`).
 ## S3 key layout
 
 ```
-{S3_PREFIX?}/{org_id}/{proj_id}/dt=YYYY-MM-DD/hour=HH/{hash}.jsonl.zst
+{S3_PREFIX?}/{org_id}/{project_id}/dt=YYYY-MM-DD/hour=HH/{hash}.jsonl.zst
 {S3_PREFIX?}/_quarantine/{hash}.jsonl.zst
 ```
 
 - `dt`/`hour` come from the event's `arrived_at` (UTC); if `arrived_at` is
   absent or unparseable the service falls back to `occured_at` and logs a
   warning. The hour is zero-padded (`hour=03`).
-- `proj_id` absent routes the event to the literal `default` directory
+- `project_id` absent routes the event to the literal `default` directory
   (with a warning).
 - `hash` is the first 16 lowercase hex chars of the sha256 of the uncompressed
   JSONL body. Identical content produces an identical key; different content
   produces a different key.
 - File content is the raw Kafka payload bytes, one event per line, in
   consumption order — events are never re-serialized.
-- One file per `(org, proj, dt, hour)` per flush cycle, merged across
+- One file per `(org, project_id, dt, hour)` per flush cycle, merged across
   all topics and partitions. Per-partition consumption order is preserved
   within a file; cross-partition ordering is not guaranteed — downstream
   consumers sort by `arrived_at` as needed.
@@ -99,7 +100,7 @@ Start the local infrastructure (redpanda on `localhost:19092`, plus an
 S3-compatible endpoint such as MinIO):
 
 ```bash
-docker compose -f tests/docker-compose.yml up -d
+cargo xtask setup redpanda minio
 ```
 
 Run the archiver against it:

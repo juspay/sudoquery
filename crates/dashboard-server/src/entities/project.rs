@@ -1,12 +1,17 @@
+use canonical_event::OrgId;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
 #[sea_orm(table_name = "projects")]
 pub struct Model {
+    // `String` rather than `ProjectId`: sea-orm's `PrimaryKeyTrait` requires
+    // `TryFromU64`/`FromValueTuple`, which the canonical-event newtypes do
+    // not (and cannot, per orphan rules) implement. The sqlx `db` layer is
+    // the authoritative typed boundary for slugs.
     #[sea_orm(primary_key, auto_increment = false)]
-    pub id: Uuid,
-    pub organization_id: Option<Uuid>,
+    pub id: String,
+    pub organization_id: Option<OrgId>,
     pub name: String,
     pub timezone: Option<String>,
     pub deleted_at: Option<DateTimeWithTimeZone>,

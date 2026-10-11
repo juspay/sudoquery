@@ -82,7 +82,7 @@ pub async fn create_dashboard(
 ) -> Result<(StatusCode, Json<DashboardResponse>), DashboardError> {
     let dashboard = db::create_dashboard(
         &state.db_pool,
-        project.id,
+        &project.id,
         &req.query,
         &req.description,
         None, // title - deprecated, not accepted
@@ -101,7 +101,7 @@ pub async fn list_dashboards(
     State(state): State<AppState>,
     ProjectContext { project, .. }: ProjectContext,
 ) -> Result<Json<ListDashboardsResponse>, DashboardError> {
-    let dashboards = db::get_dashboards(&state.db_pool, project.id)
+    let dashboards = db::get_dashboards(&state.db_pool, &project.id)
         .await
         .map_err(|e| DashboardError::Database(e.to_string()))?;
 
@@ -149,7 +149,7 @@ pub async fn get_dashboard(
         // Execute query against ClickHouse
         match clickhouse::execute_project_query(
             &state.clickhouse_url,
-            project.id,
+            &project.id,
             &state.clickhouse_project_password,
             &dashboard.query,
         )
@@ -250,7 +250,7 @@ pub async fn test_run_dashboard(
     // Execute query against ClickHouse
     let response = clickhouse::execute_project_query(
         &state.clickhouse_url,
-        project.id,
+        &project.id,
         &state.clickhouse_project_password,
         &req.query,
     )

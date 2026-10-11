@@ -11,10 +11,11 @@ Design and delivery semantics are in [SPEC.md](SPEC.md).
 ## Run locally
 
 ```bash
-docker compose -f tests/docker-compose.yml up -d redpanda opensearch opensearch-init \
+cargo xtask setup redpanda opensearch opensearch-init \
   opensearch-dashboards opensearch-dashboards-init console
-docker exec redpanda rpk cluster health --watch --exit-when-healthy
-docker exec redpanda rpk topic create events.generic events.generic.dlq -p 3
+docker compose exec redpanda rpk cluster health --watch --exit-when-healthy
+docker compose exec redpanda rpk topic create dlq.events -p 3
+# Project topics (events.{org_id}.{project_id}) are created by dashboard-server.
 
 SINK_CONFIG=crates/sink-opensearch/cac.toml LOG_FORMAT=pretty \
   cargo run -p sink-opensearch
@@ -38,7 +39,7 @@ The differences from the collector's file:
 
 - **One key per setting,** named `section.name`: `"batch.max_docs"`, `"opensearch.index"`, and so on. That way an override can change one setting without repeating a whole section.
 - **Unknown or misspelled keys** stop the sink at startup.
-- **Only `opensearch.index` is resolved per org,** for each event's `org_id` and `proj_id`, so `[[overrides]]` on those dimensions change where an org's events go. Everything else is resolved once at startup with no org, and org overrides of it are ignored.
+- **Only `opensearch.index` is resolved per org,** for each event's `org_id` and `project_id`, so `[[overrides]]` on those dimensions change where an org's events go. Everything else is resolved once at startup with no org, and org overrides of it are ignored.
 - **Org overrides apply live.** The sink re-reads the file every 30 seconds and re-resolves each org's index at most every 30 seconds, so an org override applies within about a minute without a restart. Other settings need a restart.
 
 Every key can also be set from the environment, and **the environment wins over the file.** The variable is the key in upper case with `.` replaced by `_`. Empty values count as unset.
@@ -155,7 +156,7 @@ A template only applies to indexes created after it's installed. Existing indexe
 ```bash
 cargo test -p sink-opensearch                 # unit tests, no services needed
 
-docker compose -f tests/docker-compose.yml up -d redpanda opensearch
+cargo xtask setup redpanda opensearch
 cargo test -p sink-opensearch -- --ignored    # end-to-end against the local stack
 ```
 

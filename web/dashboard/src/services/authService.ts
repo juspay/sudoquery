@@ -40,13 +40,6 @@ interface Project {
   created_at: string;
 }
 
-interface Tenant {
-  id: string;
-  realm_id: string;
-  name: string;
-  created_at: string;
-}
-
 interface KeycloakUser {
   id: string;
   username: string;
@@ -263,14 +256,6 @@ export const authService = {
 };
 
 const adminService = {
-  async createTenant(name: string): Promise<Tenant> {
-    return apiClient.post('/tenants', { name });
-  },
-
-  async deleteTenant(tenantId: string): Promise<void> {
-    await apiClient.delete(`/tenants/${tenantId}`);
-  },
-
   async createUser(realmId: string, username: string, email: string, password: string): Promise<KeycloakUser> {
     return apiClient.post('/users', { realm_id: realmId, username, email, password });
   },

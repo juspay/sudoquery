@@ -7,10 +7,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::{
-    db,
+    AppState, db,
     middleware::ProjectAccess,
     opensearch::{CursorPage, Event, OpenSearchError, QueryRequest, Scope, SortOrder},
-    AppState,
 };
 
 // ============ Request/Response Types ============
@@ -111,7 +110,10 @@ impl axum::response::IntoResponse for SearchError {
             }
             SearchError::OpenSearch(error) => {
                 tracing::error!("OpenSearch error: {}", error);
-                (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error".to_string())
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
         };
 

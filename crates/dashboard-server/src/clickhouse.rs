@@ -1,6 +1,6 @@
+use canonical_event::ProjectId;
 use reqwest::Client;
 use serde_json::Value;
-use uuid::Uuid;
 
 #[derive(Debug, thiserror::Error)]
 pub enum ClickHouseError {
@@ -15,13 +15,13 @@ pub async fn create_project_user(
     admin_user: &str,
     admin_password: &str,
     project_password: &str,
-    project_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<(), ClickHouseError> {
     let client = Client::new();
     let project_id_str = project_id.to_string();
 
     let create_query = format!(
-        "CREATE USER '{}' IDENTIFIED WITH sha256_password BY '{}'",
+        "CREATE USER IF NOT EXISTS '{}' IDENTIFIED WITH sha256_password BY '{}'",
         project_id_str, project_password
     );
     execute_admin_query(
@@ -33,8 +33,16 @@ pub async fn create_project_user(
     )
     .await?;
 
-    let grant_query = format!("GRANT project_user TO '{}'", project_id_str);
-    execute_admin_query(&client, admin_url, admin_user, admin_password, &grant_query).await?;
+    // Read access to the project's own database (provisioning.rs), and
+    // nothing else. Only the tables: never its Kafka table, which a SELECT
+    // would consume from.
+    for table in crate::provisioning::PROJECT_TABLES {
+        let grant_query = format!(
+            "GRANT SELECT ON `{}`.{} TO '{}'",
+            project_id_str, table, project_id_str
+        );
+        execute_admin_query(&client, admin_url, admin_user, admin_password, &grant_query).await?;
+    }
 
     Ok(())
 }
@@ -43,7 +51,7 @@ pub async fn drop_project_user(
     admin_url: &str,
     admin_user: &str,
     admin_password: &str,
-    project_id: Uuid,
+    project_id: &ProjectId,
 ) -> Result<(), ClickHouseError> {
     let client = Client::new();
     let project_id_str = project_id.to_string();
@@ -102,7 +110,7 @@ pub async fn execute_query(clickhouse_url: &str, query: &str) -> Result<Value, C
 
 pub async fn execute_project_query(
     clickhouse_url: &str,
-    project_id: Uuid,
+    project_id: &ProjectId,
     project_password: &str,
     query: &str,
 ) -> Result<Value, ClickHouseError> {
@@ -112,7 +120,9 @@ pub async fn execute_project_query(
 
     println!("Executing query for project {}: {}", project_id_str, query);
 
-    let url = format!("{}?database=default", clickhouse_url);
+    // Every project has its own database, named after the project
+    // (provisioning.rs), so unqualified table names resolve to its tables.
+    let url = format!("{}?database={}", clickhouse_url, project_id_str);
 
     let response = client
         .post(&url)
