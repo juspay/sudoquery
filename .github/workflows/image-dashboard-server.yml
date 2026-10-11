@@ -10,14 +10,34 @@ permissions:
 
 jobs:
   build:
-    name: Build and push dashboard-server
-    runs-on: ubuntu-latest
+    name: Build and push dashboard-server (${{ matrix.platform }})
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
 
       - uses: ./.github/actions/build-push-image
         with:
           image: dashboard-server
+          platform: ${{ matrix.platform }}
           dockerfile: crates/dashboard-server/Dockerfile
           context: .
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  merge:
+    name: Push dashboard-server manifest
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/merge-image
+        with:
+          image: dashboard-server
           github-token: ${{ secrets.GITHUB_TOKEN }}

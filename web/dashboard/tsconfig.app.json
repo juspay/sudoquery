@@ -15,6 +15,10 @@
     "moduleDetection": "force",
     "noEmit": true,
     "jsx": "react-jsx",
+    /* Mirrors the alias in vite.config.ts */
+    "paths": {
+      "@clients/typescript": ["../../clients/typescript/src/index.ts"]
+    },
 
     /* Linting */
     "strict": true,

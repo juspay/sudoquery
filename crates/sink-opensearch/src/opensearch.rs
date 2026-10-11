@@ -33,7 +33,7 @@ impl OpenSearchWriter {
     ) -> Result<Self, BulkClientError> {
         Ok(Self {
             client: BulkClient::new(config)?,
-            indexes: OrgIndexes::new(cac),
+            indexes: OrgIndexes::new(cac, config.index_from_env.then(|| config.index.clone())),
             max_doc_bytes,
         })
     }

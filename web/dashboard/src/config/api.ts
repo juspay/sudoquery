@@ -1,6 +1,7 @@
+import { getEnv } from './env';
+
 const getEnvVar = (key: string, defaultValue: string): string => {
-  const value = import.meta.env[key];
-  return value ?? defaultValue;
+  return getEnv(key) ?? defaultValue;
 };
 
 export const API_CONFIG = {
@@ -32,5 +33,25 @@ export const KEYCLOAK_CONFIG = {
   },
   get IDP_ALIAS() {
     return getEnvVar('VITE_KEYCLOAK_IDP_ALIAS', 'google');
+  },
+};
+
+/** The demo store at /demo, which sends its events to an events collector. */
+export const DEMO_CONFIG = {
+  /** The /demo route exists only when this is `true`. */
+  get ENABLED() {
+    return getEnv('VITE_DEMO_ENABLED') === 'true';
+  },
+  /** The collector's batch endpoint. */
+  get COLLECTOR_URL() {
+    return getEnvVar('VITE_DEMO_COLLECTOR_URL', 'http://localhost:3000/v1/events/batch');
+  },
+  /** Default organization ID (`org_id`); the page can change it. */
+  get TENANT_ID() {
+    return getEnv('VITE_DEMO_TENANT_ID');
+  },
+  /** Default project UUID (`proj_id`); the page can change it. */
+  get WORKSPACE_ID() {
+    return getEnv('VITE_DEMO_WORKSPACE_ID');
   },
 };

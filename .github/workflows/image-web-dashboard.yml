@@ -10,19 +10,29 @@ permissions:
 
 jobs:
   build:
-    name: Build and push web-dashboard
-    runs-on: ubuntu-latest
+    name: Build and push web-dashboard (${{ matrix.platform }})
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
 
-      # Vite bakes these in at build time. Set them as repository variables
+      # Build-time defaults, baked in by Vite. Set them as repository variables
       # (Settings → Secrets and variables → Actions → Variables); unset ones
-      # fall back to the defaults in web/dashboard/src/config/api.ts.
+      # fall back to the defaults in web/dashboard/src/config/api.ts. A
+      # container's own VITE_* environment variables override these at start
+      # (see web/dashboard/env-config.sh).
       - uses: ./.github/actions/build-push-image
         with:
           image: web-dashboard
+          platform: ${{ matrix.platform }}
           dockerfile: web/dashboard/Dockerfile
-          context: web/dashboard
+          context: .
           github-token: ${{ secrets.GITHUB_TOKEN }}
           build-args: |
             VITE_API_BASE_URL=${{ vars.VITE_API_BASE_URL }}
@@ -35,3 +45,19 @@ jobs:
             VITE_ANALYTICS_TOKEN=${{ vars.VITE_ANALYTICS_TOKEN }}
             VITE_ANALYTICS_FLUSH_INTERVAL=${{ vars.VITE_ANALYTICS_FLUSH_INTERVAL }}
             VITE_MAINTENANCE_MODE=${{ vars.VITE_MAINTENANCE_MODE }}
+            VITE_DEMO_ENABLED=${{ vars.VITE_DEMO_ENABLED }}
+            VITE_DEMO_COLLECTOR_URL=${{ vars.VITE_DEMO_COLLECTOR_URL }}
+            VITE_DEMO_TENANT_ID=${{ vars.VITE_DEMO_TENANT_ID }}
+            VITE_DEMO_WORKSPACE_ID=${{ vars.VITE_DEMO_WORKSPACE_ID }}
+
+  merge:
+    name: Push web-dashboard manifest
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/merge-image
+        with:
+          image: web-dashboard
+          github-token: ${{ secrets.GITHUB_TOKEN }}

@@ -15,6 +15,7 @@ import { SchemaProvider } from './contexts/SchemaContext'
 import { createAppTheme } from './theme/theme'
 import { initAnalytics } from './utils/analytics'
 import MaintenanceModePage from './pages/MaintenanceModePage'
+import { getEnv } from './config/env'
 
 // Polyfill crypto.randomUUID for non-secure contexts (HTTP)
 if (typeof crypto !== 'undefined' && typeof crypto.randomUUID !== 'function') {
@@ -32,7 +33,7 @@ initAnalytics();
 
 const theme = createAppTheme();
 
-const isMaintenanceMode = import.meta.env.VITE_MAINTENANCE_MODE === 'true';
+const isMaintenanceMode = getEnv('VITE_MAINTENANCE_MODE') === 'true';
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

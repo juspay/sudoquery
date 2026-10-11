@@ -138,6 +138,7 @@ mod tests {
             url: url.to_owned(),
             index: IndexTemplate::parse("events").unwrap(),
             request_timeout_ms: 1000,
+            index_from_env: false,
             username: None,
             password: None,
         }

@@ -1,5 +1,5 @@
-# Builds every deployable image and pushes it to GHCR as
-# ghcr.io/<owner>/<repo>/<image>:{sha-<short commit>,<branch>}.
+# Builds every deployable image for linux/amd64 and linux/arm64 and pushes it
+# to GHCR as ghcr.io/<owner>/<repo>/<image>:{sha-<short commit>,<branch>}.
 # Each image has its own workflow (image-*.yml); this one runs them all.
 name: Build images
 

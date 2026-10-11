@@ -10,14 +10,34 @@ permissions:
 
 jobs:
   build:
-    name: Build and push sink-opensearch
-    runs-on: ubuntu-latest
+    name: Build and push sink-opensearch (${{ matrix.platform }})
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v7
 
       - uses: ./.github/actions/build-push-image
         with:
           image: sink-opensearch
+          platform: ${{ matrix.platform }}
           dockerfile: crates/sink-opensearch/Dockerfile
           context: .
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  merge:
+    name: Push sink-opensearch manifest
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/merge-image
+        with:
+          image: sink-opensearch
           github-token: ${{ secrets.GITHUB_TOKEN }}

@@ -12,7 +12,18 @@ use tracing_subscriber::EnvFilter;
 
 #[tokio::main]
 async fn main() -> ExitCode {
+    // Before tracing, so RUST_LOG and LOG_FORMAT can come from `.env` too.
+    // Variables already set in the environment are kept.
+    let dotenv = dotenvy::dotenv();
     init_tracing();
+    match dotenv {
+        Ok(path) => info!(path = %path.display(), "loaded environment file"),
+        Err(error) if error.not_found() => {}
+        Err(error) => {
+            error!(%error, "failed to load the .env file");
+            return ExitCode::FAILURE;
+        }
+    }
 
     let cac = match Cac::load(cac_path()).await {
         Ok(cac) => cac,

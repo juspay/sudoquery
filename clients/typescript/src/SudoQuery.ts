@@ -1,9 +1,8 @@
-import { JSONSerializable, Event } from "./types";
+import type { JSONSerializable, Event } from "./types";
 import { Batcher } from "./Batcher";
 import { SuperProperties } from "./SuperProperties";
 import { flush as flushEvents } from "./Flush";
 import { AnonymousId } from "./AnonymousId";
-import { Pusher } from "./Pusher";
 import { Configuration } from "./Configuration";
 import { getSessionId } from "./Session";
 import { generateUuid } from "./Uuid";
