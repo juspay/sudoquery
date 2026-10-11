@@ -29,21 +29,33 @@ directory. The first invocation compiles the binary; later runs are fast.
 | `db migration add <name>` | Create a new migration file |
 | `e2e dashboard [filter]` | End-to-end org/project tests against dashboard-server |
 | `e2e collector [filter]` | End-to-end ingestion tests through events-collector into Kafka |
+| `e2e kafka-to-s3 [filter]` | End-to-end archiving tests through kafka-to-s3 into S3 |
 
 ## Docker compose tasks
 
-Docker requires `sudo` on this machine, so `ps` and `setup` invoke docker
-through it (the password prompt appears normally).
+`ps` and `setup` run plain `docker`; they never call `sudo` themselves. If
+docker needs root on your machine, run the task under sudo. Use the built
+binary rather than `sudo cargo …`, so cargo doesn't run as root (root
+usually has no toolchain on its `PATH`, and would leave root-owned files in
+`target/`):
+
+```sh
+cargo build -p xtask --release          # once, or after changing xtask
+sudo target/release/xtask setup postgres
+sudo target/release/xtask ps
+```
+
+Adding yourself to the `docker` group avoids sudo altogether.
 
 ### `ps`
 
-`sudo docker compose ps -a` — the containers of this repo's compose project
+`docker compose ps -a` — the containers of this repo's compose project
 (`name: sudo-query-dev-53111d` in `docker-compose.yml`), running and exited,
 with state, health and mapped ports.
 
 ### `setup [services...]`
 
-Starts a chosen subset of the compose stack via `sudo docker compose up -d`.
+Starts a chosen subset of the compose stack via `docker compose up -d`.
 
 - **Interactive** (`cargo xtask setup`): lists the services discovered live
   from `docker-compose.yml` and asks which to start. Answer with numbers

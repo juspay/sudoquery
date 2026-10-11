@@ -6,6 +6,8 @@
 //!   ClickHouse.
 //! * `collector`: events-collector against the local compose Redpanda,
 //!   reading published events back from per-test topics.
+//! * `kafka-to-s3`: the kafka-to-s3 archiver against the local compose
+//!   Redpanda and MinIO, reading archived objects back from a per-run bucket.
 
 /// Declares a suite's `CASES` table from its async case functions, each
 /// `async fn(&Ctx) -> anyhow::Result<()>`.
@@ -24,7 +26,9 @@ mod collector;
 mod dashboard;
 mod db;
 mod kafka;
+mod kafka_to_s3;
 mod mock;
+mod s3;
 mod server;
 
 use std::future::Future;
@@ -46,6 +50,7 @@ pub fn main(args: Vec<String>) {
         match args.first().map(String::as_str) {
             Some("dashboard") => dashboard::run(filter.as_deref()).await,
             Some("collector") => collector::run(filter.as_deref()).await,
+            Some("kafka-to-s3") => kafka_to_s3::run(filter.as_deref()).await,
             _ => usage(),
         }
     });
@@ -68,6 +73,9 @@ Suites:
               (needs the compose postgres: `cargo xtask setup postgres`)
   collector   Event ingestion through events-collector into Kafka
               (needs the compose redpanda: `cargo xtask setup redpanda`)
+  kafka-to-s3 Archiving through kafka-to-s3 from Kafka into S3
+              (needs the compose redpanda and minio:
+              `cargo xtask setup redpanda minio`)
 
 [filter] runs only the cases whose name contains it."
     );

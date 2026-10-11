@@ -6,10 +6,12 @@ publish = false
 
 [dependencies]
 anyhow = "1"
+aws-sdk-s3 = "1"
 axum = { workspace = true }
 base64 = "0.22"
 canonical-event = { path = "../crates/canonical-event" }
 chrono = { workspace = true }
+hex = "0.4"
 jsonwebtoken = "9"
 rdkafka = { workspace = true }
 rand = "0.8"
@@ -17,6 +19,8 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 rsa = "0.9"
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = "0.10"
 sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "migrate", "tls-rustls", "uuid", "chrono"] }
 tokio = { workspace = true }
 uuid = { workspace = true }
+zstd = "0.13"

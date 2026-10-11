@@ -1,11 +1,14 @@
 //! `cargo xtask ps` / `cargo xtask setup` — docker compose stack tooling.
+//!
+//! Docker is invoked directly; when it needs root, run the task itself
+//! under sudo (see the README).
 
 use std::collections::BTreeSet;
 use std::io::{self, Write};
 use std::process::Command;
 
 pub(crate) fn ps() {
-    crate::run("sudo", &["docker", "compose", "ps", "-a"]);
+    crate::run("docker", &["compose", "ps", "-a"]);
 }
 
 pub(crate) fn setup(requested: &[String]) {
@@ -20,13 +23,13 @@ pub(crate) fn setup(requested: &[String]) {
         parse_selection(&requested.join(" "), &available).unwrap_or_else(|message| fail(message))
     };
     println!("starting: {}", selected.join(", "));
-    let mut args = vec!["docker", "compose", "up", "-d"];
+    let mut args = vec!["compose", "up", "-d"];
     args.extend(selected.iter().map(String::as_str));
-    crate::run("sudo", &args);
+    crate::run("docker", &args);
 }
 
 /// Service names from docker-compose.yml, sorted — `config` is client-side,
-/// so this needs no daemon and no sudo.
+/// so this needs no daemon and no root.
 fn compose_services() -> Vec<String> {
     let output = Command::new("docker")
         .args(["compose", "config", "--services"])

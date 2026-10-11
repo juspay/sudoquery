@@ -3089,24 +3089,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kafka-to-s3-tests"
-version = "0.1.0"
-dependencies = [
- "aws-sdk-s3",
- "canonical-event",
- "chrono",
- "futures",
- "hex",
- "rdkafka",
- "serde",
- "serde_json",
- "sha2 0.10.9",
- "tokio",
- "uuid",
- "zstd",
-]
-
-[[package]]
 name = "kqueue"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7211,10 +7193,12 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aws-sdk-s3",
  "axum",
  "base64 0.22.1",
  "canonical-event",
  "chrono",
+ "hex",
  "jsonwebtoken",
  "rand 0.8.8",
  "rdkafka",
@@ -7222,9 +7206,11 @@ dependencies = [
  "rsa",
  "serde",
  "serde_json",
+ "sha2 0.10.9",
  "sqlx",
  "tokio",
  "uuid",
+ "zstd",
 ]
 
 [[package]]

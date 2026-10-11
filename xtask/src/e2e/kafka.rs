@@ -1,5 +1,5 @@
-//! Kafka access for the collector suite: creates per-test topics, reads
-//! them back from the beginning, and deletes them afterwards.
+//! Kafka access for the e2e suites: creates per-test topics, produces to and
+//! reads them back from the beginning, and deletes them afterwards.
 
 use std::sync::Mutex;
 use std::time::Duration;
@@ -10,6 +10,7 @@ use rdkafka::client::DefaultClientContext;
 use rdkafka::config::ClientConfig;
 use rdkafka::consumer::{BaseConsumer, Consumer, StreamConsumer};
 use rdkafka::error::RDKafkaErrorCode;
+use rdkafka::producer::{FutureProducer, FutureRecord};
 use rdkafka::{Message as _, Offset, TopicPartitionList};
 use serde_json::Value;
 use tokio::time::Instant;
@@ -17,6 +18,7 @@ use tokio::time::Instant;
 /// Brokers used when `KAFKA_BOOTSTRAP_SERVERS` is unset: the compose Redpanda.
 const DEFAULT_BOOTSTRAP_SERVERS: &str = "localhost:19092";
 const ADMIN_TIMEOUT: Duration = Duration::from_secs(10);
+const DELIVERY_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long to wait for expected messages to arrive.
 const ARRIVAL_TIMEOUT: Duration = Duration::from_secs(15);
 /// How long to keep listening after the expected messages, to catch extras.
@@ -33,6 +35,7 @@ pub(crate) struct Record {
 pub(crate) struct Kafka {
     bootstrap_servers: String,
     admin: AdminClient<DefaultClientContext>,
+    producer: FutureProducer,
     created: Mutex<Vec<String>>,
 }
 
@@ -58,6 +61,7 @@ impl Kafka {
 
         Ok(Self {
             admin: client_config(&bootstrap_servers).create()?,
+            producer: client_config(&bootstrap_servers).create()?,
             bootstrap_servers,
             created: Mutex::new(Vec::new()),
         })
@@ -85,6 +89,28 @@ impl Kafka {
         }
         self.created.lock().unwrap().push(name.to_owned());
         Ok(())
+    }
+
+    /// Produces `payload` to partition 0 of `topic`, waits for the broker's
+    /// ack and returns the record's offset. Awaiting each call before the
+    /// next keeps offsets in call order.
+    pub(crate) async fn produce(
+        &self,
+        topic: &str,
+        key: &str,
+        payload: &[u8],
+    ) -> anyhow::Result<i64> {
+        let record = FutureRecord::to(topic)
+            .key(key)
+            .payload(payload)
+            .partition(0);
+        let (_, offset) = self
+            .producer
+            .send(record, DELIVERY_TIMEOUT)
+            .await
+            .map_err(|(err, _)| err)
+            .with_context(|| format!("failed to produce to {topic}"))?;
+        Ok(offset)
     }
 
     /// Deletes every topic created by this run.

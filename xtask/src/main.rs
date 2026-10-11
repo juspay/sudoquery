@@ -71,6 +71,8 @@ Tasks:
                            (needs the compose postgres)
   e2e collector [filter]   End-to-end ingestion tests through events-collector
                            into Kafka (needs the compose redpanda)
+  e2e kafka-to-s3 [filter] End-to-end archiving tests through kafka-to-s3
+                           into S3 (needs the compose redpanda and minio)
   ls              List available tasks
   ps              Show this repo's docker compose containers and status
   setup [svc...]  Choose docker compose services to start";
