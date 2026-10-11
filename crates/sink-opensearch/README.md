@@ -11,10 +11,11 @@ Design and delivery semantics are in [SPEC.md](SPEC.md).
 ## Run locally
 
 ```bash
-docker compose -f tests/docker-compose.yml up -d redpanda opensearch opensearch-init \
+cargo xtask setup redpanda opensearch opensearch-init \
   opensearch-dashboards opensearch-dashboards-init console
-docker exec redpanda rpk cluster health --watch --exit-when-healthy
-docker exec redpanda rpk topic create events.generic events.generic.dlq -p 3
+docker compose exec redpanda rpk cluster health --watch --exit-when-healthy
+docker compose exec redpanda rpk topic create dlq.events -p 3
+# Project topics (events.{org_id}.{project_id}) are created by dashboard-server.
 
 SINK_CONFIG=crates/sink-opensearch/cac.toml LOG_FORMAT=pretty \
   cargo run -p sink-opensearch
@@ -152,7 +153,7 @@ A template only applies to indexes created after it's installed. Existing indexe
 ```bash
 cargo test -p sink-opensearch                 # unit tests, no services needed
 
-docker compose -f tests/docker-compose.yml up -d redpanda opensearch
+cargo xtask setup redpanda opensearch
 cargo test -p sink-opensearch -- --ignored    # end-to-end against the local stack
 ```
 

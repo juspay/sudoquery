@@ -48,6 +48,8 @@ pub struct EventConsumer {
 
 impl EventConsumer {
     /// Create and subscribe (D16): manual commits, `earliest` reset, ALL topics.
+    /// A topic starting with `^` is a regex; topics created later that match
+    /// it are picked up on the next metadata refresh.
     ///
     /// # Errors
     /// Returns a [`ConsumerError`] when client creation or subscription fails.
@@ -58,6 +60,10 @@ impl EventConsumer {
             .set("enable.auto.commit", "false")
             .set("auto.offset.reset", "earliest")
             .set("enable.partition.eof", "false")
+            .set(
+                "topic.metadata.refresh.interval.ms",
+                config.kafka_metadata_refresh.as_millis().to_string(),
+            )
             .create_with_context(ArchiverContext)?;
         let topics: Vec<&str> = config.kafka_topics.iter().map(String::as_str).collect();
         inner

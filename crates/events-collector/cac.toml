@@ -1,0 +1,26 @@
+# events-collector settings, resolved per request with CAC (Superposition)
+# for the request's `x-org-id` / `x-project-id` headers (the `org_id` and
+# `project_id` dimensions below), so `[[overrides]]` can change any setting
+# for one org or project.
+#
+# `kafka_connector.topic` may use `{org_id}` and `{project_id}`; the collector
+# replaces them with the request's ids before publishing. Every project has
+# its own topic, `events.{org_id}.{project_id}`, created by dashboard-server
+# with the project (its PROJECT_TOPIC_TEMPLATE must render the same name).
+# KAFKA_TOPIC overrides the value here and may use the same placeholders.
+#
+# `bootstrap.servers` points at the local compose Redpanda; deployments set
+# KAFKA_BOOTSTRAP_SERVERS (and KAFKA_CLIENT_CONFIG for other client settings).
+#
+# The collector reads this file from COLLECTOR_CONFIG (default `cac.toml` in
+# the working directory). Locally:
+#
+#   COLLECTOR_CONFIG=crates/events-collector/cac.toml cargo run -p event-collector
+
+[default-configs]
+kafka_connector = { value = { topic = "events.{org_id}.{project_id}", client_config = { "bootstrap.servers" = "localhost:19092", "message.timeout.ms" = "5000", "socket.timeout.ms" = "5000" } }, schema = { type = "object" } }
+enrichment = { value = { country = { override_existing = false, resolution = "IpAddress" }, arrived_at = { enabled = true, override_existing = false }, ip_address = { override_existing = false } }, schema = { type = "object" } }
+
+[dimensions]
+org_id = { position = 1, schema = { type = "string" } }
+project_id = { position = 2, schema = { type = "string" } }

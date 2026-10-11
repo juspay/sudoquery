@@ -4,6 +4,10 @@
 //! (`e2e-collector-<run>.{org_id}.{project_id}`), so every test scope
 //! publishes to its own topic. Cases create those topics up front, send
 //! events over HTTP and read what landed in Kafka.
+//!
+//! The authenticated endpoint's bearer token is a KMS ciphertext the
+//! collector decrypts at runtime; those cases start their own collector
+//! against KMS on the compose localstack.
 
 use std::collections::HashSet;
 
@@ -11,6 +15,7 @@ use anyhow::{Context, ensure};
 use serde_json::{Value, json};
 
 use super::kafka::{Kafka, Record};
+use super::kms::Kms;
 use super::server::Service;
 use super::{Case, Http, Response, run_cases, select};
 
@@ -22,6 +27,7 @@ const CLIENT_COUNTRY: &str = "IN";
 pub(crate) struct Ctx {
     http: Http,
     kafka: Kafka,
+    kms: Kms,
     topic_prefix: String,
 }
 
@@ -73,13 +79,49 @@ impl Ctx {
         headers: &[(&str, &str)],
         events: &[Value],
     ) -> anyhow::Result<Response> {
-        let body = events
-            .iter()
-            .map(Value::to_string)
-            .collect::<Vec<_>>()
-            .join("\n");
-        self.http.post_raw("/v1/events", headers, body).await
+        self.http
+            .post_raw("/v1/events", headers, ndjson(events))
+            .await
     }
+
+    /// A collector of its own whose bearer token is `kms_ciphertext`,
+    /// decrypted through the localstack KMS.
+    async fn collector_with_kms(&self, kms_ciphertext: String) -> anyhow::Result<Service> {
+        let mut env = collector_env(&self.kafka, &self.topic_prefix);
+        env.extend(self.kms.collector_env());
+        env.push(("KMS_CIPHERTEXT", kms_ciphertext));
+        Service::start(PACKAGE, "SERVER_ADDR", None, &env).await
+    }
+}
+
+fn ndjson(events: &[Value]) -> String {
+    events
+        .iter()
+        .map(Value::to_string)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// What every collector in this suite runs with.
+fn collector_env(kafka: &Kafka, topic_prefix: &str) -> Vec<(&'static str, String)> {
+    vec![
+        (
+            "COLLECTOR_CONFIG",
+            crate::workspace_root()
+                .join("crates/events-collector/cac.toml")
+                .display()
+                .to_string(),
+        ),
+        (
+            "KAFKA_BOOTSTRAP_SERVERS",
+            kafka.bootstrap_servers().to_owned(),
+        ),
+        (
+            "KAFKA_TOPIC",
+            format!("{topic_prefix}.{{org_id}}.{{project_id}}"),
+        ),
+        ("RUST_LOG", "warn".to_owned()),
+    ]
 }
 
 /// Builds events-collector, starts it against Kafka, runs the selected cases
@@ -89,51 +131,40 @@ pub(crate) async fn run(filter: Option<&str>) -> anyhow::Result<bool> {
     Service::build(PACKAGE);
 
     let kafka = Kafka::connect().await?;
+    let kms = Kms::connect().await?;
     let topic_prefix = format!(
         "e2e-collector-{}",
         &uuid::Uuid::new_v4().simple().to_string()[..8]
     );
-    run_with_kafka(kafka, topic_prefix, &cases).await
+    let ctx = Ctx {
+        http: Http::new(String::new()),
+        kafka,
+        kms,
+        topic_prefix,
+    };
+    run_with_infra(ctx, &cases).await
 }
 
-async fn run_with_kafka(
-    kafka: Kafka,
-    topic_prefix: String,
-    cases: &[&Case<Ctx>],
-) -> anyhow::Result<bool> {
+async fn run_with_infra(mut ctx: Ctx, cases: &[&Case<Ctx>]) -> anyhow::Result<bool> {
     let server = Service::start(
         PACKAGE,
         "SERVER_ADDR",
-        // cac.toml is read from the working directory.
-        Some(crate::workspace_root()),
-        &[
-            (
-                "KAFKA_BOOTSTRAP_SERVERS",
-                kafka.bootstrap_servers().to_owned(),
-            ),
-            (
-                "KAFKA_TOPIC",
-                format!("{topic_prefix}.{{org_id}}.{{project_id}}"),
-            ),
-            ("RUST_LOG", "warn".to_owned()),
-        ],
+        None,
+        &collector_env(&ctx.kafka, &ctx.topic_prefix),
     )
     .await;
-    let server = match server {
-        Ok(server) => server,
-        Err(err) => {
-            kafka.delete_created().await?;
-            return Err(err);
+    let passed = match server {
+        Ok(server) => {
+            ctx.http = Http::new(server.base_url());
+            Ok(run_cases(&ctx, cases, |_| {}, || server.print_log_tail()).await)
         }
+        Err(err) => Err(err),
     };
-
-    let ctx = Ctx {
-        http: Http::new(server.base_url()),
-        kafka,
-        topic_prefix,
-    };
-    let passed = run_cases(&ctx, cases, |_| {}, || server.print_log_tail()).await;
-    ctx.kafka.delete_created().await?;
+    let topics = ctx.kafka.delete_created().await;
+    let keys = ctx.kms.delete_created().await;
+    let passed = passed?;
+    topics?;
+    keys?;
     Ok(passed)
 }
 
@@ -145,6 +176,8 @@ cases![Ctx:
     requests_without_valid_ids_are_rejected,
     authenticated_endpoint_requires_a_bearer_token,
     health_check_passes_with_a_templated_topic,
+    kms_token_unlocks_the_authenticated_endpoint,
+    undecryptable_kms_token_is_reported_and_refuses_requests,
 ];
 
 async fn events_are_published_to_the_project_topic(ctx: &Ctx) -> anyhow::Result<()> {
@@ -327,7 +360,113 @@ async fn health_check_passes_with_a_templated_topic(ctx: &Ctx) -> anyhow::Result
     Ok(())
 }
 
+/// The collector decrypts its bearer token through KMS: the right token
+/// publishes, a wrong one is refused, and health reports the endpoint ok.
+async fn kms_token_unlocks_the_authenticated_endpoint(ctx: &Ctx) -> anyhow::Result<()> {
+    let key_id = ctx.kms.create_key().await?;
+    let token = format!("e2e-token-{}", uuid::Uuid::new_v4().simple());
+    let collector = ctx
+        .collector_with_kms(ctx.kms.encrypt(&key_id, &token).await?)
+        .await?;
+    let result = async {
+        let http = Http::new(collector.base_url());
+
+        let health = http.get("/v1/health", None, &[]).await?;
+        expect_status(&health, 200)?;
+        let health = health.json()?;
+        ensure!(
+            health["authenticated_endpoint"] == "ok",
+            "unexpected health {health}"
+        );
+
+        let scope = ctx.scope().await?;
+        let (event_id, event) = scope.event("login");
+        let bearer = format!("Bearer {token}");
+        let mut headers = scope.headers();
+        headers.push(("authorization", "Bearer not-the-token"));
+        let response = http
+            .post_raw(
+                "/v1/events/authenticated",
+                &headers,
+                ndjson(std::slice::from_ref(&event)),
+            )
+            .await?;
+        expect_status(&response, 401).context("wrong token")?;
+
+        headers.pop();
+        headers.push(("authorization", bearer.as_str()));
+        let response = http
+            .post_raw("/v1/events/authenticated", &headers, ndjson(&[event]))
+            .await?;
+        expect_status(&response, 200).context("right token")?;
+
+        let records = ctx.kafka.read(&scope.topic, 1).await?;
+        expect_ids(&records, &[&event_id])?;
+        ensure!(
+            records[0].value["authenticated"] == true,
+            "event not marked authenticated: {}",
+            records[0].value
+        );
+        Ok(())
+    }
+    .await;
+    if result.is_err() {
+        collector.print_log_tail();
+    }
+    result
+}
+
+/// A ciphertext KMS cannot decrypt (tampered after encryption): health
+/// reports the error, and the authenticated endpoint refuses every request
+/// without publishing.
+async fn undecryptable_kms_token_is_reported_and_refuses_requests(ctx: &Ctx) -> anyhow::Result<()> {
+    let key_id = ctx.kms.create_key().await?;
+    let ciphertext = ctx.kms.encrypt(&key_id, "e2e-unusable-token").await?;
+    let collector = ctx.collector_with_kms(tamper(&ciphertext)?).await?;
+    let result = async {
+        let http = Http::new(collector.base_url());
+
+        let health = http.get("/v1/health", None, &[]).await?;
+        expect_status(&health, 200)?;
+        let health = health.json()?;
+        let reported = health["authenticated_endpoint"]
+            .as_str()
+            .unwrap_or_default();
+        ensure!(
+            health["status"] == "ok" && reported.contains("KMS"),
+            "health does not report the KMS failure: {health}"
+        );
+
+        let scope = ctx.scope().await?;
+        let (_, event) = scope.event("login");
+        let mut headers = scope.headers();
+        headers.push(("authorization", "Bearer e2e-unusable-token"));
+        let response = http
+            .post_raw("/v1/events/authenticated", &headers, ndjson(&[event]))
+            .await?;
+        expect_status(&response, 500)?;
+        expect_ids(&ctx.kafka.read(&scope.topic, 0).await?, &[])
+    }
+    .await;
+    if result.is_err() {
+        collector.print_log_tail();
+    }
+    result
+}
+
 // ============ Helpers ============
+
+/// `ciphertext` (base64) with its last byte flipped, which breaks KMS's
+/// authentication of it.
+fn tamper(ciphertext: &str) -> anyhow::Result<String> {
+    use base64::Engine;
+    use base64::engine::general_purpose::STANDARD;
+
+    let mut bytes = STANDARD.decode(ciphertext)?;
+    let last = bytes.last_mut().context("empty ciphertext")?;
+    *last ^= 0xff;
+    Ok(STANDARD.encode(bytes))
+}
 
 fn event_for(org_id: &str, project_id: &str, name: &str) -> (String, Value) {
     let id = uuid::Uuid::new_v4().to_string();

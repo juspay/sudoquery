@@ -113,6 +113,31 @@ impl Kafka {
         Ok(offset)
     }
 
+    /// Existing topics whose name starts with `prefix`.
+    pub(crate) async fn topics_with_prefix(&self, prefix: &str) -> anyhow::Result<Vec<String>> {
+        let probe: BaseConsumer = client_config(&self.bootstrap_servers).create()?;
+        let prefix = prefix.to_owned();
+        let names = tokio::task::spawn_blocking(move || {
+            probe.fetch_metadata(None, ADMIN_TIMEOUT).map(|metadata| {
+                metadata
+                    .topics()
+                    .iter()
+                    .map(|topic| topic.name().to_owned())
+                    .filter(|name| name.starts_with(&prefix))
+                    .collect()
+            })
+        })
+        .await?
+        .context("failed to list topics")?;
+        Ok(names)
+    }
+
+    /// Hands topics that a service under test created to
+    /// [`Self::delete_created`].
+    pub(crate) fn adopt(&self, topics: Vec<String>) {
+        self.created.lock().unwrap().extend(topics);
+    }
+
     /// Deletes every topic created by this run.
     pub(crate) async fn delete_created(&self) -> anyhow::Result<()> {
         let topics = std::mem::take(&mut *self.created.lock().unwrap());

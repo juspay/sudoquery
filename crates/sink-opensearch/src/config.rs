@@ -393,11 +393,22 @@ impl Config {
         if self.dlq.topic.trim().is_empty() {
             return invalid("`dlq.topic` must not be empty".into());
         }
-        if self.kafka.topics.contains(&self.dlq.topic) {
-            return invalid(format!(
-                "`dlq.topic` `{}` is also in `kafka.topics`; the sink would consume its own dead letters",
-                self.dlq.topic
-            ));
+        for topic in &self.kafka.topics {
+            // librdkafka treats a topic starting with `^` as a regex.
+            let consumed = match topic.strip_prefix('^') {
+                Some(_) => regex_lite::Regex::new(topic)
+                    .map_err(|e| {
+                        ConfigError::Invalid(format!("`kafka.topics` pattern `{topic}`: {e}"))
+                    })?
+                    .is_match(&self.dlq.topic),
+                None => *topic == self.dlq.topic,
+            };
+            if consumed {
+                return invalid(format!(
+                    "`dlq.topic` `{}` is matched by `kafka.topics` entry `{topic}`; the sink would consume its own dead letters",
+                    self.dlq.topic
+                ));
+            }
         }
 
         validate_url(&self.opensearch.url)?;
@@ -657,6 +668,30 @@ mod tests {
     }
 
     #[test]
+    fn dlq_topic_must_not_match_a_topic_pattern() {
+        assert_invalid(
+            config_with(&[
+                ("kafka.topics", json!([r"^events\..*"])),
+                ("dlq.topic", json!("events.dlq")),
+            ]),
+            "dead letters",
+        );
+        let config = config_with(&[
+            ("kafka.topics", json!([r"^events\..*"])),
+            ("dlq.topic", json!("dlq.events")),
+        ]);
+        assert!(config.is_ok(), "{config:?}");
+    }
+
+    #[test]
+    fn invalid_topic_pattern_is_rejected() {
+        assert_invalid(
+            config_with(&[("kafka.topics", json!(["^events.("]))]),
+            "pattern",
+        );
+    }
+
+    #[test]
     fn bootstrap_servers_are_required() {
         assert_invalid(config_without("kafka.client_config"), "bootstrap.servers");
     }
@@ -780,7 +815,8 @@ mod tests {
         )
         .unwrap();
 
-        assert_eq!(config.kafka.topics, vec!["events.generic"]);
+        assert_eq!(config.kafka.topics, vec![r"^events\..*"]);
+        assert_eq!(config.dlq.topic, "dlq.events");
         assert_eq!(
             config.opensearch.index,
             IndexTemplate::parse("events-{org_id}").unwrap()

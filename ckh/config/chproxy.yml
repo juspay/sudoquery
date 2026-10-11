@@ -13,11 +13,13 @@ users:
     to_user: "default"
 
 
-  # Wildcard entry for all project users (UUID-named ClickHouse accounts).
-  # is_wildcarded: true means CHProxy skips its own auth and forwards
-  # the original username + password directly to ClickHouse.
+  # Wildcard entry for all project users (ClickHouse accounts named after the
+  # project slug). is_wildcarded: true means CHProxy skips its own auth and
+  # forwards the original username + password, and the ?database= parameter
+  # (the project's own database), directly to ClickHouse.
   # Limits here act as a shared safety ceiling across all wildcard users;
-  # true per-user isolation is enforced by ClickHouse's settings profile.
+  # isolation is enforced by ClickHouse: each project user may only SELECT
+  # the tables of its own database (ckh/project.sql).
   - name: "*"
     to_cluster: "default"
     to_user: "*"

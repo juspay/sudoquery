@@ -1,6 +1,6 @@
 # sink-opensearch settings, resolved with CAC (Superposition) the same way the
 # event collector reads its cac.toml. Values here point at the local stack in
-# tests/docker-compose.yml:
+# the workspace docker-compose.yml:
 #
 #   SINK_CONFIG=crates/sink-opensearch/cac.toml cargo run -p sink-opensearch
 #
@@ -16,12 +16,16 @@
 # the environment.
 
 [default-configs]
-# Topics to consume. Every payload must be a canonical event.
-"kafka.topics" = { value = ["events.generic"], schema = { type = "array", items = { type = "string" } } }
+# Topics to consume. Every payload must be a canonical event. An entry starting
+# with `^` is a regex: every project has its own topic,
+# `events.{org_id}.{project_id}`, created while the sink runs.
+"kafka.topics" = { value = ["^events\\..*"], schema = { type = "array", items = { type = "string" } } }
 "kafka.group_id" = { value = "sink-opensearch", schema = { type = "string" } }
 # Raw librdkafka properties: brokers, security, timeouts. The sink always sets
-# group.id, enable.auto.commit=false and enable.auto.offset.store=false.
-"kafka.client_config" = { value = { "bootstrap.servers" = "localhost:19092" }, schema = { type = "object" } }
+# group.id, enable.auto.commit=false and enable.auto.offset.store=false. The
+# metadata refresh is how soon a new project topic matching kafka.topics is
+# consumed (librdkafka's default is 5 minutes).
+"kafka.client_config" = { value = { "bootstrap.servers" = "localhost:19092", "topic.metadata.refresh.interval.ms" = "30000" }, schema = { type = "object" } }
 
 "opensearch.url" = { value = "http://localhost:9200", schema = { type = "string" } }
 # Index, alias or data stream. `{org_id}` is replaced with each event's
@@ -41,8 +45,8 @@
 "retry.initial_backoff_ms" = { value = 100, schema = { type = "integer" } }
 "retry.max_backoff_ms" = { value = 30000, schema = { type = "integer" } }
 
-# Must exist, and must not be one of kafka.topics.
-"dlq.topic" = { value = "events.generic.dlq", schema = { type = "string" } }
+# Must exist, and must not be one of kafka.topics or match a pattern there.
+"dlq.topic" = { value = "dlq.events", schema = { type = "string" } }
 
 "commit.interval_ms" = { value = 5000, schema = { type = "integer" } }
 # Keep below the orchestrator's termination grace period.

@@ -166,7 +166,7 @@ See [README.md](README.md#configuration). Settings come from a CAC (Superpositio
 ## Testing
 
 - **Unit tests:** config and validation, document building, response parsing, the classifier table, bulk client behaviour against wiremock (throttling, auth failures, timeouts, mixed items), backoff bounds, batching limits, the offset tracker including stale epochs, and the write task's retry and dead-letter decisions with a fake writer.
-- **Integration tests** (`tests/pipeline.rs`, `#[ignore]`, run against `tests/docker-compose.yml`):
+- **Integration tests** (`tests/pipeline.rs`, `#[ignore]`, run against the workspace `docker-compose.yml`):
 
 | Scenario | Pass condition |
 |---|---|

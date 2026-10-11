@@ -449,7 +449,7 @@ WITH
                     event_name = 'add_to_cart',
                     event_name = 'purchase'
                 ) AS level
-            FROM default.user_events_v2
+            FROM user_events_v2
             GROUP BY actor_id
         )
         WHERE level > 0

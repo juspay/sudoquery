@@ -1624,7 +1624,7 @@ mod tests {
     }
 
     /// Runs against a real OpenSearch at `OPENSEARCH_URL` (default
-    /// `http://localhost:9200`), such as the one in `tests/docker-compose.yml`:
+    /// `http://localhost:9200`), such as the compose `opensearch` service:
     /// `cargo test -p hyper-analytics-dashboard-server -- --ignored`
     #[tokio::test]
     #[ignore = "needs a running OpenSearch"]

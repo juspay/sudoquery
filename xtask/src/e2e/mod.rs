@@ -2,10 +2,10 @@
 //! real service binary against local infrastructure.
 //!
 //! * `dashboard`: dashboard-server against a throwaway database on the local
-//!   compose Postgres, with an in-process dummy OIDC provider and dummy
-//!   ClickHouse.
-//! * `collector`: events-collector against the local compose Redpanda,
-//!   reading published events back from per-test topics.
+//!   compose Postgres, Redpanda and ClickHouse, with an in-process dummy
+//!   OIDC provider.
+//! * `collector`: events-collector against the local compose Redpanda and
+//!   localstack (KMS), reading published events back from per-test topics.
 //! * `kafka-to-s3`: the kafka-to-s3 archiver against the local compose
 //!   Redpanda and MinIO, reading archived objects back from a per-run bucket.
 
@@ -22,11 +22,13 @@ macro_rules! cases {
     };
 }
 
+mod clickhouse;
 mod collector;
 mod dashboard;
 mod db;
 mod kafka;
 mod kafka_to_s3;
+mod kms;
 mod mock;
 mod s3;
 mod server;
@@ -70,9 +72,11 @@ fn usage() -> ! {
 
 Suites:
   dashboard   Org and project creation against dashboard-server
-              (needs the compose postgres: `cargo xtask setup postgres`)
+              (needs the compose postgres, redpanda and clickhouse:
+              `cargo xtask setup postgres redpanda clickhouse`)
   collector   Event ingestion through events-collector into Kafka
-              (needs the compose redpanda: `cargo xtask setup redpanda`)
+              (needs the compose redpanda and localstack:
+              `cargo xtask setup redpanda localstack`)
   kafka-to-s3 Archiving through kafka-to-s3 from Kafka into S3
               (needs the compose redpanda and minio:
               `cargo xtask setup redpanda minio`)
@@ -202,6 +206,19 @@ impl Http {
         let request = self
             .client
             .get(format!("{}{path}", self.base))
+            .headers(build_headers(token, headers)?);
+        send(request).await
+    }
+
+    pub(crate) async fn delete(
+        &self,
+        path: &str,
+        token: Option<&str>,
+        headers: &[(&str, &str)],
+    ) -> anyhow::Result<Response> {
+        let request = self
+            .client
+            .delete(format!("{}{path}", self.base))
             .headers(build_headers(token, headers)?);
         send(request).await
     }

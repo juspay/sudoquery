@@ -5147,6 +5147,7 @@ dependencies = [
  "metrics-exporter-prometheus",
  "rand 0.9.5",
  "rdkafka",
+ "regex-lite",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -7193,6 +7194,7 @@ name = "xtask"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "aws-sdk-kms",
  "aws-sdk-s3",
  "axum",
  "base64 0.22.1",

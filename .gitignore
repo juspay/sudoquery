@@ -1,5 +1,5 @@
 /target
-/node_modules
+**/node_modules
 notes.org
 .omo
 **__pycache__

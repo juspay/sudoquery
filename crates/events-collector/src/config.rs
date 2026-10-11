@@ -25,6 +25,11 @@ use crate::result;
 ///
 /// Empty or whitespace-only values are treated as unset.
 const KAFKA_TOPIC_ENV: &str = "KAFKA_TOPIC";
+/// Path of the CAC file, relative to the working directory unless absolute.
+/// The container image ships it as `/app/cac.toml`; locally it lives at
+/// `crates/events-collector/cac.toml`.
+const CONFIG_PATH_ENV: &str = "COLLECTOR_CONFIG";
+const DEFAULT_CONFIG_PATH: &str = "cac.toml";
 const KAFKA_BOOTSTRAP_SERVERS_ENV: &str = "KAFKA_BOOTSTRAP_SERVERS";
 const KAFKA_CLIENT_CONFIG_ENV: &str = "KAFKA_CLIENT_CONFIG";
 
@@ -194,7 +199,28 @@ impl ConfigBuilder {
     }
 }
 
+/// The CAC file named by `COLLECTOR_CONFIG` (default `cac.toml`).
+fn config_path() -> PathBuf {
+    std::env::var(CONFIG_PATH_ENV)
+        .ok()
+        .filter(|path| !path.trim().is_empty())
+        .unwrap_or_else(|| DEFAULT_CONFIG_PATH.to_owned())
+        .into()
+}
+
 pub async fn get_config_from_local_file(
+    org_id: String,
+    project_id: String,
+) -> result::Result<Config> {
+    get_config_from_file(config_path(), org_id, project_id).await
+}
+
+pub async fn get_default_config_from_local_file() -> result::Result<Config> {
+    get_config_from_file_for_context(config_path(), EvaluationContext::default()).await
+}
+
+async fn get_config_from_file(
+    file_path: PathBuf,
     org_id: String,
     project_id: String,
 ) -> result::Result<Config> {
@@ -202,20 +228,16 @@ pub async fn get_config_from_local_file(
     evaluation_context.add_custom_field("org_id", org_id.clone());
     evaluation_context.add_custom_field("project_id", project_id.clone());
 
-    let mut config = get_config_from_local_file_for_context(evaluation_context).await?;
+    let mut config = get_config_from_file_for_context(file_path, evaluation_context).await?;
     config.kafka_connector.topic =
         render_topic(&config.kafka_connector.topic, &org_id, &project_id)?;
     Ok(config)
 }
 
-pub async fn get_default_config_from_local_file() -> result::Result<Config> {
-    get_config_from_local_file_for_context(EvaluationContext::default()).await
-}
-
-async fn get_config_from_local_file_for_context(
+async fn get_config_from_file_for_context(
+    file_path: PathBuf,
     evaluation_context: EvaluationContext,
 ) -> result::Result<Config> {
-    let file_path = PathBuf::from("cac.toml");
     let data_source = FileDataSource::new(file_path).map_err(result::AppError::Config)?;
 
     let provider =
@@ -234,42 +256,43 @@ async fn get_config_from_local_file_for_context(
 mod tests {
     use super::*;
 
-    /// Test binaries run with the package root as their working directory,
-    /// but `cac.toml` is resolved from the current directory, as at runtime
-    /// (repo root locally, `/app` in the container). Point the working
-    /// directory at the workspace root so the bundled `cac.toml` is found.
-    fn chdir_to_workspace_root() {
-        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
-        std::env::set_current_dir(&workspace_root).expect("failed to chdir to workspace root");
+    /// The `cac.toml` shipped with the crate.
+    fn shipped_config() -> PathBuf {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("cac.toml")
     }
 
     #[tokio::test]
     async fn loads_config_from_cac_toml() {
-        chdir_to_workspace_root();
+        let config = get_config_from_file(
+            shipped_config(),
+            "acme-k3x9qa".to_string(),
+            "blue-ocean-7".to_string(),
+        )
+        .await
+        .unwrap();
 
-        let config =
-            get_config_from_local_file("acme-k3x9qa".to_string(), "blue-ocean-7".to_string())
-                .await
-                .unwrap();
-
-        assert_eq!(config.kafka_connector.topic, "events.generic");
+        assert_eq!(
+            config.kafka_connector.topic,
+            "events.acme-k3x9qa.blue-ocean-7"
+        );
         assert_eq!(
             config
                 .kafka_connector
                 .client_config
                 .get("bootstrap.servers"),
-            Some(&"breeze-c2-kafka-brokers.kafka-cluster-v2:9092".to_string())
+            Some(&"localhost:19092".to_string())
         );
         assert!(config.allowed_events.is_none());
     }
 
     #[tokio::test]
     async fn loads_default_config_from_cac_toml() {
-        chdir_to_workspace_root();
+        let config =
+            get_config_from_file_for_context(shipped_config(), EvaluationContext::default())
+                .await
+                .unwrap();
 
-        let config = get_default_config_from_local_file().await.unwrap();
-
-        assert_eq!(config.kafka_connector.topic, "events.generic");
+        assert_eq!(config.kafka_connector.topic, "events.{org_id}.{project_id}");
         assert!(config.allowed_events.is_none());
         assert!(
             config

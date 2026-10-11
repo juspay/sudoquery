@@ -13,8 +13,9 @@ message naming the variable.
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `KAFKA_BOOTSTRAP_SERVERS` | yes | — | librdkafka `bootstrap.servers` |
-| `KAFKA_TOPICS` | yes | — | Comma-separated, trimmed, non-empty; the service subscribes to all of them |
+| `KAFKA_TOPICS` | yes | — | Comma-separated, trimmed, non-empty; the service subscribes to all of them. An entry starting with `^` is a regex, e.g. `^events\..*` for every project topic |
 | `KAFKA_GROUP_ID` | yes | — | Consumer group |
+| `KAFKA_METADATA_REFRESH_SECS` | no | `30` | How often topic metadata is refreshed, i.e. how soon a new topic matching a `^` pattern is consumed; must be > 0 |
 | `S3_BUCKET` | yes | — | Target bucket |
 | `S3_PREFIX` | no | — | Key prefix, no leading/trailing `/` |
 | `S3_ENDPOINT` | no | — | Endpoint override (MinIO/local) |
@@ -99,7 +100,7 @@ Start the local infrastructure (redpanda on `localhost:19092`, plus an
 S3-compatible endpoint such as MinIO):
 
 ```bash
-docker compose -f tests/docker-compose.yml up -d
+cargo xtask setup redpanda minio
 ```
 
 Run the archiver against it:

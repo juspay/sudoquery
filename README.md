@@ -67,8 +67,13 @@ Starts a chosen subset of the compose stack via `docker compose up -d`.
 
 The dev stack: `postgres` (host port 5433, initialized from `pg_schema.sql`
 on first boot), `redpanda` (19092), `minio` (9000, console 9001), `keycloak`
-(8080), `clickhouse` (8123 HTTP, 19000 native TCP, `ckh/schema.sql` applied
-on every start — idempotent) and `chproxy` (9090).
+(8080), `clickhouse` (8123 HTTP, 19000 native TCP; starts empty, and
+dashboard-server creates a database per project from `ckh/project.sql`) and
+`chproxy` (9090).
+
+Every project gets its own Kafka topic (`events.{org_id}.{project_id}`) and
+ClickHouse database, both created by dashboard-server when the project is
+created and dropped when it is deleted.
 
 ## Database tasks
 
@@ -144,24 +149,34 @@ project_`). Exit code 1 if any case fails, with the service log tail printed.
 
 ### `e2e dashboard`
 
-Organization and project creation against `dashboard-server`. Needs only the
-compose postgres (`cargo xtask setup postgres`):
+Organization and project creation against `dashboard-server`. Needs the
+compose postgres, redpanda and clickhouse (`cargo xtask setup postgres
+redpanda clickhouse`):
 
 - **Database:** a throwaway `dashboard_e2e_<random>` database is created on
   the dev Postgres (`DATABASE_URL` or the default above), migrated from
   scratch, and dropped afterwards. Dev data is never touched.
 - **Auth:** an in-process dummy OIDC provider serves the realm JWKS and mints
   RS256 access tokens shaped like Keycloak's. Keys are generated per run.
-- **ClickHouse:** a dummy admin endpoint records the `CREATE USER` / `GRANT`
-  queries issued for new projects and can be made to fail.
+- **Projects:** creation is checked against the real Kafka topic and
+  ClickHouse database it provisions: the database's objects, the project
+  user's grants, an event produced to the topic reaching the project's
+  tables, and every query path (`/query`, `/events`, `/events/today/count`,
+  `/event_props`) reading only the requesting project's database. Deletion
+  must drop the topic, database and user. A second server with a wrong
+  ClickHouse admin password produces real provisioning failures.
+- **Cleanup:** every project database, ClickHouse user and topic the run
+  created is dropped. `CLICKHOUSE_URL`, `CLICKHOUSE_USER`,
+  `CLICKHOUSE_PASSWORD` and `CLICKHOUSE_KAFKA_BROKERS` override the compose
+  defaults.
 - **Server:** runs from a scratch directory (`DASHBOARD_BIND_ADDR` sets the
   port), so a repo `.env` is not loaded.
 
 ### `e2e collector`
 
 Event ingestion through `events-collector` into Kafka. Needs the compose
-redpanda (`cargo xtask setup redpanda`), or any brokers in
-`KAFKA_BOOTSTRAP_SERVERS`:
+redpanda and localstack (`cargo xtask setup redpanda localstack`), or any
+brokers in `KAFKA_BOOTSTRAP_SERVERS` and any KMS at `LOCALSTACK_URL`:
 
 - **Topics:** the collector runs with `KAFKA_TOPIC=e2e-collector-<run>.{org_id}.{project_id}`,
   so every test org/project publishes to its own topic. Cases create those
@@ -171,4 +186,17 @@ redpanda (`cargo xtask setup redpanda`), or any brokers in
   properties, the record key, per-project topic isolation, and that rejected
   requests (header/body mismatch, missing or invalid ids, no bearer token)
   publish nothing.
-- **Server:** runs from the repo root so it reads the real `cac.toml`.
+- **Authenticated endpoint:** its bearer token is a KMS ciphertext. Cases
+  start their own collector with a token encrypted by a fresh localstack
+  KMS key: the right token publishes and a wrong one gets 401; a ciphertext
+  KMS cannot decrypt is reported by `/v1/health` and refused with 500.
+- **Server:** reads the real `crates/events-collector/cac.toml` (via
+  `COLLECTOR_CONFIG`).
+
+### `e2e kafka-to-s3`
+
+Archiving through `kafka-to-s3` into S3. Needs the compose redpanda and minio
+(`cargo xtask setup redpanda minio`); `S3_ENDPOINT`, `S3_ACCESS_KEY` and
+`S3_SECRET_KEY` override the MinIO defaults. Each run uses its own topics and
+bucket, deleted afterwards, and checks object keys, contents, metadata,
+batching, quarantine, multi-topic and `^`-pattern subscriptions.

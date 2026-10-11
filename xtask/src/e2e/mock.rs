@@ -1,21 +1,17 @@
-//! In-process stand-ins for the dashboard-server's external services:
-//!
-//! * a dummy OIDC provider serving the realm JWKS that
-//!   `middleware::auth::get_decoding_key` fetches, plus helpers that mint
-//!   RS256 access tokens shaped like Keycloak's, and
-//! * a dummy ClickHouse admin endpoint that records every query and can be
-//!   told to fail.
+//! In-process stand-in for the dashboard-server's identity provider: a
+//! dummy OIDC provider serving the realm JWKS that
+//! `middleware::auth::get_decoding_key` fetches, plus helpers that mint
+//! RS256 access tokens shaped like Keycloak's.
 //!
 //! RSA keys are generated per run, so no private key is ever committed.
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use anyhow::Context;
 use axum::extract::{Path, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
-use axum::routing::{get, post};
+use axum::routing::get;
 use axum::{Json, Router};
 use base64::Engine;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
@@ -80,16 +76,9 @@ struct Claims<'a> {
     name: &'a str,
 }
 
-#[derive(Default)]
-struct ClickHouse {
-    queries: Mutex<Vec<String>>,
-    fail: AtomicBool,
-}
-
 #[derive(Clone)]
 struct MockState {
     jwks: Arc<serde_json::Value>,
-    clickhouse: Arc<ClickHouse>,
 }
 
 pub(crate) struct Mock {
@@ -97,7 +86,6 @@ pub(crate) struct Mock {
     key: SigningKey,
     /// Same `kid` as `key`, but never published: tokens it signs must fail.
     rogue_key: SigningKey,
-    clickhouse: Arc<ClickHouse>,
 }
 
 impl Mock {
@@ -107,15 +95,12 @@ impl Mock {
         let jwks = json!({
             "keys": [{ "kid": key.kid, "kty": "RSA", "alg": "RS256", "use": "sig", "n": key.n, "e": key.e }]
         });
-        let clickhouse = Arc::new(ClickHouse::default());
         let state = MockState {
             jwks: Arc::new(jwks),
-            clickhouse: clickhouse.clone(),
         };
 
         let app = Router::new()
             .route("/realms/{realm}/protocol/openid-connect/certs", get(certs))
-            .route("/clickhouse", post(clickhouse_query))
             .with_state(state);
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
         let base_url = format!("http://{}", listener.local_addr()?);
@@ -125,18 +110,12 @@ impl Mock {
             base_url,
             key,
             rogue_key,
-            clickhouse,
         })
     }
 
     /// Base URL to use as the server's `KEYCLOAK_URL`.
     pub(crate) fn keycloak_url(&self) -> &str {
         &self.base_url
-    }
-
-    /// URL to use as the server's `CLICKHOUSE_ADMIN_URL`.
-    pub(crate) fn clickhouse_url(&self) -> String {
-        format!("{}/clickhouse", self.base_url)
     }
 
     pub(crate) fn issuer(&self) -> String {
@@ -173,21 +152,6 @@ impl Mock {
         header.kid = Some(key.kid.clone());
         jsonwebtoken::encode(&header, &claims, &key.encoding).expect("failed to sign token")
     }
-
-    /// Every query the dummy ClickHouse received since the last reset.
-    pub(crate) fn clickhouse_queries(&self) -> Vec<String> {
-        self.clickhouse.queries.lock().unwrap().clone()
-    }
-
-    pub(crate) fn fail_clickhouse(&self, fail: bool) {
-        self.clickhouse.fail.store(fail, Ordering::SeqCst);
-    }
-
-    /// Clears recorded queries and failure mode; called before every case.
-    pub(crate) fn reset(&self) {
-        self.clickhouse.queries.lock().unwrap().clear();
-        self.fail_clickhouse(false);
-    }
 }
 
 async fn certs(State(state): State<MockState>, Path(realm): Path<String>) -> impl IntoResponse {
@@ -195,14 +159,5 @@ async fn certs(State(state): State<MockState>, Path(realm): Path<String>) -> imp
         Json((*state.jwks).clone()).into_response()
     } else {
         StatusCode::NOT_FOUND.into_response()
-    }
-}
-
-async fn clickhouse_query(State(state): State<MockState>, body: String) -> impl IntoResponse {
-    state.clickhouse.queries.lock().unwrap().push(body);
-    if state.clickhouse.fail.load(Ordering::SeqCst) {
-        (StatusCode::INTERNAL_SERVER_ERROR, "mock ClickHouse failure")
-    } else {
-        (StatusCode::OK, "")
     }
 }

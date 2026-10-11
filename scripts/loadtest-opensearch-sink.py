@@ -9,7 +9,7 @@ rebalance timeline and how many writes OpenSearch already had.
 
 Needs the local stack and a release build:
 
-    docker compose -f tests/docker-compose.yml up -d redpanda opensearch opensearch-init
+    cargo xtask setup redpanda opensearch opensearch-init
     cargo build --release -p sink-opensearch
     python3 scripts/loadtest-opensearch-sink.py           # e.g. --events 300000 --partitions 12
 
@@ -36,6 +36,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+COMPOSE_FILE = str(ROOT / "docker-compose.yml")
 KAFKA = "localhost:19092"
 OPENSEARCH = "http://localhost:9200"
 # Fixed demo bases; each run turns them into slug ids like acme-store-k3x9qa.
@@ -67,7 +68,7 @@ def slug(base, rng):
 
 def rpk(*args, stdin=None):
     result = subprocess.run(
-        ["docker", "exec", "-i", "redpanda", "rpk", *args],
+        ["docker", "compose", "-f", COMPOSE_FILE, "exec", "-T", "redpanda", "rpk", *args],
         input=stdin,
         capture_output=True,
         text=True,
@@ -419,8 +420,8 @@ def main():
         print(f"\nkept: topics {names['topic']} and {names['dlq']}, consumer group {names['group']}, indexes events-lt-{run}-*")
         print("to delete them:")
         print(f"  curl -X DELETE 'localhost:9200/events-lt-{run}-*'")
-        print(f"  docker exec redpanda rpk topic delete {names['topic']} {names['dlq']}")
-        print(f"  docker exec redpanda rpk group delete {names['group']}")
+        print(f"  docker compose exec redpanda rpk topic delete {names['topic']} {names['dlq']}")
+        print(f"  docker compose exec redpanda rpk group delete {names['group']}")
     print(f"logs: {workdir.relative_to(ROOT)}/sink-*.log")
     sys.exit(0 if all(ok for _, ok in checks) else 1)
 

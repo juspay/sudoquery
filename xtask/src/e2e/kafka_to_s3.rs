@@ -163,6 +163,8 @@ impl Ctx {
             ("BATCH_MAX_EVENTS", BATCH.to_string()),
             ("FLUSH_INTERVAL_SECS", window_secs.to_string()),
             ("SOURCE_ID", SOURCE_ID.to_owned()),
+            // So topics created after start match a `^` pattern quickly.
+            ("KAFKA_METADATA_REFRESH_SECS", "1".to_owned()),
             ("RUST_LOG", "warn".to_owned()),
         ];
         envs.extend(self.s3.service_env());
@@ -251,6 +253,7 @@ cases![Ctx:
     flushes_a_partial_batch_when_the_window_ends,
     carries_the_surplus_into_the_next_window,
     merges_every_subscribed_topic_into_one_object,
+    a_topic_pattern_picks_up_topics_created_later,
     identical_content_reputs_are_idempotent,
 ];
 
@@ -467,6 +470,26 @@ async fn merges_every_subscribed_topic_into_one_object(ctx: &Ctx) -> anyhow::Res
         }
         expect_metadata(key, &object.metadata, &produced)
     })
+    .await
+}
+
+/// Projects get topics while the archiver runs, so it subscribes to a `^`
+/// pattern: a matching topic created after it started is archived too.
+async fn a_topic_pattern_picks_up_topics_created_later(ctx: &Ctx) -> anyhow::Result<()> {
+    let family = format!("{}-pattern-{}", ctx.run_id, short_id());
+    let archiver = ctx
+        .archiver(&[&format!(r"^{family}\..*")], SHARED_WINDOW_SECS)
+        .await?;
+
+    let group = ctx.group(13);
+    let topic = format!("{family}.{}.{}", group.org_id, group.project_id);
+    ctx.kafka.create_topic(&topic).await?;
+    let produced = ctx.produce(&topic, &group.events(BATCH)).await?;
+
+    with_log_on_error(
+        &archiver,
+        ctx.expect_archived(&group.prefix(), &[&produced]),
+    )
     .await
 }
 

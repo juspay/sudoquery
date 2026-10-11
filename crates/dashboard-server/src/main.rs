@@ -20,6 +20,7 @@ mod keycloak;
 mod middleware;
 mod models;
 mod opensearch;
+mod provisioning;
 mod routes;
 mod state;
 
@@ -332,6 +333,8 @@ async fn main() {
     let clickhouse_admin_user = get_clickhouse_admin_user();
     let clickhouse_admin_password = get_clickhouse_admin_password();
     let clickhouse_project_password = get_clickhouse_project_password();
+    let provisioning = provisioning::ProvisioningConfig::from_env(get_kafka_broker_url())
+        .unwrap_or_else(|e| panic!("invalid project provisioning configuration: {e}"));
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
@@ -388,6 +391,7 @@ async fn main() {
         clickhouse_admin_password,
         clickhouse_project_password,
         opensearch,
+        provisioning,
     };
 
     let api_routes = Router::new()

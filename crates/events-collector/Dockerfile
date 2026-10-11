@@ -37,7 +37,7 @@ RUN apt-get update \
 WORKDIR /app
 
 COPY --from=builder /app/target/release/event-collector /usr/local/bin/event-collector
-COPY cac.toml ./cac.toml
+COPY crates/events-collector/cac.toml ./cac.toml
 
 EXPOSE 3000
 
