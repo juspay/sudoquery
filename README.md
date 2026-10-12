@@ -71,9 +71,24 @@ on first boot), `redpanda` (19092), `minio` (9000, console 9001), `keycloak`
 dashboard-server creates a database per project from `ckh/project.sql`) and
 `chproxy` (9090).
 
-Every project gets its own Kafka topic (`events.{org_id}.{project_id}`) and
-ClickHouse database, both created by dashboard-server when the project is
-created and dropped when it is deleted.
+Every project gets its own Kafka topic (`events.{org_id}.{project_id}`),
+ClickHouse database and user, and OpenSearch data stream
+(`events-{org_id}-{project_id}`). Creating a project from the dashboard
+only records it as `PENDING`; dashboard-server's admin API provisions it:
+
+```
+POST /api/admin/projects/{project_id}/provision   # 202, moves it to CREATING
+GET  /api/admin/projects/{project_id}             # status, provisioning_error
+```
+
+Both need the `X-Admin-Token` header to match `ADMIN_API_TOKEN` (unset
+disables the admin API). Provisioning runs in the background and ends
+`ACTIVE`, or `ERRORED` with `provisioning_error` naming the `failed_step`,
+its `error`, and the `completed_steps` and `skipped_steps`. An `ERRORED`
+project can be provisioned again; completed steps are kept. A project left
+`CREATING` for 15 minutes (its server died mid-way) can be provisioned
+again too. Deleting a project drops its topic, database and user, but not
+its data stream.
 
 ## Database tasks
 
@@ -150,25 +165,28 @@ project_`). Exit code 1 if any case fails, with the service log tail printed.
 ### `e2e dashboard`
 
 Organization and project creation against `dashboard-server`. Needs the
-compose postgres, redpanda and clickhouse (`cargo xtask setup postgres
-redpanda clickhouse`):
+compose postgres, redpanda, clickhouse and opensearch (`cargo xtask setup
+postgres redpanda clickhouse opensearch opensearch-init`):
 
 - **Database:** a throwaway `dashboard_e2e_<random>` database is created on
   the dev Postgres (`DATABASE_URL` or the default above), migrated from
   scratch, and dropped afterwards. Dev data is never touched.
 - **Auth:** an in-process dummy OIDC provider serves the realm JWKS and mints
   RS256 access tokens shaped like Keycloak's. Keys are generated per run.
-- **Projects:** creation is checked against the real Kafka topic and
-  ClickHouse database it provisions: the database's objects, the project
-  user's grants, an event produced to the topic reaching the project's
-  tables, and every query path (`/query`, `/events`, `/events/today/count`,
-  `/event_props`) reading only the requesting project's database. Deletion
-  must drop the topic, database and user. A second server with a wrong
-  ClickHouse admin password produces real provisioning failures.
-- **Cleanup:** every project database, ClickHouse user and topic the run
-  created is dropped. `CLICKHOUSE_URL`, `CLICKHOUSE_USER`,
-  `CLICKHOUSE_PASSWORD` and `CLICKHOUSE_KAFKA_BROKERS` override the compose
-  defaults.
+- **Projects:** a new project must stay `PENDING` with nothing provisioned.
+  Admin-API provisioning is checked against the real Kafka topic,
+  ClickHouse database and OpenSearch data stream it creates: the database's
+  objects, the project user's grants, an event produced to the topic
+  reaching the project's tables, and every query path (`/query`, `/events`,
+  `/events/today/count`, `/event_props`) reading only the requesting
+  project's database. Deletion must drop the topic, database and user. A
+  second server with a wrong ClickHouse admin password produces real
+  provisioning failures, which must be recorded as `ERRORED` and succeed on
+  retry.
+- **Cleanup:** every project database, ClickHouse user, topic and data
+  stream the run created is dropped. `CLICKHOUSE_URL`, `CLICKHOUSE_USER`,
+  `CLICKHOUSE_PASSWORD`, `CLICKHOUSE_KAFKA_BROKERS` and `OPENSEARCH_URL`
+  override the compose defaults.
 - **Server:** runs from a scratch directory (`DASHBOARD_BIND_ADDR` sets the
   port), so a repo `.env` is not loaded.
 

@@ -1,16 +1,17 @@
 //! Org and project creation against a running dashboard-server, backed by
-//! the compose Postgres, Redpanda and ClickHouse (only the identity provider
-//! is a stand-in).
+//! the compose Postgres, Redpanda, ClickHouse and OpenSearch (only the
+//! identity provider is a stand-in).
 //!
-//! Project creation provisions a Kafka topic and a ClickHouse database per
-//! project. The server runs with a per-run topic template, and every
-//! project database, user and topic the run created is dropped afterwards.
-//! A second server instance with a wrong ClickHouse admin password produces
-//! real provisioning failures.
+//! A project is created `PENDING`; the admin API then provisions its Kafka
+//! topic, ClickHouse database and user, and OpenSearch data stream. The
+//! server runs with per-run topic and data stream templates, and every
+//! project database, user, topic and data stream the run created is dropped
+//! afterwards. A second server instance with a wrong ClickHouse admin
+//! password produces real provisioning failures.
 
 use std::time::Duration;
 
-use anyhow::{Context, bail, ensure};
+use anyhow::{Context, ensure};
 use canonical_event::is_valid_slug;
 use serde_json::{Value, json};
 use sqlx::PgPool;
@@ -19,6 +20,7 @@ use super::clickhouse::{ClickHouse, quote};
 use super::db::TestDb;
 use super::kafka::Kafka;
 use super::mock::{Mock, TestUser};
+use super::opensearch::OpenSearch;
 use super::server::Service;
 use super::{Http, Response, run_cases, select};
 
@@ -42,6 +44,10 @@ const PROJECT_OBJECTS: [&str; 7] = [
 const PROJECT_TABLES: [&str; 3] = ["event_schema_catalog", "events_v2", "user_events_v2"];
 /// How long an event may take from the project topic to its tables.
 const INGEST_TIMEOUT: Duration = Duration::from_secs(30);
+/// Token both servers require on the admin API.
+const ADMIN_TOKEN: &str = "e2e-admin-token";
+/// How long provisioning may take once the admin API started it.
+const PROVISION_TIMEOUT: Duration = Duration::from_secs(60);
 
 /// Everything a dashboard case can touch: the running servers, their
 /// database, Kafka, ClickHouse and the dummy OIDC provider.
@@ -54,8 +60,11 @@ pub(crate) struct Ctx {
     mock: Mock,
     kafka: Kafka,
     clickhouse: ClickHouse,
+    opensearch: OpenSearch,
     /// Prefix of every project topic the servers create in this run.
     topic_prefix: String,
+    /// Prefix of every project data stream the servers create in this run.
+    data_stream_prefix: String,
 }
 
 impl Ctx {
@@ -92,6 +101,11 @@ impl Ctx {
     fn topic(&self, org_id: &str, project_id: &str) -> String {
         format!("{}.{org_id}.{project_id}", self.topic_prefix)
     }
+
+    /// The data stream the server creates for `org_id`/`project_id`.
+    fn data_stream(&self, org_id: &str, project_id: &str) -> String {
+        format!("{}{org_id}-{project_id}", self.data_stream_prefix)
+    }
 }
 
 /// Builds dashboard-server, creates a throwaway database, runs the selected
@@ -104,8 +118,9 @@ pub(crate) async fn run(filter: Option<&str>) -> anyhow::Result<bool> {
     Service::build(PACKAGE);
     let kafka = Kafka::connect().await?;
     let clickhouse = ClickHouse::connect().await?;
+    let opensearch = OpenSearch::connect().await?;
     let db = TestDb::create().await?;
-    let outcome = run_with_db(&db, kafka, clickhouse, &cases).await;
+    let outcome = run_with_db(&db, kafka, clickhouse, opensearch, &cases).await;
     db.drop_database().await?;
     outcome
 }
@@ -114,12 +129,15 @@ async fn run_with_db(
     db: &TestDb,
     kafka: Kafka,
     clickhouse: ClickHouse,
+    opensearch: OpenSearch,
     cases: &[&super::Case<Ctx>],
 ) -> anyhow::Result<bool> {
     let topic_prefix = format!(
         "e2e-dashboard-{}",
         &uuid::Uuid::new_v4().simple().to_string()[..8]
     );
+    // Under `events-*`, so the index template makes them data streams.
+    let data_stream_prefix = format!("events-{topic_prefix}-");
     let mock = Mock::start().await?;
     let env = |admin_password: &str| {
         vec![
@@ -142,6 +160,12 @@ async fn run_with_db(
                 "PROJECT_TOPIC_TEMPLATE",
                 format!("{topic_prefix}.{{org_id}}.{{project_id}}"),
             ),
+            ("OPENSEARCH_URL", opensearch.url().to_owned()),
+            (
+                "OPENSEARCH_INDEX",
+                format!("{data_stream_prefix}{{org_id}}-{{project_id}}"),
+            ),
+            ("ADMIN_API_TOKEN", ADMIN_TOKEN.to_owned()),
             ("RUST_LOG", "warn".to_owned()),
         ]
     };
@@ -166,7 +190,9 @@ async fn run_with_db(
         mock,
         kafka,
         clickhouse,
+        opensearch,
         topic_prefix,
+        data_stream_prefix,
     };
 
     let passed = run_cases(
@@ -184,6 +210,9 @@ async fn run_with_db(
     let topics = ctx.kafka.topics_with_prefix(&ctx.topic_prefix).await?;
     ctx.kafka.adopt(topics);
     ctx.kafka.delete_created().await?;
+    ctx.opensearch
+        .delete_data_streams(&ctx.data_stream_prefix)
+        .await?;
     cleanup?;
     Ok(passed)
 }
@@ -211,10 +240,13 @@ cases![Ctx:
     org_same_name_gets_distinct_ids,
     org_rejects_client_supplied_id,
     org_creation_requires_valid_token,
-    project_creation_provisions_topic_database_and_user,
+    project_creation_starts_pending,
+    project_provisioning_creates_topic_database_user_and_data_stream,
     project_creation_requires_org_admin,
     project_creation_validates_org_header,
-    project_creation_rolls_back_when_clickhouse_fails,
+    project_provisioning_records_the_failed_step,
+    project_provisioning_requires_admin_token,
+    project_provisioning_runs_once_at_a_time,
     project_rejects_client_supplied_id,
     project_deletion_drops_topic_database_and_user,
     project_queries_target_the_project_database,
@@ -361,7 +393,7 @@ async fn org_creation_requires_valid_token(ctx: &Ctx) -> anyhow::Result<()> {
 
 // ============ Projects ============
 
-async fn project_creation_provisions_topic_database_and_user(ctx: &Ctx) -> anyhow::Result<()> {
+async fn project_creation_starts_pending(ctx: &Ctx) -> anyhow::Result<()> {
     let user = ctx.user("Paula Project");
     let token = ctx.token(&user);
     let org_id = create_org(ctx, &token, "Project Home").await?;
@@ -379,15 +411,15 @@ async fn project_creation_provisions_topic_database_and_user(ctx: &Ctx) -> anyho
     let project_id = str_field(&body, "id")?;
     expect_generated_slug(project_id, "web-shop")?;
     ensure!(
-        body["organization_id"] == org_id.as_str(),
-        "unexpected org in {body}"
+        body["organization_id"] == org_id.as_str() && body["status"] == "PENDING",
+        "unexpected project {body}"
     );
     let project_token: uuid::Uuid = str_field(&body, "project_token")?
         .parse()
         .context("project_token is not a UUID")?;
 
-    let (stored_org, deleted): (Option<String>, bool) = sqlx::query_as(
-        "SELECT organization_id, deleted_at IS NOT NULL FROM projects WHERE id = $1",
+    let (stored_org, status, deleted): (Option<String>, String, bool) = sqlx::query_as(
+        "SELECT organization_id, status::text, deleted_at IS NOT NULL FROM projects WHERE id = $1",
     )
     .bind(project_id)
     .fetch_one(&ctx.pool)
@@ -397,6 +429,7 @@ async fn project_creation_provisions_topic_database_and_user(ctx: &Ctx) -> anyho
         stored_org.as_deref() == Some(org_id.as_str()),
         "stored org {stored_org:?}"
     );
+    ensure!(status == "PENDING", "stored status {status}");
     ensure!(!deleted, "project is soft-deleted");
 
     let tokens: i64 = sqlx::query_scalar(
@@ -417,15 +450,18 @@ async fn project_creation_provisions_topic_database_and_user(ctx: &Ctx) -> anyho
         "creator role is {role:?}"
     );
 
-    let topic = ctx.topic(&org_id, project_id);
-    let topics = ctx.kafka.topics_with_prefix(&topic).await?;
+    // Nothing is provisioned until the admin API is called.
+    let topics = ctx
+        .kafka
+        .topics_with_prefix(&ctx.topic(&org_id, project_id))
+        .await?;
+    ensure!(topics.is_empty(), "pending project has topics {topics:?}");
+    expect_no_project_database(ctx, project_id).await?;
+    let stream = ctx.data_stream(&org_id, project_id);
     ensure!(
-        topics.contains(&topic),
-        "project topic {topic} was not created (found {topics:?})"
+        !ctx.opensearch.data_stream_exists(&stream).await?,
+        "pending project has data stream {stream}"
     );
-    expect_project_database(ctx, project_id, &topic).await?;
-    expect_events_reach_project(ctx, &token, &org_id, project_id, &topic).await?;
-    expect_project_user_isolated(ctx, project_id).await?;
 
     let listed = ctx
         .get("/projects", Some(&token), &[("X-Organization-Id", &org_id)])
@@ -433,10 +469,62 @@ async fn project_creation_provisions_topic_database_and_user(ctx: &Ctx) -> anyho
     expect_status(&listed, 200)?;
     let listed = listed.json()?;
     ensure!(
-        listed
-            .as_array()
-            .is_some_and(|projects| projects.iter().any(|p| p["id"] == project_id)),
-        "{project_id} missing from GET /projects: {listed}"
+        listed.as_array().is_some_and(|projects| projects
+            .iter()
+            .any(|p| p["id"] == project_id && p["status"] == "PENDING")),
+        "{project_id} missing from GET /projects, or not PENDING: {listed}"
+    );
+    Ok(())
+}
+
+async fn project_provisioning_creates_topic_database_user_and_data_stream(
+    ctx: &Ctx,
+) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Paula Provisioner"));
+    let org_id = create_org(ctx, &token, "Provisioned Home").await?;
+    let project_id = create_pending_project(ctx, &token, &org_id, "Web Shop").await?;
+
+    let response = provision(&ctx.http, &project_id).await?;
+    expect_status(&response, 202)?;
+    let body = response.json()?;
+    ensure!(
+        body == json!({ "id": project_id, "status": "CREATING" }),
+        "unexpected provisioning answer {body}"
+    );
+    let outcome = wait_for_provisioning(ctx, &project_id).await?;
+    ensure!(
+        outcome["status"] == "ACTIVE" && outcome["provisioning_error"].is_null(),
+        "provisioning did not succeed: {outcome}"
+    );
+
+    let topic = ctx.topic(&org_id, &project_id);
+    let topics = ctx.kafka.topics_with_prefix(&topic).await?;
+    ensure!(
+        topics.contains(&topic),
+        "project topic {topic} was not created (found {topics:?})"
+    );
+    expect_project_database(ctx, &project_id, &topic).await?;
+    expect_events_reach_project(ctx, &token, &org_id, &project_id, &topic).await?;
+    expect_project_user_isolated(ctx, &project_id).await?;
+    let stream = ctx.data_stream(&org_id, &project_id);
+    ensure!(
+        ctx.opensearch.data_stream_exists(&stream).await?,
+        "data stream {stream} was not created"
+    );
+
+    let project = project_get(
+        ctx,
+        &token,
+        &[
+            ("X-Organization-Id", &org_id),
+            ("X-Project-Id", &project_id),
+        ],
+        "/project".to_owned(),
+    )
+    .await?;
+    ensure!(
+        project["status"] == "ACTIVE",
+        "GET /project after provisioning: {project}"
     );
     Ok(())
 }
@@ -488,60 +576,152 @@ async fn project_creation_validates_org_header(ctx: &Ctx) -> anyhow::Result<()> 
     expect_no_project(ctx, "Headerless Project").await
 }
 
-async fn project_creation_rolls_back_when_clickhouse_fails(ctx: &Ctx) -> anyhow::Result<()> {
-    let user = ctx.user("Unlucky");
-    let token = ctx.token(&user);
+async fn project_provisioning_records_the_failed_step(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Unlucky"));
     let org_id = create_org(ctx, &token, "Flaky Warehouse").await?;
+    let project_id = create_pending_project(ctx, &token, &org_id, "Doomed Project").await?;
 
     // The broken server creates the topic, then ClickHouse rejects its
     // admin password.
+    let response = provision(&ctx.broken_http, &project_id).await?;
+    expect_status(&response, 202)?;
+    let outcome = wait_for_provisioning(ctx, &project_id).await?;
+    ensure!(
+        outcome["status"] == "ERRORED",
+        "expected ERRORED: {outcome}"
+    );
+    let error = &outcome["provisioning_error"];
+    ensure!(
+        error["failed_step"] == "clickhouse_database"
+            && error["completed_steps"] == json!(["kafka_topic"])
+            && error["skipped_steps"] == json!(["clickhouse_user", "opensearch_index"])
+            && error["error"].as_str().is_some_and(|e| !e.is_empty())
+            && error["failed_at"].is_string(),
+        "unexpected provisioning_error {error}"
+    );
+
+    // The project and its topic stay for the retry.
+    let deleted: bool =
+        sqlx::query_scalar("SELECT deleted_at IS NOT NULL FROM projects WHERE id = $1")
+            .bind(&project_id)
+            .fetch_one(&ctx.pool)
+            .await?;
+    ensure!(!deleted, "errored project {project_id} was soft-deleted");
+    let topic = ctx.topic(&org_id, &project_id);
+    let topics = ctx.kafka.topics_with_prefix(&topic).await?;
+    ensure!(
+        topics.contains(&topic),
+        "errored project lost its topic (found {topics:?})"
+    );
+
+    // A retry through the working server finishes the remaining steps.
+    let response = provision(&ctx.http, &project_id).await?;
+    expect_status(&response, 202)?;
+    let outcome = wait_for_provisioning(ctx, &project_id).await?;
+    ensure!(
+        outcome["status"] == "ACTIVE" && outcome["provisioning_error"].is_null(),
+        "retry did not succeed: {outcome}"
+    );
+    expect_project_database(ctx, &project_id, &topic).await?;
+    let stream = ctx.data_stream(&org_id, &project_id);
+    ensure!(
+        ctx.opensearch.data_stream_exists(&stream).await?,
+        "data stream {stream} was not created by the retry"
+    );
+    Ok(())
+}
+
+async fn project_provisioning_requires_admin_token(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Impatient User"));
+    let org_id = create_org(ctx, &token, "Impatient Org").await?;
+    let project_id = create_pending_project(ctx, &token, &org_id, "Waiting Project").await?;
+    let path = format!("/admin/projects/{project_id}/provision");
+
+    for (label, headers) in [
+        ("no admin token", vec![]),
+        (
+            "wrong admin token",
+            vec![("X-Admin-Token", "not-the-token")],
+        ),
+    ] {
+        // A user's own bearer token is not enough either.
+        let response = ctx.post(&path, Some(&token), &headers, json!({})).await?;
+        expect_status(&response, 401).with_context(|| label)?;
+        let response = ctx
+            .get(&format!("/admin/projects/{project_id}"), None, &headers)
+            .await?;
+        expect_status(&response, 401).with_context(|| label)?;
+    }
+
+    let status = project_status(ctx, &project_id).await?;
+    ensure!(status == "PENDING", "refused requests moved it to {status}");
+    Ok(())
+}
+
+/// Only PENDING and ERRORED projects (or a CREATING one whose attempt went
+/// stale) can be provisioned, and a CREATING project cannot be deleted.
+async fn project_provisioning_runs_once_at_a_time(ctx: &Ctx) -> anyhow::Result<()> {
+    for (label, project_id, status) in [
+        ("unknown project", "no-such-project-zzzzzz", 404),
+        ("invalid project id", "Not_A_Slug", 400),
+    ] {
+        let response = provision(&ctx.http, project_id).await?;
+        expect_status(&response, status).with_context(|| label)?;
+    }
+
+    let token = ctx.token(&ctx.user("Busy Admin"));
+    let org_id = create_org(ctx, &token, "Busy Org").await?;
+    let project_id = create_pending_project(ctx, &token, &org_id, "Busy Project").await?;
+
+    // An attempt in progress.
+    sqlx::query("UPDATE projects SET status = 'CREATING', updated_at = NOW() WHERE id = $1")
+        .bind(&project_id)
+        .execute(&ctx.pool)
+        .await?;
+    let response = provision(&ctx.http, &project_id).await?;
+    expect_status(&response, 409)?;
+    ensure!(
+        response.json()?["status"] == "CREATING",
+        "unexpected refusal {}",
+        response.body
+    );
     let response = ctx
-        .broken_http
-        .post(
-            "/projects",
+        .http
+        .delete(
+            "/project",
             Some(&token),
-            &[("X-Organization-Id", &org_id)],
-            json!({ "name": "Doomed Project" }),
+            &[
+                ("X-Organization-Id", &org_id),
+                ("X-Project-Id", &project_id),
+            ],
         )
         .await?;
-    expect_status(&response, 500)?;
+    expect_status(&response, 409).context("deleting a CREATING project")?;
 
-    let rows: Vec<(String, bool)> = sqlx::query_as(
-        "SELECT id, deleted_at IS NOT NULL FROM projects WHERE organization_id = $1",
-    )
-    .bind(&org_id)
-    .fetch_all(&ctx.pool)
-    .await?;
-    let [(project_id, deleted)] = rows.as_slice() else {
-        bail!("expected exactly one (soft-deleted) project, found {rows:?}");
-    };
-    ensure!(*deleted, "project {project_id} was not soft-deleted");
-
-    let role = project_role(ctx, &user.sub, project_id).await?;
-    ensure!(role.is_none(), "failed project still granted {role:?}");
-
-    // The topic was created before ClickHouse failed; cleanup removes it.
-    let topics = ctx
-        .kafka
-        .topics_with_prefix(&ctx.topic(&org_id, project_id))
+    // An attempt that died with its server long ago is taken over.
+    sqlx::query("UPDATE projects SET updated_at = NOW() - INTERVAL '1 hour' WHERE id = $1")
+        .bind(&project_id)
+        .execute(&ctx.pool)
         .await?;
-    ensure!(topics.is_empty(), "failed project left topics {topics:?}");
-    expect_no_project_database(ctx, project_id).await
+    let response = provision(&ctx.http, &project_id).await?;
+    expect_status(&response, 202).context("taking over a stale attempt")?;
+    let outcome = wait_for_provisioning(ctx, &project_id).await?;
+    ensure!(outcome["status"] == "ACTIVE", "takeover failed: {outcome}");
+
+    let response = provision(&ctx.http, &project_id).await?;
+    expect_status(&response, 409).context("provisioning an ACTIVE project")?;
+    ensure!(
+        response.json()?["status"] == "ACTIVE",
+        "unexpected refusal {}",
+        response.body
+    );
+    Ok(())
 }
 
 async fn project_deletion_drops_topic_database_and_user(ctx: &Ctx) -> anyhow::Result<()> {
     let token = ctx.token(&ctx.user("Tidy Admin"));
     let org_id = create_org(ctx, &token, "Tidy Org").await?;
-    let response = ctx
-        .post(
-            "/projects",
-            Some(&token),
-            &[("X-Organization-Id", &org_id)],
-            json!({ "name": "Short Lived" }),
-        )
-        .await?;
-    expect_status(&response, 201)?;
-    let project_id = str_field(&response.json()?, "id")?.to_owned();
+    let project_id = create_project(ctx, &token, &org_id, "Short Lived").await?;
     let topic = ctx.topic(&org_id, &project_id);
     expect_project_database(ctx, &project_id, &topic)
         .await
@@ -939,7 +1119,8 @@ async fn expect_no_project_database(ctx: &Ctx, project_id: &str) -> anyhow::Resu
     Ok(())
 }
 
-async fn create_project(
+/// Creates a project, which stays PENDING until it is provisioned.
+async fn create_pending_project(
     ctx: &Ctx,
     token: &str,
     org_id: &str,
@@ -955,6 +1136,69 @@ async fn create_project(
         .await?;
     expect_status(&response, 201).with_context(|| format!("creating project {name:?}"))?;
     Ok(str_field(&response.json()?, "id")?.to_owned())
+}
+
+/// Creates a project and provisions it through the admin API.
+async fn create_project(
+    ctx: &Ctx,
+    token: &str,
+    org_id: &str,
+    name: &str,
+) -> anyhow::Result<String> {
+    let project_id = create_pending_project(ctx, token, org_id, name).await?;
+    let response = provision(&ctx.http, &project_id).await?;
+    expect_status(&response, 202).with_context(|| format!("provisioning project {name:?}"))?;
+    let outcome = wait_for_provisioning(ctx, &project_id).await?;
+    ensure!(
+        outcome["status"] == "ACTIVE",
+        "provisioning project {name:?} failed: {outcome}"
+    );
+    Ok(project_id)
+}
+
+/// Asks `http`'s server to provision the project through the admin API.
+async fn provision(http: &Http, project_id: &str) -> anyhow::Result<Response> {
+    http.post(
+        &format!("/admin/projects/{project_id}/provision"),
+        None,
+        &[("X-Admin-Token", ADMIN_TOKEN)],
+        json!({}),
+    )
+    .await
+}
+
+/// Polls the admin API until the project is no longer CREATING; returns
+/// its provisioning state.
+async fn wait_for_provisioning(ctx: &Ctx, project_id: &str) -> anyhow::Result<Value> {
+    let deadline = tokio::time::Instant::now() + PROVISION_TIMEOUT;
+    loop {
+        let response = ctx
+            .get(
+                &format!("/admin/projects/{project_id}"),
+                None,
+                &[("X-Admin-Token", ADMIN_TOKEN)],
+            )
+            .await?;
+        expect_status(&response, 200)?;
+        let body = response.json()?;
+        if body["status"] != "CREATING" {
+            return Ok(body);
+        }
+        ensure!(
+            tokio::time::Instant::now() < deadline,
+            "{project_id} still CREATING after {PROVISION_TIMEOUT:?}"
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+}
+
+async fn project_status(ctx: &Ctx, project_id: &str) -> anyhow::Result<String> {
+    Ok(
+        sqlx::query_scalar("SELECT status::text FROM projects WHERE id = $1")
+            .bind(project_id)
+            .fetch_one(&ctx.pool)
+            .await?,
+    )
 }
 
 async fn create_org(ctx: &Ctx, token: &str, name: &str) -> anyhow::Result<String> {

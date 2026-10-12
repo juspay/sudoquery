@@ -11,7 +11,7 @@ interface OrganizationContextType {
   initialized: boolean;
   error: string | null;
   refreshOrganizations: () => Promise<void>;
-  createOrganization: (name: string, slug: string) => Promise<Organization>;
+  createOrganization: (name: string) => Promise<Organization>;
 }
 
 const OrganizationContext = createContext<OrganizationContextType | null>(null);
@@ -88,8 +88,8 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     await loadOrganizations();
   };
 
-  const createOrganization = async (name: string, slug: string): Promise<Organization> => {
-    const org = await organizationService.create({ name, slug });
+  const createOrganization = async (name: string): Promise<Organization> => {
+    const org = await organizationService.create({ name });
     await refreshOrganizations();
     handleSetCurrentOrganization(org);
     return org;

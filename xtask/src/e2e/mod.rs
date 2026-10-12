@@ -2,8 +2,8 @@
 //! real service binary against local infrastructure.
 //!
 //! * `dashboard`: dashboard-server against a throwaway database on the local
-//!   compose Postgres, Redpanda and ClickHouse, with an in-process dummy
-//!   OIDC provider.
+//!   compose Postgres, Redpanda, ClickHouse and OpenSearch, with an
+//!   in-process dummy OIDC provider.
 //! * `collector`: events-collector against the local compose Redpanda and
 //!   localstack (KMS), reading published events back from per-test topics.
 //! * `kafka-to-s3`: the kafka-to-s3 archiver against the local compose
@@ -30,6 +30,7 @@ mod kafka;
 mod kafka_to_s3;
 mod kms;
 mod mock;
+mod opensearch;
 mod s3;
 mod server;
 
@@ -72,8 +73,9 @@ fn usage() -> ! {
 
 Suites:
   dashboard   Org and project creation against dashboard-server
-              (needs the compose postgres, redpanda and clickhouse:
-              `cargo xtask setup postgres redpanda clickhouse`)
+              (needs the compose postgres, redpanda, clickhouse and
+              opensearch: `cargo xtask setup postgres redpanda clickhouse
+              opensearch opensearch-init`)
   collector   Event ingestion through events-collector into Kafka
               (needs the compose redpanda and localstack:
               `cargo xtask setup redpanda localstack`)

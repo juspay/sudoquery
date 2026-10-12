@@ -1,19 +1,26 @@
-//! Per-project infrastructure: the project's Kafka topic and its ClickHouse
-//! database (`ckh/project.sql`), created with the project and dropped with it.
+//! Per-project infrastructure: the project's Kafka topic, its ClickHouse
+//! database (`ckh/project.sql`) and user, and its OpenSearch data stream.
+//! The admin API provisions them after the project is created (see
+//! `routes/admin.rs`); deleting the project drops all but the data stream.
 //!
 //! Every step is idempotent in both directions, so provisioning or
 //! deprovisioning can be re-run after a partial failure.
 
+use std::future::Future;
 use std::time::Duration;
 
 use canonical_event::{OrgId, ProjectId};
+use chrono::{DateTime, Utc};
 use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
 use rdkafka::client::DefaultClientContext;
 use rdkafka::config::ClientConfig;
 use rdkafka::error::RDKafkaErrorCode;
 use reqwest::Client;
+use serde::Serialize;
 
+use crate::AppState;
 use crate::clickhouse::{self, ClickHouseError};
+use crate::opensearch::OpenSearchError;
 
 /// Per-project ClickHouse objects; see the file header for placeholders.
 const PROJECT_SQL: &str = include_str!("../../../ckh/project.sql");
@@ -37,6 +44,42 @@ pub enum ProvisionError {
     },
     #[error(transparent)]
     ClickHouse(#[from] ClickHouseError),
+    #[error(transparent)]
+    OpenSearch(#[from] OpenSearchError),
+}
+
+/// One provisioning step. Serialized names appear in `provisioning_error`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum Step {
+    KafkaTopic,
+    ClickhouseDatabase,
+    ClickhouseUser,
+    OpensearchIndex,
+}
+
+impl Step {
+    /// The order steps run in: the topic before the database whose Kafka
+    /// table reads it, and the database before the user, so the user never
+    /// sees a half-built database.
+    pub const ALL: [Self; 4] = [
+        Self::KafkaTopic,
+        Self::ClickhouseDatabase,
+        Self::ClickhouseUser,
+        Self::OpensearchIndex,
+    ];
+}
+
+/// Why provisioning stopped; stored as the project's `provisioning_error`.
+#[derive(Debug, Serialize)]
+pub struct ProvisioningFailure {
+    pub failed_step: Step,
+    pub error: String,
+    /// Steps that succeeded before it. They stay in place for the retry.
+    pub completed_steps: Vec<Step>,
+    /// Steps that were not attempted.
+    pub skipped_steps: Vec<Step>,
+    pub failed_at: DateTime<Utc>,
 }
 
 /// Where and how project infrastructure is created, from the environment.
@@ -113,26 +156,86 @@ pub struct ClickHouseAdmin<'a> {
     pub password: &'a str,
 }
 
-/// Creates `project`'s topic and ClickHouse database objects. Safe to run
-/// again for a project that already has some or all of them.
+impl<'a> ClickHouseAdmin<'a> {
+    pub fn of(state: &'a AppState) -> Self {
+        Self {
+            url: &state.clickhouse_admin_url,
+            user: &state.clickhouse_admin_user,
+            password: &state.clickhouse_admin_password,
+        }
+    }
+}
+
+/// Runs every step of [`Step::ALL`] for `project`. Safe to run again for a
+/// project that already has some or all of its infrastructure.
 ///
 /// # Errors
-/// Returns the first step that failed; earlier steps stay in place.
+/// Stops at the first step that fails; earlier steps stay in place.
 pub async fn provision_project(
-    config: &ProvisioningConfig,
-    admin: &ClickHouseAdmin<'_>,
+    state: &AppState,
+    org: &OrgId,
+    project: &ProjectId,
+) -> Result<(), ProvisioningFailure> {
+    run_steps(|step| run_step(state, step, org, project)).await
+}
+
+async fn run_steps<F, Fut>(mut run: F) -> Result<(), ProvisioningFailure>
+where
+    F: FnMut(Step) -> Fut,
+    Fut: Future<Output = Result<(), ProvisionError>>,
+{
+    for (index, step) in Step::ALL.into_iter().enumerate() {
+        if let Err(error) = run(step).await {
+            return Err(ProvisioningFailure {
+                failed_step: step,
+                error: error.to_string(),
+                completed_steps: Step::ALL[..index].to_vec(),
+                skipped_steps: Step::ALL[index + 1..].to_vec(),
+                failed_at: Utc::now(),
+            });
+        }
+    }
+    Ok(())
+}
+
+async fn run_step(
+    state: &AppState,
+    step: Step,
     org: &OrgId,
     project: &ProjectId,
 ) -> Result<(), ProvisionError> {
-    let topic = config.topic(org, project);
-    create_topic(config, &topic).await?;
-
-    let client = Client::new();
-    for statement in project_statements(config, project, &topic) {
-        clickhouse::execute_admin_query(&client, admin.url, admin.user, admin.password, &statement)
-            .await?;
+    let config = &state.provisioning;
+    let admin = ClickHouseAdmin::of(state);
+    match step {
+        Step::KafkaTopic => create_topic(config, &config.topic(org, project)).await,
+        Step::ClickhouseDatabase => {
+            let topic = config.topic(org, project);
+            let client = Client::new();
+            for statement in project_statements(config, project, &topic) {
+                clickhouse::execute_admin_query(
+                    &client,
+                    admin.url,
+                    admin.user,
+                    admin.password,
+                    &statement,
+                )
+                .await?;
+            }
+            Ok(())
+        }
+        Step::ClickhouseUser => Ok(clickhouse::create_project_user(
+            admin.url,
+            admin.user,
+            admin.password,
+            &state.clickhouse_project_password,
+            project,
+        )
+        .await?),
+        Step::OpensearchIndex => Ok(state
+            .opensearch
+            .create_data_stream(org.as_ref(), project.as_ref())
+            .await?),
     }
-    Ok(())
 }
 
 /// Drops `project`'s ClickHouse database (with its Kafka table and views),
@@ -369,6 +472,68 @@ mod tests {
         config.clickhouse_kafka_brokers = "evil', x='y".to_owned();
         let statements = project_statements(&config, &project, &config.topic(&org, &project));
         assert!(statements.iter().any(|s| s.contains(r"'evil\', x=\'y'")));
+    }
+
+    /// Runs the steps, failing at `failing` (if any); returns the steps run.
+    async fn run_failing_at(failing: Option<Step>) -> (Vec<Step>, Result<(), ProvisioningFailure>) {
+        let mut ran = Vec::new();
+        let outcome = run_steps(|step| {
+            ran.push(step);
+            async move {
+                if Some(step) == failing {
+                    return Err(ProvisionError::Topic {
+                        action: "create",
+                        topic: "events.acme".to_owned(),
+                        reason: "broker down".to_owned(),
+                    });
+                }
+                Ok(())
+            }
+        })
+        .await;
+        (ran, outcome)
+    }
+
+    #[tokio::test]
+    async fn every_step_runs_in_order() {
+        let (ran, outcome) = run_failing_at(None).await;
+
+        assert!(outcome.is_ok());
+        assert_eq!(ran, Step::ALL);
+    }
+
+    #[tokio::test]
+    async fn a_failure_records_completed_and_skipped_steps() {
+        let (ran, outcome) = run_failing_at(Some(Step::ClickhouseDatabase)).await;
+        let failure = outcome.unwrap_err();
+
+        assert_eq!(ran, [Step::KafkaTopic, Step::ClickhouseDatabase]);
+        let mut json = serde_json::to_value(&failure).unwrap();
+        assert!(json["failed_at"].as_str().is_some());
+        json.as_object_mut().unwrap().remove("failed_at");
+        assert_eq!(
+            json,
+            serde_json::json!({
+                "failed_step": "clickhouse_database",
+                "error": "failed to create Kafka topic events.acme: broker down",
+                "completed_steps": ["kafka_topic"],
+                "skipped_steps": ["clickhouse_user", "opensearch_index"],
+            })
+        );
+    }
+
+    #[tokio::test]
+    async fn a_failure_at_the_first_or_last_step() {
+        let first = run_failing_at(Some(Step::KafkaTopic)).await.1.unwrap_err();
+        assert!(first.completed_steps.is_empty());
+        assert_eq!(first.skipped_steps, &Step::ALL[1..]);
+
+        let last = run_failing_at(Some(Step::OpensearchIndex))
+            .await
+            .1
+            .unwrap_err();
+        assert_eq!(last.completed_steps, &Step::ALL[..3]);
+        assert!(last.skipped_steps.is_empty());
     }
 
     #[test]

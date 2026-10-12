@@ -24,4 +24,6 @@ pub struct AppState {
     pub clickhouse_project_password: String,
     pub opensearch: OpenSearch,
     pub provisioning: ProvisioningConfig,
+    /// Token the admin API requires (`ADMIN_API_TOKEN`); `None` disables it.
+    pub admin_api_token: Option<String>,
 }

@@ -10,20 +10,12 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
-import { organizationService } from '../../services/organizationService';
+import { organizationService, type Organization } from '../../services/organizationService';
 
 interface CreateOrganizationDialogProps {
   open: boolean;
   onClose: () => void;
-  onSuccess: (org: { id: string; slug: string; name: string }) => void;
-}
-
-function generateSlug(name: string): string {
-  return name
-    .toLowerCase()
-    .trim()
-    .replace(/\s+/g, '-')
-    .replace(/[^a-z0-9-]/g, '');
+  onSuccess: (org: Organization) => void;
 }
 
 export function CreateOrganizationDialog({ open, onClose, onSuccess }: CreateOrganizationDialogProps) {
@@ -41,20 +33,11 @@ export function CreateOrganizationDialog({ open, onClose, onSuccess }: CreateOrg
       return;
     }
 
-    const slug = generateSlug(name);
-    if (!slug) {
-      setError('Please use valid characters in the organization name');
-      return;
-    }
-
     setLoading(true);
     setError(null);
 
     try {
-      const org = await organizationService.create({
-        name: name.trim(),
-        slug,
-      });
+      const org = await organizationService.create({ name: name.trim() });
       onSuccess(org);
       handleClose();
     } catch (err) {
