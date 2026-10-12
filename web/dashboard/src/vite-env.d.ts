@@ -12,8 +12,8 @@ interface ImportMetaEnv {
   readonly VITE_MAINTENANCE_MODE?: string;
   readonly VITE_DEMO_ENABLED?: string;
   readonly VITE_DEMO_COLLECTOR_URL?: string;
-  readonly VITE_DEMO_TENANT_ID?: string;
-  readonly VITE_DEMO_WORKSPACE_ID?: string;
+  readonly VITE_DEMO_ORG_ID?: string;
+  readonly VITE_DEMO_PROJECT_ID?: string;
 }
 
 interface ImportMeta {

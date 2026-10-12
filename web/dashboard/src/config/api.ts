@@ -46,12 +46,12 @@ export const DEMO_CONFIG = {
   get COLLECTOR_URL() {
     return getEnvVar('VITE_DEMO_COLLECTOR_URL', 'http://localhost:3000/v1/events/batch');
   },
-  /** Default organization ID (`org_id`); the page can change it. */
-  get TENANT_ID() {
-    return getEnv('VITE_DEMO_TENANT_ID');
+  /** Default organization slug (`org_id`); the page can change it. */
+  get ORG_ID() {
+    return getEnv('VITE_DEMO_ORG_ID');
   },
-  /** Default project UUID (`proj_id`); the page can change it. */
-  get WORKSPACE_ID() {
-    return getEnv('VITE_DEMO_WORKSPACE_ID');
+  /** Default project slug (`project_id`); the page can change it. */
+  get PROJECT_ID() {
+    return getEnv('VITE_DEMO_PROJECT_ID');
   },
 };

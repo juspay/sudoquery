@@ -47,8 +47,8 @@ jobs:
             VITE_MAINTENANCE_MODE=${{ vars.VITE_MAINTENANCE_MODE }}
             VITE_DEMO_ENABLED=${{ vars.VITE_DEMO_ENABLED }}
             VITE_DEMO_COLLECTOR_URL=${{ vars.VITE_DEMO_COLLECTOR_URL }}
-            VITE_DEMO_TENANT_ID=${{ vars.VITE_DEMO_TENANT_ID }}
-            VITE_DEMO_WORKSPACE_ID=${{ vars.VITE_DEMO_WORKSPACE_ID }}
+            VITE_DEMO_ORG_ID=${{ vars.VITE_DEMO_ORG_ID }}
+            VITE_DEMO_PROJECT_ID=${{ vars.VITE_DEMO_PROJECT_ID }}
 
   merge:
     name: Push web-dashboard manifest
