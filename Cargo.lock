@@ -2597,7 +2597,6 @@ dependencies = [
  "tower-test",
  "tracing",
  "tracing-subscriber",
- "urlencoding",
  "uuid",
  "uuid7",
  "wiremock",

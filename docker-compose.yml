@@ -160,8 +160,12 @@ services:
       timeout: 5s
       retries: 30
 
-  # Installs the index template for events-* indexes: field types, with
-  # `properties` as a flat_object.
+  # Installs the ISM policy that rolls over and deletes events-* data streams'
+  # indexes (local values; Terraform owns it elsewhere), then the index
+  # template that makes every events-* name a data stream: field types, with
+  # `properties` as a flat_object. The policy goes first, so every stream's
+  # first index is managed. A re-run updates the policy in place, which needs
+  # the stored version's sequence number.
   opensearch-init:
     image: curlimages/curl:8.10.1
     restart: "no"
@@ -169,16 +173,23 @@ services:
       opensearch:
         condition: service_healthy
     volumes:
+      - ./crates/sink-opensearch/ism-policy.json:/ism-policy.json:ro
       - ./crates/sink-opensearch/index-template.json:/index-template.json:ro
+    entrypoint: ["/bin/sh", "-c"]
     command:
-      - -sSf
-      - -X
-      - PUT
-      - http://opensearch:9200/_index_template/events
-      - -H
-      - "Content-Type: application/json"
-      - --data-binary
-      - "@/index-template.json"
+      - |
+        set -e
+        policy=http://opensearch:9200/_plugins/_ism/policies/events
+        current=$$(curl -s "$$policy")
+        seq_no=$$(echo "$$current" | sed -n 's/.*"_seq_no":\([0-9]*\).*/\1/p')
+        primary_term=$$(echo "$$current" | sed -n 's/.*"_primary_term":\([0-9]*\).*/\1/p')
+        if [ -n "$$seq_no" ]; then
+          policy="$$policy?if_seq_no=$$seq_no&if_primary_term=$$primary_term"
+        fi
+        curl -sSf -X PUT "$$policy" \
+          -H 'Content-Type: application/json' --data-binary @/ism-policy.json
+        curl -sSf -X PUT http://opensearch:9200/_index_template/events \
+          -H 'Content-Type: application/json' --data-binary @/index-template.json
 
   # Web UI for OpenSearch: http://localhost:5601
   opensearch-dashboards:

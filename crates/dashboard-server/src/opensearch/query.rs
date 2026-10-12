@@ -183,6 +183,12 @@ pub fn session_filter(session_id: &str) -> Value {
     json!({ "term": { "session_id": session_id } })
 }
 
+/// The event with this id: `sink-opensearch` uses the event's id as the
+/// document's `_id`.
+pub fn ids_filter(id: &str) -> Value {
+    json!({ "ids": { "values": [id] } })
+}
+
 /// Events that occurred in `[from, to)`.
 pub fn time_filter(from: DateTime<Utc>, to: DateTime<Utc>) -> Value {
     json!({ "range": { "occured_at": { "gte": timestamp(from), "lt": timestamp(to) } } })

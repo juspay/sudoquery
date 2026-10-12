@@ -1,5 +1,8 @@
 {
   "index_patterns": ["events-*"],
+  "data_stream": {
+    "timestamp_field": { "name": "occured_at" }
+  },
   "priority": 100,
   "template": {
     "settings": {
