@@ -134,7 +134,10 @@ _context_ = { org_id = "broken" }
 
     async fn index_name(indexes: &OrgIndexes, org_id: &str, project_id: Option<&str>) -> String {
         let template = indexes.index_for(org_id, project_id).await.unwrap();
-        template.render(org_id).unwrap().into_owned()
+        template
+            .render(org_id, project_id.unwrap_or_default())
+            .unwrap()
+            .into_owned()
     }
 
     #[tokio::test]

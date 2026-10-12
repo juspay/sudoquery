@@ -342,6 +342,16 @@ project_id = {{ position = 2, schema = {{ type = "string" }} }}
             .await;
     }
 
+    /// Deletes a data stream and its backing indexes. `DELETE {index}`
+    /// doesn't reach a stream.
+    async fn delete_stream(&self, stream: &str) {
+        let _ = self
+            .http
+            .delete(format!("{}/_data_stream/{stream}", self.opensearch))
+            .send()
+            .await;
+    }
+
     async fn read_topic(&self, topic: &str, expected: usize) -> Vec<OwnedMessage> {
         let consumer: StreamConsumer = self
             .client_config()
@@ -744,8 +754,11 @@ async fn properties_can_change_shape_without_rejections() {
     stack.wait_for_count(&index, 40).await;
     assert_eq!(sink.stop().await, Drained::Complete);
 
+    // The template makes the index a data stream, so the mapping is keyed by
+    // its one backing index, `.ds-<index>-000001`.
     let mapping = stack.get(&format!("{index}/_mapping")).await;
-    let fields = &mapping[&index]["mappings"]["properties"];
+    let (_, mapping) = mapping.as_object().unwrap().iter().next().unwrap();
+    let fields = &mapping["mappings"]["properties"];
     assert_eq!(fields["properties"]["type"], "flat_object");
     assert_eq!(fields["org_id"]["type"], "keyword");
     assert_eq!(fields["occured_at"]["type"], "date");
@@ -757,6 +770,8 @@ async fn properties_can_change_shape_without_rejections() {
 
     let (committed, ends) = stack.committed_and_end_offsets(&names).await;
     assert_eq!(committed, ends);
+    // The stream first: a template still used by a stream can't be deleted.
+    stack.delete_stream(&index).await;
     let _ = stack
         .http
         .delete(format!(
@@ -765,7 +780,6 @@ async fn properties_can_change_shape_without_rejections() {
         ))
         .send()
         .await;
-    stack.delete_index(&index).await;
     stack.clean_up(&names).await;
 }
 
@@ -838,6 +852,8 @@ async fn events_are_timed_by_when_they_happened() {
     let after_login = json!({ "range": { "@timestamp": { "gte": "2026-09-28T09:30:00Z" } } });
     assert_eq!(stack.search_hits(&index, after_login).await, 2);
 
+    // The stream first: a template still used by a stream can't be deleted.
+    stack.delete_stream(&index).await;
     let _ = stack
         .http
         .delete(format!(
@@ -846,6 +862,5 @@ async fn events_are_timed_by_when_they_happened() {
         ))
         .send()
         .await;
-    stack.delete_index(&index).await;
     stack.clean_up(&names).await;
 }

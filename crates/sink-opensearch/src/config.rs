@@ -153,9 +153,10 @@ pub struct KafkaConfig {
 #[serde(deny_unknown_fields)]
 pub struct OpenSearchConfig {
     pub url: String,
-    /// Where documents are written. `{org_id}` is replaced with each
-    /// event's org, giving every org its own index or data stream.
-    /// This is the default; CAC overrides can change it per org.
+    /// Where documents are written. `{org_id}` and `{project_id}` are
+    /// replaced with each event's org and project, giving every project its
+    /// own data stream. This is the default; CAC overrides can change it per
+    /// org or project.
     pub index: IndexTemplate,
     #[serde(default = "default_request_timeout_ms")]
     pub request_timeout_ms: u64,
@@ -196,41 +197,76 @@ impl fmt::Debug for Secret {
 }
 
 const ORG_PLACEHOLDER: &str = "{org_id}";
+const PROJECT_PLACEHOLDER: &str = "{project_id}";
 
-/// An index, alias or data stream name, optionally containing `{org_id}`,
-/// e.g. `events-{org_id}`.
+/// An index, alias or data stream name, optionally containing `{org_id}`
+/// and `{project_id}`, e.g. `events-{org_id}-{project_id}`.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "String")]
 pub struct IndexTemplate(String);
 
+/// The event ID that couldn't be part of an index name, with the reason.
+#[derive(Debug, PartialEq, Eq)]
+pub enum InvalidId {
+    Org(String),
+    Project(String),
+}
+
 impl IndexTemplate {
     /// Checks the fixed parts of the template against OpenSearch's naming
-    /// rules. Each org's name is checked again when its events arrive.
+    /// rules. Each event's name is checked again when it arrives.
     pub fn parse(template: &str) -> Result<Self, String> {
-        if template.replace(ORG_PLACEHOLDER, "").contains(['{', '}']) {
+        let fixed = template
+            .replace(ORG_PLACEHOLDER, "")
+            .replace(PROJECT_PLACEHOLDER, "");
+        if fixed.contains(['{', '}']) {
             return Err(format!(
-                "`opensearch.index` `{template}`: the only placeholder is `{ORG_PLACEHOLDER}`"
+                "`opensearch.index` `{template}`: the only placeholders are `{ORG_PLACEHOLDER}` and `{PROJECT_PLACEHOLDER}`"
             ));
         }
-        let sample = template.replace(ORG_PLACEHOLDER, "org");
+        let sample = template
+            .replace(ORG_PLACEHOLDER, "org")
+            .replace(PROJECT_PLACEHOLDER, "project");
         validate_index_name(&sample)
             .map_err(|reason| format!("`opensearch.index` `{template}` {reason}"))?;
         Ok(Self(template.to_owned()))
     }
 
-    /// The index for one org's events. Fails if the org can't be part of
-    /// an index name, e.g. it has uppercase letters or a comma. Org IDs are
-    /// never rewritten, because two orgs could then share an index.
-    pub fn render(&self, org_id: &str) -> Result<Cow<'_, str>, String> {
-        if !self.0.contains(ORG_PLACEHOLDER) {
+    /// The index for one event. Fails if its org or project can't be part of
+    /// an index name, e.g. it is empty or has uppercase letters or a comma.
+    /// The org is checked first, so a bad project is never blamed on it. IDs
+    /// are never rewritten, because two orgs or projects could then share an
+    /// index.
+    pub fn render(&self, org_id: &str, project_id: &str) -> Result<Cow<'_, str>, InvalidId> {
+        let has_org = self.0.contains(ORG_PLACEHOLDER);
+        let has_project = self.0.contains(PROJECT_PLACEHOLDER);
+        if !has_org && !has_project {
             return Ok(Cow::Borrowed(&self.0));
         }
-        if org_id.is_empty() {
-            return Err("org_id is empty".to_owned());
+
+        let mut index = self.0.clone();
+        if has_org {
+            if org_id.is_empty() {
+                return Err(InvalidId::Org("org_id is empty".to_owned()));
+            }
+            index = index.replace(ORG_PLACEHOLDER, org_id);
+            validate_index_name(&index).map_err(|reason| {
+                InvalidId::Org(format!(
+                    "org_id `{org_id}` gives index `{index}`, which {reason}"
+                ))
+            })?;
         }
-        let index = self.0.replace(ORG_PLACEHOLDER, org_id);
-        validate_index_name(&index)
-            .map_err(|reason| format!("org_id `{org_id}` gives index `{index}`, which {reason}"))?;
+        if has_project {
+            if project_id.is_empty() {
+                return Err(InvalidId::Project("project_id is empty".to_owned()));
+            }
+            index = index.replace(PROJECT_PLACEHOLDER, project_id);
+            validate_index_name(&index).map_err(|reason| {
+                InvalidId::Project(format!(
+                    "project_id `{project_id}` gives index `{index}`, which {reason}"
+                ))
+            })?;
+        }
         Ok(Cow::Owned(index))
     }
 }
@@ -918,12 +954,17 @@ mod tests {
     }
 
     #[test]
-    fn index_can_be_per_org() {
-        let config = config_with(&[("opensearch.index", json!("events-{org_id}"))]).unwrap();
+    fn index_can_be_per_project() {
+        let config =
+            config_with(&[("opensearch.index", json!("events-{org_id}-{project_id}"))]).unwrap();
 
         assert_eq!(
-            config.opensearch.index.render("merchant-1").unwrap(),
-            "events-merchant-1"
+            config
+                .opensearch
+                .index
+                .render("acme-k3x9qa", "web-shop-9x2k1a")
+                .unwrap(),
+            "events-acme-k3x9qa-web-shop-9x2k1a"
         );
     }
 
@@ -931,24 +972,41 @@ mod tests {
     fn index_template_checks_its_fixed_parts() {
         for (index, needle) in [
             ("Events-{org_id}", "not a valid index name"),
+            ("Events-{org_id}-{project_id}", "not a valid index name"),
             ("_{org_id}", "not a valid index name"),
-            ("events-{org}", "the only placeholder is `{org_id}`"),
-            ("events-{date}-{org_id}", "the only placeholder"),
+            (
+                "events-{org}",
+                "the only placeholders are `{org_id}` and `{project_id}`",
+            ),
+            ("events-{date}-{org_id}", "the only placeholders"),
         ] {
             assert_rejected(config_with(&[("opensearch.index", json!(index))]), needle);
         }
     }
 
     #[test]
-    fn fixed_index_ignores_the_org() {
+    fn fixed_index_ignores_the_ids() {
         let template = IndexTemplate::parse("events").unwrap();
 
-        assert_eq!(template.render("Anything, really").unwrap(), "events");
+        assert_eq!(
+            template.render("Anything, really", "Any project").unwrap(),
+            "events"
+        );
+    }
+
+    #[test]
+    fn a_template_without_project_id_ignores_the_project() {
+        let template = IndexTemplate::parse("events-{org_id}").unwrap();
+
+        assert_eq!(
+            template.render("merchant-1", "Not a valid name").unwrap(),
+            "events-merchant-1"
+        );
     }
 
     #[test]
     fn orgs_that_cannot_form_an_index_name_are_refused() {
-        let template = IndexTemplate::parse("events-{org_id}").unwrap();
+        let template = IndexTemplate::parse("events-{org_id}-{project_id}").unwrap();
 
         for org in [
             "",
@@ -959,9 +1017,35 @@ mod tests {
             "a/b",
             &"x".repeat(250),
         ] {
-            assert!(template.render(org).is_err(), "`{org}` should be refused");
+            assert!(
+                matches!(template.render(org, "web-shop"), Err(InvalidId::Org(_))),
+                "`{org}` should be refused"
+            );
         }
-        assert_eq!(template.render("m_1.eu").unwrap(), "events-m_1.eu");
+        assert_eq!(
+            template.render("m_1.eu", "web-shop").unwrap(),
+            "events-m_1.eu-web-shop"
+        );
+    }
+
+    #[test]
+    fn projects_that_cannot_form_an_index_name_are_refused() {
+        let template = IndexTemplate::parse("events-{org_id}-{project_id}").unwrap();
+
+        for project in ["", "Web", "a,b", "a b", "a*", "a/b", &"x".repeat(240)] {
+            assert!(
+                matches!(
+                    template.render("merchant-1", project),
+                    Err(InvalidId::Project(_))
+                ),
+                "`{project}` should be refused"
+            );
+        }
+        // When both are bad, the org is reported.
+        assert!(matches!(
+            template.render("Merchant-1", "Web"),
+            Err(InvalidId::Org(_))
+        ));
     }
 
     #[test]
@@ -1022,7 +1106,7 @@ mod tests {
         assert_eq!(config.dlq.topic, "dlq.events");
         assert_eq!(
             config.opensearch.index,
-            IndexTemplate::parse("events-{org_id}").unwrap()
+            IndexTemplate::parse("events-{org_id}-{project_id}").unwrap()
         );
         cac.close().await;
     }

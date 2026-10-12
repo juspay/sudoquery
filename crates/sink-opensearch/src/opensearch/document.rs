@@ -6,7 +6,7 @@ use bytes::{Bytes, BytesMut};
 use canonical_event::CanonicalEvent;
 use serde::Serialize;
 
-use crate::config::IndexTemplate;
+use crate::config::{IndexTemplate, InvalidId};
 use crate::runtime::Rejection;
 
 /// A `create` action line followed by its source line, both
@@ -68,16 +68,21 @@ pub fn decode(payload: Option<&[u8]>) -> Result<Decoded<'_>, Rejection> {
     Ok(Decoded { event, source })
 }
 
-/// Builds the event's `create` operation into its org's index, with the
+/// Builds the event's `create` operation into its project's index, with the
 /// event's `id` as the document ID so a replay can't create a duplicate.
 pub fn build(
     decoded: &Decoded<'_>,
     index: &IndexTemplate,
     max_bytes: usize,
 ) -> Result<BulkDoc, Rejection> {
-    let index = index
-        .render(&decoded.event.org_id)
-        .map_err(|reason| Rejection::new("invalid_org", reason))?;
+    let event = &decoded.event;
+    let index =
+        index
+            .render(&event.org_id, &event.project_id)
+            .map_err(|invalid| match invalid {
+                InvalidId::Org(reason) => Rejection::new("invalid_org", reason),
+                InvalidId::Project(reason) => Rejection::new("invalid_proj", reason),
+            })?;
     let id = decoded.event.id().to_string();
     let action = serde_json::to_vec(&Action {
         create: Target {
@@ -118,12 +123,12 @@ mod tests {
     const ID: &str = "0b6bd7e7-1a4b-4d12-8fd3-9f8f0f2a1b2c";
 
     fn event() -> String {
-        event_for("merchant-1")
+        event_for("merchant-1", "acme-shop-42")
     }
 
-    fn event_for(org: &str) -> String {
+    fn event_for(org: &str, project: &str) -> String {
         format!(
-            r#"{{"envelop_version":"1.0","id":"{ID}","name":"payment_initiated","org_id":"{org}","project_id":"acme-shop-42","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z","properties":{{"amount":100}}}}"#
+            r#"{{"envelop_version":"1.0","id":"{ID}","name":"payment_initiated","org_id":"{org}","project_id":"{project}","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z","properties":{{"amount":100}}}}"#
         )
     }
 
@@ -200,24 +205,43 @@ mod tests {
     }
 
     #[test]
-    fn writes_each_org_to_its_own_index() {
-        let template = index("events-{org_id}");
+    fn writes_each_project_to_its_own_index() {
+        let template = index("events-{org_id}-{project_id}");
 
-        for org in ["merchant-1", "merchant-2"] {
-            let payload = event_for(org);
+        for (org, project) in [
+            ("acme-k3x9qa", "web-shop-9x2k1a"),
+            ("acme-k3x9qa", "app-store-4m7p2q"),
+            ("globex-8d2l0z", "web-shop-1b5c9e"),
+        ] {
+            let payload = event_for(org, project);
             let doc = prepare(Some(payload.as_bytes()), &template, 1024).unwrap();
 
             let action: serde_json::Value = serde_json::from_str(&lines(&doc)[0]).unwrap();
-            assert_eq!(action["create"]["_index"], format!("events-{org}"));
+            assert_eq!(
+                action["create"]["_index"],
+                format!("events-{org}-{project}")
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_projects_that_cannot_form_an_index_name() {
+        let template = index("events-{org_id}-{project_id}");
+
+        for project in ["Web-shop", "", "a,b", "a*"] {
+            let payload = event_for("acme-k3x9qa", project);
+            let rejection = prepare(Some(payload.as_bytes()), &template, 1024).unwrap_err();
+
+            assert_eq!(rejection.class, "invalid_proj", "project `{project}`");
         }
     }
 
     #[test]
     fn rejects_orgs_that_cannot_form_an_index_name() {
-        let template = index("events-{org_id}");
+        let template = index("events-{org_id}-{project_id}");
 
         for org in ["Merchant-1", "", "a,b", "a*"] {
-            let payload = event_for(org);
+            let payload = event_for(org, "acme-shop-42");
             let rejection = prepare(Some(payload.as_bytes()), &template, 1024).unwrap_err();
 
             assert_eq!(rejection.class, "invalid_org", "org `{org}`");

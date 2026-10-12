@@ -20,7 +20,7 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
--- Name: chat_type; Type: TYPE; Schema: public; Owner: hyper_analytics_user
+-- Name: chat_type; Type: TYPE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TYPE public.chat_type AS ENUM (
@@ -29,10 +29,10 @@ CREATE TYPE public.chat_type AS ENUM (
 );
 
 
-ALTER TYPE public.chat_type OWNER TO hyper_analytics_user;
+ALTER TYPE public.chat_type OWNER TO sudoquery_user;
 
 --
--- Name: invitation_status; Type: TYPE; Schema: public; Owner: hyper_analytics_user
+-- Name: invitation_status; Type: TYPE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TYPE public.invitation_status AS ENUM (
@@ -43,10 +43,10 @@ CREATE TYPE public.invitation_status AS ENUM (
 );
 
 
-ALTER TYPE public.invitation_status OWNER TO hyper_analytics_user;
+ALTER TYPE public.invitation_status OWNER TO sudoquery_user;
 
 --
--- Name: invitation_type; Type: TYPE; Schema: public; Owner: hyper_analytics_user
+-- Name: invitation_type; Type: TYPE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TYPE public.invitation_type AS ENUM (
@@ -55,10 +55,10 @@ CREATE TYPE public.invitation_type AS ENUM (
 );
 
 
-ALTER TYPE public.invitation_type OWNER TO hyper_analytics_user;
+ALTER TYPE public.invitation_type OWNER TO sudoquery_user;
 
 --
--- Name: org_role; Type: TYPE; Schema: public; Owner: hyper_analytics_user
+-- Name: org_role; Type: TYPE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TYPE public.org_role AS ENUM (
@@ -67,10 +67,10 @@ CREATE TYPE public.org_role AS ENUM (
 );
 
 
-ALTER TYPE public.org_role OWNER TO hyper_analytics_user;
+ALTER TYPE public.org_role OWNER TO sudoquery_user;
 
 --
--- Name: project_role; Type: TYPE; Schema: public; Owner: hyper_analytics_user
+-- Name: project_role; Type: TYPE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TYPE public.project_role AS ENUM (
@@ -79,14 +79,14 @@ CREATE TYPE public.project_role AS ENUM (
 );
 
 
-ALTER TYPE public.project_role OWNER TO hyper_analytics_user;
+ALTER TYPE public.project_role OWNER TO sudoquery_user;
 
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
 
 --
--- Name: chats; Type: TABLE; Schema: public; Owner: hyper_analytics_user
+-- Name: chats; Type: TABLE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TABLE public.chats (
@@ -100,10 +100,10 @@ CREATE TABLE public.chats (
 );
 
 
-ALTER TABLE public.chats OWNER TO hyper_analytics_user;
+ALTER TABLE public.chats OWNER TO sudoquery_user;
 
 --
--- Name: event_descriptions; Type: TABLE; Schema: public; Owner: hyper_analytics_user
+-- Name: event_descriptions; Type: TABLE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TABLE public.event_descriptions (
@@ -116,10 +116,10 @@ CREATE TABLE public.event_descriptions (
 );
 
 
-ALTER TABLE public.event_descriptions OWNER TO hyper_analytics_user;
+ALTER TABLE public.event_descriptions OWNER TO sudoquery_user;
 
 --
--- Name: invitations; Type: TABLE; Schema: public; Owner: hyper_analytics_user
+-- Name: invitations; Type: TABLE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TABLE public.invitations (
@@ -136,10 +136,10 @@ CREATE TABLE public.invitations (
 );
 
 
-ALTER TABLE public.invitations OWNER TO hyper_analytics_user;
+ALTER TABLE public.invitations OWNER TO sudoquery_user;
 
 --
--- Name: live_dashboards; Type: TABLE; Schema: public; Owner: hyper_analytics_user
+-- Name: live_dashboards; Type: TABLE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TABLE public.live_dashboards (
@@ -157,10 +157,10 @@ CREATE TABLE public.live_dashboards (
 );
 
 
-ALTER TABLE public.live_dashboards OWNER TO hyper_analytics_user;
+ALTER TABLE public.live_dashboards OWNER TO sudoquery_user;
 
 --
--- Name: messages; Type: TABLE; Schema: public; Owner: hyper_analytics_user
+-- Name: messages; Type: TABLE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TABLE public.messages (
@@ -173,10 +173,10 @@ CREATE TABLE public.messages (
 );
 
 
-ALTER TABLE public.messages OWNER TO hyper_analytics_user;
+ALTER TABLE public.messages OWNER TO sudoquery_user;
 
 --
--- Name: organization_memberships; Type: TABLE; Schema: public; Owner: hyper_analytics_user
+-- Name: organization_memberships; Type: TABLE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TABLE public.organization_memberships (
@@ -189,10 +189,10 @@ CREATE TABLE public.organization_memberships (
 );
 
 
-ALTER TABLE public.organization_memberships OWNER TO hyper_analytics_user;
+ALTER TABLE public.organization_memberships OWNER TO sudoquery_user;
 
 --
--- Name: organizations; Type: TABLE; Schema: public; Owner: hyper_analytics_user
+-- Name: organizations; Type: TABLE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TABLE public.organizations (
@@ -204,10 +204,10 @@ CREATE TABLE public.organizations (
 );
 
 
-ALTER TABLE public.organizations OWNER TO hyper_analytics_user;
+ALTER TABLE public.organizations OWNER TO sudoquery_user;
 
 --
--- Name: project_memberships; Type: TABLE; Schema: public; Owner: hyper_analytics_user
+-- Name: project_memberships; Type: TABLE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TABLE public.project_memberships (
@@ -220,10 +220,10 @@ CREATE TABLE public.project_memberships (
 );
 
 
-ALTER TABLE public.project_memberships OWNER TO hyper_analytics_user;
+ALTER TABLE public.project_memberships OWNER TO sudoquery_user;
 
 --
--- Name: project_tokens; Type: TABLE; Schema: public; Owner: hyper_analytics_user
+-- Name: project_tokens; Type: TABLE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TABLE public.project_tokens (
@@ -236,10 +236,10 @@ CREATE TABLE public.project_tokens (
 );
 
 
-ALTER TABLE public.project_tokens OWNER TO hyper_analytics_user;
+ALTER TABLE public.project_tokens OWNER TO sudoquery_user;
 
 --
--- Name: projects; Type: TABLE; Schema: public; Owner: hyper_analytics_user
+-- Name: projects; Type: TABLE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TABLE public.projects (
@@ -253,10 +253,10 @@ CREATE TABLE public.projects (
 );
 
 
-ALTER TABLE public.projects OWNER TO hyper_analytics_user;
+ALTER TABLE public.projects OWNER TO sudoquery_user;
 
 --
--- Name: property_descriptions; Type: TABLE; Schema: public; Owner: hyper_analytics_user
+-- Name: property_descriptions; Type: TABLE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TABLE public.property_descriptions (
@@ -271,10 +271,10 @@ CREATE TABLE public.property_descriptions (
 );
 
 
-ALTER TABLE public.property_descriptions OWNER TO hyper_analytics_user;
+ALTER TABLE public.property_descriptions OWNER TO sudoquery_user;
 
 --
--- Name: user_project_consoles; Type: TABLE; Schema: public; Owner: hyper_analytics_user
+-- Name: user_project_consoles; Type: TABLE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TABLE public.user_project_consoles (
@@ -288,10 +288,10 @@ CREATE TABLE public.user_project_consoles (
 );
 
 
-ALTER TABLE public.user_project_consoles OWNER TO hyper_analytics_user;
+ALTER TABLE public.user_project_consoles OWNER TO sudoquery_user;
 
 --
--- Name: users; Type: TABLE; Schema: public; Owner: hyper_analytics_user
+-- Name: users; Type: TABLE; Schema: public; Owner: sudoquery_user
 --
 
 CREATE TABLE public.users (
@@ -305,10 +305,10 @@ CREATE TABLE public.users (
 );
 
 
-ALTER TABLE public.users OWNER TO hyper_analytics_user;
+ALTER TABLE public.users OWNER TO sudoquery_user;
 
 --
--- Name: chats chats_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: chats chats_pkey; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.chats
@@ -316,7 +316,7 @@ ALTER TABLE ONLY public.chats
 
 
 --
--- Name: event_descriptions event_descriptions_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: event_descriptions event_descriptions_pkey; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.event_descriptions
@@ -324,7 +324,7 @@ ALTER TABLE ONLY public.event_descriptions
 
 
 --
--- Name: event_descriptions event_descriptions_project_id_event_name_key; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: event_descriptions event_descriptions_project_id_event_name_key; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.event_descriptions
@@ -332,7 +332,7 @@ ALTER TABLE ONLY public.event_descriptions
 
 
 --
--- Name: invitations invitations_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: invitations invitations_pkey; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.invitations
@@ -340,7 +340,7 @@ ALTER TABLE ONLY public.invitations
 
 
 --
--- Name: live_dashboards live_dashboards_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: live_dashboards live_dashboards_pkey; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.live_dashboards
@@ -348,7 +348,7 @@ ALTER TABLE ONLY public.live_dashboards
 
 
 --
--- Name: messages messages_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: messages messages_pkey; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.messages
@@ -356,7 +356,7 @@ ALTER TABLE ONLY public.messages
 
 
 --
--- Name: organization_memberships organization_memberships_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: organization_memberships organization_memberships_pkey; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.organization_memberships
@@ -364,7 +364,7 @@ ALTER TABLE ONLY public.organization_memberships
 
 
 --
--- Name: organization_memberships organization_memberships_user_id_organization_id_key; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: organization_memberships organization_memberships_user_id_organization_id_key; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.organization_memberships
@@ -372,7 +372,7 @@ ALTER TABLE ONLY public.organization_memberships
 
 
 --
--- Name: organizations organizations_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: organizations organizations_pkey; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.organizations
@@ -380,7 +380,7 @@ ALTER TABLE ONLY public.organizations
 
 
 --
--- Name: project_memberships project_memberships_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: project_memberships project_memberships_pkey; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.project_memberships
@@ -388,7 +388,7 @@ ALTER TABLE ONLY public.project_memberships
 
 
 --
--- Name: project_memberships project_memberships_user_id_project_id_key; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: project_memberships project_memberships_user_id_project_id_key; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.project_memberships
@@ -396,7 +396,7 @@ ALTER TABLE ONLY public.project_memberships
 
 
 --
--- Name: project_tokens project_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: project_tokens project_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.project_tokens
@@ -404,7 +404,7 @@ ALTER TABLE ONLY public.project_tokens
 
 
 --
--- Name: project_tokens project_tokens_token_key; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: project_tokens project_tokens_token_key; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.project_tokens
@@ -412,7 +412,7 @@ ALTER TABLE ONLY public.project_tokens
 
 
 --
--- Name: projects projects_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: projects projects_pkey; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.projects
@@ -420,7 +420,7 @@ ALTER TABLE ONLY public.projects
 
 
 --
--- Name: property_descriptions property_descriptions_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: property_descriptions property_descriptions_pkey; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.property_descriptions
@@ -428,7 +428,7 @@ ALTER TABLE ONLY public.property_descriptions
 
 
 --
--- Name: property_descriptions property_descriptions_project_id_event_name_property_name_key; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: property_descriptions property_descriptions_project_id_event_name_property_name_key; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.property_descriptions
@@ -436,7 +436,7 @@ ALTER TABLE ONLY public.property_descriptions
 
 
 --
--- Name: user_project_consoles user_project_consoles_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: user_project_consoles user_project_consoles_pkey; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.user_project_consoles
@@ -444,7 +444,7 @@ ALTER TABLE ONLY public.user_project_consoles
 
 
 --
--- Name: users users_keycloak_user_id_key; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: users users_keycloak_user_id_key; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.users
@@ -452,7 +452,7 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: users users_pkey; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.users
@@ -460,196 +460,196 @@ ALTER TABLE ONLY public.users
 
 
 --
--- Name: idx_chats_chat_type; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_chats_chat_type; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_chats_chat_type ON public.chats USING btree (chat_type);
 
 
 --
--- Name: idx_chats_project_user; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_chats_project_user; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_chats_project_user ON public.chats USING btree (project_id, user_id);
 
 
 --
--- Name: idx_event_descriptions_project_id; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_event_descriptions_project_id; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_event_descriptions_project_id ON public.event_descriptions USING btree (project_id);
 
 
 --
--- Name: idx_invitations_email; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_invitations_email; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_invitations_email ON public.invitations USING btree (email);
 
 
 --
--- Name: idx_invitations_invited_by; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_invitations_invited_by; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_invitations_invited_by ON public.invitations USING btree (invited_by);
 
 
 --
--- Name: idx_invitations_status; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_invitations_status; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_invitations_status ON public.invitations USING btree (status);
 
 
 --
--- Name: idx_invitations_target_id; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_invitations_target_id; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_invitations_target_id ON public.invitations USING btree (target_id);
 
 
 --
--- Name: idx_live_dashboards_project_id; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_live_dashboards_project_id; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_live_dashboards_project_id ON public.live_dashboards USING btree (project_id);
 
 
 --
--- Name: idx_messages_chat_id; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_messages_chat_id; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_messages_chat_id ON public.messages USING btree (chat_id, created_at DESC);
 
 
 --
--- Name: idx_organization_memberships_organization_id; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_organization_memberships_organization_id; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_organization_memberships_organization_id ON public.organization_memberships USING btree (organization_id);
 
 
 --
--- Name: idx_organization_memberships_user_id; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_organization_memberships_user_id; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_organization_memberships_user_id ON public.organization_memberships USING btree (user_id);
 
 
 --
--- Name: idx_organizations_deleted_at; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_organizations_deleted_at; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_organizations_deleted_at ON public.organizations USING btree (deleted_at);
 
 
 --
--- Name: idx_project_id_source; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_project_id_source; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_project_id_source ON public.live_dashboards USING btree (project_id, creation_source);
 
 
 --
--- Name: idx_project_memberships_project_id; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_project_memberships_project_id; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_project_memberships_project_id ON public.project_memberships USING btree (project_id);
 
 
 --
--- Name: idx_project_memberships_user_id; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_project_memberships_user_id; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_project_memberships_user_id ON public.project_memberships USING btree (user_id);
 
 
 --
--- Name: idx_project_tokens_project_id; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_project_tokens_project_id; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_project_tokens_project_id ON public.project_tokens USING btree (project_id);
 
 
 --
--- Name: idx_project_tokens_token; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_project_tokens_token; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_project_tokens_token ON public.project_tokens USING btree (token);
 
 
 --
--- Name: idx_projects_deleted_at; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_projects_deleted_at; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_projects_deleted_at ON public.projects USING btree (deleted_at);
 
 
 --
--- Name: idx_projects_organization_id; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_projects_organization_id; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_projects_organization_id ON public.projects USING btree (organization_id);
 
 
 --
--- Name: idx_property_descriptions_event_name; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_property_descriptions_event_name; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_property_descriptions_event_name ON public.property_descriptions USING btree (project_id, event_name);
 
 
 --
--- Name: idx_property_descriptions_project_id; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_property_descriptions_project_id; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_property_descriptions_project_id ON public.property_descriptions USING btree (project_id);
 
 
 --
--- Name: idx_user_proj_consoles_on_all_three; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_user_proj_consoles_on_all_three; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_user_proj_consoles_on_all_three ON public.user_project_consoles USING btree (id, user_id, proj_id);
 
 
 --
--- Name: idx_user_proj_consoles_on_user_and_proj; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_user_proj_consoles_on_user_and_proj; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_user_proj_consoles_on_user_and_proj ON public.user_project_consoles USING btree (user_id, proj_id);
 
 
 --
--- Name: idx_users_deleted_at; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_users_deleted_at; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_users_deleted_at ON public.users USING btree (deleted_at);
 
 
 --
--- Name: idx_users_email; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_users_email; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_users_email ON public.users USING btree (email);
 
 
 --
--- Name: idx_users_keycloak_user_id; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: idx_users_keycloak_user_id; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE INDEX idx_users_keycloak_user_id ON public.users USING btree (keycloak_user_id);
 
 
 --
--- Name: invitations_email_target_key; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+-- Name: invitations_email_target_key; Type: INDEX; Schema: public; Owner: sudoquery_user
 --
 
 CREATE UNIQUE INDEX invitations_email_target_key ON public.invitations USING btree (email, target_id) WHERE (status = 'pending'::public.invitation_status);
 
 
 --
--- Name: chats chats_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: chats chats_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.chats
@@ -657,7 +657,7 @@ ALTER TABLE ONLY public.chats
 
 
 --
--- Name: chats chats_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: chats chats_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.chats
@@ -665,7 +665,7 @@ ALTER TABLE ONLY public.chats
 
 
 --
--- Name: event_descriptions event_descriptions_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: event_descriptions event_descriptions_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.event_descriptions
@@ -673,7 +673,7 @@ ALTER TABLE ONLY public.event_descriptions
 
 
 --
--- Name: user_project_consoles fk_project; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: user_project_consoles fk_project; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.user_project_consoles
@@ -681,7 +681,7 @@ ALTER TABLE ONLY public.user_project_consoles
 
 
 --
--- Name: user_project_consoles fk_user; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: user_project_consoles fk_user; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.user_project_consoles
@@ -689,7 +689,7 @@ ALTER TABLE ONLY public.user_project_consoles
 
 
 --
--- Name: invitations invitations_invited_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: invitations invitations_invited_by_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.invitations
@@ -697,7 +697,7 @@ ALTER TABLE ONLY public.invitations
 
 
 --
--- Name: live_dashboards live_dashboards_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: live_dashboards live_dashboards_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.live_dashboards
@@ -705,7 +705,7 @@ ALTER TABLE ONLY public.live_dashboards
 
 
 --
--- Name: messages messages_chat_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: messages messages_chat_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.messages
@@ -713,7 +713,7 @@ ALTER TABLE ONLY public.messages
 
 
 --
--- Name: organization_memberships organization_memberships_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: organization_memberships organization_memberships_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.organization_memberships
@@ -721,7 +721,7 @@ ALTER TABLE ONLY public.organization_memberships
 
 
 --
--- Name: organization_memberships organization_memberships_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: organization_memberships organization_memberships_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.organization_memberships
@@ -729,7 +729,7 @@ ALTER TABLE ONLY public.organization_memberships
 
 
 --
--- Name: project_memberships project_memberships_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: project_memberships project_memberships_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.project_memberships
@@ -737,7 +737,7 @@ ALTER TABLE ONLY public.project_memberships
 
 
 --
--- Name: project_memberships project_memberships_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: project_memberships project_memberships_user_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.project_memberships
@@ -745,7 +745,7 @@ ALTER TABLE ONLY public.project_memberships
 
 
 --
--- Name: project_tokens project_tokens_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: project_tokens project_tokens_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.project_tokens
@@ -753,7 +753,7 @@ ALTER TABLE ONLY public.project_tokens
 
 
 --
--- Name: projects projects_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: projects projects_organization_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.projects
@@ -761,7 +761,7 @@ ALTER TABLE ONLY public.projects
 
 
 --
--- Name: property_descriptions property_descriptions_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+-- Name: property_descriptions property_descriptions_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: sudoquery_user
 --
 
 ALTER TABLE ONLY public.property_descriptions

@@ -7,15 +7,15 @@
 # Every setting is one `section.name` key, so a single setting can be
 # overridden. Everything is read once at startup with no org context,
 # except `opensearch.index`, which is resolved per event for the event's
-# org_id and project_id. The file is re-read every 30 seconds, so org
-# overrides of `opensearch.index` apply without a restart; anything else needs
-# a restart.
+# org_id and project_id. The file is re-read every 30 seconds, so org and
+# project overrides of `opensearch.index` apply without a restart; anything
+# else needs a restart.
 #
 # Every key below can be overridden from the environment, and the environment
 # wins: the variable is the key in upper case with `.` replaced by `_`, e.g.
 # BATCH_MAX_DOCS for "batch.max_docs". KAFKA_TOPICS is comma-separated, and
 # KAFKA_CLIENT_CONFIG is a JSON object merged into "kafka.client_config".
-# OPENSEARCH_INDEX applies to every org, so the org overrides at the bottom are
+# OPENSEARCH_INDEX applies to every org, so the overrides at the bottom are
 # ignored while it is set. KAFKA_BOOTSTRAP_SERVERS overrides
 # "bootstrap.servers". OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD are read
 # only from the environment.
@@ -33,9 +33,11 @@
 "kafka.client_config" = { value = { "bootstrap.servers" = "localhost:19092", "topic.metadata.refresh.interval.ms" = "30000" }, schema = { type = "object" } }
 
 "opensearch.url" = { value = "http://localhost:9200", schema = { type = "string" } }
-# Index, alias or data stream. `{org_id}` is replaced with each event's
-# org, so every org gets its own index. Override it per org below.
-"opensearch.index" = { value = "events-{org_id}", schema = { type = "string" } }
+# Index, alias or data stream. `{org_id}` and `{project_id}` are replaced
+# with each event's org and project, so every project gets its own data
+# stream (index-template.json makes every `events-*` name a data stream).
+# Override it per org or project below.
+"opensearch.index" = { value = "events-{org_id}-{project_id}", schema = { type = "string" } }
 "opensearch.request_timeout_ms" = { value = 30000, schema = { type = "integer" } }
 
 # A partition's buffer is written once it holds max_docs records or max_bytes
@@ -63,13 +65,13 @@
 org_id = { position = 1, schema = { type = "string" } }
 project_id = { position = 2, schema = { type = "string" } }
 
-# Per-org index. For example, move one org to a dedicated index, and put
-# a group of small orgs in one shared index. Keep names under `events-*` so
-# index-template.json applies to them:
+# Per-org or per-project data stream. For example, put all of one org's
+# projects in one stream, and a group of small orgs in one shared stream.
+# Keep names under `events-*` so index-template.json applies to them:
 #
 # [[overrides]]
 # _context_ = { org_id = "merchant-1" }
-# "opensearch.index" = "events-merchant-1-dedicated"
+# "opensearch.index" = "events-merchant-1-all"
 #
 # [[overrides]]
 # _context_ = { org_id = "merchant-2" }

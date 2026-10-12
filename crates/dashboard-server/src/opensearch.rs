@@ -176,8 +176,9 @@ pub struct OpenSearch {
 }
 
 impl OpenSearch {
-    /// `index_template` names the index to read; `{org_id}` in it is
-    /// replaced per request, as `sink-opensearch` does when writing.
+    /// `index_template` names the data stream to read; `{org_id}` and
+    /// `{project_id}` in it are replaced per request, as `sink-opensearch`
+    /// does when writing.
     pub fn new(
         url: &str,
         credentials: Option<(String, String)>,
@@ -265,16 +266,22 @@ impl OpenSearch {
         id: &str,
     ) -> Result<Option<Event>, OpenSearchError> {
         let target = self.target(scope);
-        let api = format!("_doc/{}", urlencoding::encode(id));
-        let Some(reply) = self.call(Method::GET, &target, &api, None).await? else {
+        // A data stream doesn't serve `_doc` by id, so the event is searched
+        // for, inside the project's scope.
+        let query = query::scoped_query(None, scope, vec![query::ids_filter(id)]);
+        let body = json!({ "query": query, "size": 1 });
+        let Some(reply) = self
+            .call(Method::POST, &target, "_search", Some(&body))
+            .await?
+        else {
             return Ok(None);
         };
-        if reply["found"].as_bool() != Some(true) {
+        let Some(hit) = array(&reply["hits"]["hits"], "hits")?.first() else {
             return Ok(None);
-        }
+        };
 
-        let event = CanonicalEvent::deserialize(&reply["_source"]).map_err(decode_error)?;
-        // `_doc` takes no query, so the scope is checked on the document.
+        let event = CanonicalEvent::deserialize(&hit["_source"]).map_err(decode_error)?;
+        // Checked on the document too, should the query ever lose its scope.
         let in_scope = event.org_id == scope.org_id && event.project_id == scope.project_id;
         if !in_scope {
             return Ok(None);
@@ -404,7 +411,10 @@ impl OpenSearch {
 
     fn target<'a>(&self, scope: &'a Scope) -> Target<'a> {
         Target {
-            index: self.index_template.replace("{org_id}", &scope.org_id),
+            index: self
+                .index_template
+                .replace("{org_id}", &scope.org_id)
+                .replace("{project_id}", &scope.project_id),
             scope,
         }
     }
@@ -599,7 +609,8 @@ mod tests {
 
     const ORG: &str = "0198c0de-0000-7000-8000-000000000001";
     const PROJ: &str = "0198c0de-0000-7000-8000-000000000002";
-    const INDEX: &str = "events-0198c0de-0000-7000-8000-000000000001";
+    const INDEX: &str =
+        "events-0198c0de-0000-7000-8000-000000000001-0198c0de-0000-7000-8000-000000000002";
 
     fn scope() -> Scope {
         Scope {
@@ -612,7 +623,7 @@ mod tests {
         OpenSearch::new(
             &server.uri(),
             None,
-            "events-{org_id}".into(),
+            "events-{org_id}-{project_id}".into(),
             Duration::from_secs(2),
         )
         .unwrap()
@@ -928,26 +939,37 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn get_event_returns_a_document_in_scope() {
+    async fn get_event_searches_for_the_id_inside_the_scope() {
         let server = MockServer::start().await;
-        let found = json!({ "found": true, "_source": source(1, PROJ) });
-        mount(
-            &server,
-            "GET",
-            "_doc/00000000-0000-4000-8000-000000000001",
-            ResponseTemplate::new(200).set_body_json(found),
-        )
-        .await;
+        let id = "00000000-0000-4000-8000-000000000001";
+        let scoped = query::scoped_query(None, &scope(), vec![query::ids_filter(id)]);
+        Mock::given(method("POST"))
+            .and(path(api("_search")))
+            .and(body_json(json!({ "query": scoped, "size": 1 })))
+            .respond_with(hits(&[1]))
+            .expect(1)
+            .mount(&server)
+            .await;
 
         let event = client(&server)
-            .get_event(&scope(), "00000000-0000-4000-8000-000000000001")
+            .get_event(&scope(), id)
             .await
             .unwrap()
             .expect("the event is in scope");
 
         let event = serde_json::to_value(event).unwrap();
-        assert_eq!(event["id"], "00000000-0000-4000-8000-000000000001");
+        assert_eq!(event["id"], id);
         assert!(event.get("org_id").is_none());
+    }
+
+    #[tokio::test]
+    async fn get_event_finds_nothing_without_a_hit() {
+        let server = MockServer::start().await;
+        mount(&server, "POST", "_search", hits(&[])).await;
+
+        let event = client(&server).get_event(&scope(), "1").await.unwrap();
+
+        assert!(event.is_none());
     }
 
     #[tokio::test]
@@ -957,11 +979,11 @@ mod tests {
 
         for stored in [source(1, "another-proj"), other_org] {
             let server = MockServer::start().await;
-            let found = json!({ "found": true, "_source": stored });
+            let found = json!({ "hits": { "hits": [{ "_id": stored["id"], "_source": stored }] } });
             mount(
                 &server,
-                "GET",
-                "_doc/1",
+                "POST",
+                "_search",
                 ResponseTemplate::new(200).set_body_json(found),
             )
             .await;
@@ -973,20 +995,17 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn a_document_id_cannot_escape_its_path_segment() {
+    async fn a_document_id_travels_in_the_body_not_the_path() {
         let server = MockServer::start().await;
+        let id = "a/../_search?q=*";
 
-        client(&server)
-            .get_event(&scope(), "a/../_search?q=*")
-            .await
-            .unwrap();
+        client(&server).get_event(&scope(), id).await.unwrap();
 
         let requests = server.received_requests().await.unwrap();
-        assert_eq!(
-            requests[0].url.path(),
-            api("_doc/a%2F..%2F_search%3Fq%3D%2A")
-        );
+        assert_eq!(requests[0].url.path(), api("_search"));
         assert_eq!(requests[0].url.query(), None);
+        let body: Value = serde_json::from_slice(&requests[0].body).unwrap();
+        assert_eq!(body["query"]["bool"]["filter"][2], query::ids_filter(id));
     }
 
     #[tokio::test]
@@ -1189,7 +1208,7 @@ mod tests {
         let client = OpenSearch::new(
             &format!("{}/search/", server.uri()),
             Some(("dashboard".into(), "hunter2".into())),
-            "events-{org_id}".into(),
+            "events-{org_id}-{project_id}".into(),
             Duration::from_secs(2),
         )
         .unwrap();
@@ -1473,18 +1492,18 @@ mod tests {
         );
     }
 
-    /// A real OpenSearch holding one index shared by two projects of an
-    /// org, plus an event of another org.
+    /// A real OpenSearch with one data stream per project of an org, the way
+    /// `sink-opensearch` writes them.
     struct Live {
         http: reqwest::Client,
         url: String,
-        index: String,
         client: OpenSearch,
         org: String,
     }
 
     impl Live {
-        /// Creates the index with the mappings `sink-opensearch` ships.
+        /// Installs the index template `sink-opensearch` ships, for this
+        /// org's streams only.
         async fn start() -> Self {
             let url = std::env::var("OPENSEARCH_URL")
                 .unwrap_or_else(|_| "http://localhost:9200".to_string());
@@ -1494,11 +1513,10 @@ mod tests {
                 client: OpenSearch::new(
                     &url,
                     None,
-                    "events-{org_id}".into(),
+                    "events-{org_id}-{project_id}".into(),
                     Duration::from_secs(10),
                 )
                 .unwrap(),
-                index: format!("events-{org}"),
                 url,
                 org,
             };
@@ -1508,16 +1526,32 @@ mod tests {
                 "/../sink-opensearch/index-template.json"
             ))
             .unwrap();
-            let template: Value = serde_json::from_str(&template).unwrap();
-            live.send(Method::PUT, "", Some(&template["template"]))
+            let mut template: Value = serde_json::from_str(&template).unwrap();
+            // Above the cluster's own `events-*` template, if it has one.
+            template["index_patterns"] = json!([live.streams()]);
+            template["priority"] = json!(200);
+            live.send(Method::PUT, &live.template_api(), Some(&template))
                 .await;
             live
+        }
+
+        fn stream(&self, proj: &str) -> String {
+            format!("events-{}-{proj}", self.org)
+        }
+
+        /// Every stream of the test's org.
+        fn streams(&self) -> String {
+            format!("events-{}-*", self.org)
+        }
+
+        fn template_api(&self) -> String {
+            format!("_index_template/live-{}", self.org)
         }
 
         async fn send(&self, method: Method, api: &str, body: Option<&Value>) {
             let mut request = self
                 .http
-                .request(method, format!("{}/{}/{api}", self.url, self.index));
+                .request(method, format!("{}/{api}", self.url));
             if let Some(body) = body {
                 request = request.json(body);
             }
@@ -1536,10 +1570,12 @@ mod tests {
             }
         }
 
-        /// Indexes an event that occurred `second` seconds into the test
-        /// minute, and returns its id.
+        /// Writes an event that occurred `second` seconds into the test
+        /// minute to `stream`, and returns its id. Data streams only take
+        /// `create`.
         async fn index(
             &self,
+            stream: &str,
             org: &str,
             proj: &str,
             session: Option<&str>,
@@ -1559,7 +1595,7 @@ mod tests {
                 .build();
             let id = event.id().to_string();
             let source = serde_json::to_value(&event).unwrap();
-            self.send(Method::PUT, &format!("_doc/{id}"), Some(&source))
+            self.send(Method::PUT, &format!("{stream}/_create/{id}"), Some(&source))
                 .await;
             id
         }
@@ -1633,6 +1669,7 @@ mod tests {
         const B: &str = "proj-b";
         let live = Live::start().await;
         let org = live.org.clone();
+        let (a_stream, b_stream) = (live.stream(A), live.stream(B));
 
         // Project A: two sessions and one event outside any session. Two
         // events share a timestamp, which only the `id` tie-breaker orders.
@@ -1646,13 +1683,22 @@ mod tests {
             (Some("s2"), 4, "click"),
             (None, 5, "click"),
         ] {
-            a_ids.push(live.index(&org, A, session, second, name).await);
+            a_ids.push(live.index(&a_stream, &org, A, session, second, name).await);
         }
-        // Project B reuses session id `s1`; another org shares the index.
-        let b_id = live.index(&org, B, Some("s3"), 6, "click").await;
-        live.index(&org, B, Some("s1"), 7, "page_view").await;
-        let foreign_id = live.index("other-org", A, Some("s1"), 8, "page_view").await;
-        live.send(Method::POST, "_refresh", None).await;
+        // Project B has its own stream.
+        let b_id = live.index(&b_stream, &org, B, Some("s3"), 6, "click").await;
+        live.index(&b_stream, &org, B, Some("s1"), 7, "page_view").await;
+        // A's stream also holds another org's event and one of B's, reusing
+        // session id `s1`, as a stream shared through a CAC override would.
+        // A's scope must still leave them out.
+        let foreign_id = live
+            .index(&a_stream, "other-org", A, Some("s1"), 8, "page_view")
+            .await;
+        let stray_id = live
+            .index(&a_stream, &org, B, Some("s1"), 9, "page_view")
+            .await;
+        live.send(Method::POST, &format!("{}/_refresh", live.streams()), None)
+            .await;
         let (a, b) = (live.scope(A), live.scope(B));
 
         // Search: every event of A exactly once, newest first, over 3 pages.
@@ -1686,7 +1732,12 @@ mod tests {
         let own = serde_json::to_value(own.expect("A reads its own event")).unwrap();
         assert_eq!(own["id"], a_ids[0].as_str());
         assert!(own.get("org_id").is_none());
-        for id in [b_id.as_str(), foreign_id.as_str(), "no-such-document"] {
+        for id in [
+            b_id.as_str(),
+            foreign_id.as_str(),
+            stray_id.as_str(),
+            "no-such-document",
+        ] {
             assert!(live.client.get_event(&a, id).await.unwrap().is_none());
         }
 
@@ -1802,13 +1853,20 @@ mod tests {
         assert!(reason.contains("not-a-date"), "{reason}");
         assert!(!reason.contains(&org), "{reason}");
 
-        // An org with no index yet has no events.
+        // A project with no stream yet has no events.
         let nobody = Scope {
             org_id: uuid::Uuid::new_v4().to_string(),
             project_id: A.into(),
         };
         assert_eq!(live.client.count(&nobody, None).await.unwrap(), 0);
+        assert!(live.client.get_event(&nobody, &a_ids[0]).await.unwrap().is_none());
 
-        live.send(Method::DELETE, "", None).await;
+        live.send(
+            Method::DELETE,
+            &format!("_data_stream/{}", live.streams()),
+            None,
+        )
+        .await;
+        live.send(Method::DELETE, &live.template_api(), None).await;
     }
 }
