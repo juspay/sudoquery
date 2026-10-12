@@ -5,7 +5,7 @@ import { DEMO_CONFIG } from '../config/api';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { useProject } from '../contexts/ProjectContext';
 import { CURRENCY, PRODUCTS, formatPrice, type Product } from '../demo/catalog';
-import { isUuid, loadDestination, saveDestination, type Destination } from '../demo/destination';
+import { isSlug, loadDestination, saveDestination, type Destination } from '../demo/destination';
 import {
   flushDemoEvents,
   identifyDemoCustomer,
@@ -563,9 +563,9 @@ function DestinationPanel({ destination }: { destination: Destination }) {
           <dt>Collector</dt>
           <dd>{DEMO_CONFIG.COLLECTOR_URL}</dd>
           <dt>Organization</dt>
-          <dd>{destination.tenantId}</dd>
+          <dd>{destination.orgId}</dd>
           <dt>Project</dt>
-          <dd>{destination.workspaceId}</dd>
+          <dd>{destination.projectId}</dd>
         </Box>
       )}
     </Panel>
@@ -606,16 +606,17 @@ function DestinationForm({
   // Projects are only loaded for the current organization, so this one
   // belongs to it.
   const { currentProject } = useProject();
-  const [tenantId, setTenantId] = useState(initial?.tenantId ?? '');
-  const [workspaceId, setWorkspaceId] = useState(initial?.workspaceId ?? '');
+  const [orgInput, setOrgInput] = useState(initial?.orgId ?? '');
+  const [projectInput, setProjectInput] = useState(initial?.projectId ?? '');
 
-  const tenant = tenantId.trim();
-  const workspace = workspaceId.trim().toLowerCase();
-  const workspaceInvalid = workspace !== '' && !isUuid(workspace);
+  const orgId = orgInput.trim().toLowerCase();
+  const projectId = projectInput.trim().toLowerCase();
+  const orgInvalid = orgId !== '' && !isSlug(orgId);
+  const projectInvalid = projectId !== '' && !isSlug(projectId);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    onSubmit({ tenantId: tenant, workspaceId: workspace });
+    onSubmit({ orgId, projectId });
   };
 
   const idInputProps = { htmlInput: { spellCheck: false, autoComplete: 'off', style: { fontFamily: fontFamilyMono } } };
@@ -627,8 +628,8 @@ function DestinationForm({
           variant="outlined"
           size="small"
           onClick={() => {
-            setTenantId(currentOrganization.id);
-            setWorkspaceId(currentProject.id);
+            setOrgInput(currentOrganization.id);
+            setProjectInput(currentProject.id);
           }}
           sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
         >
@@ -639,24 +640,25 @@ function DestinationForm({
         label="Organization ID"
         size="small"
         required
-        value={tenantId}
-        onChange={(event) => setTenantId(event.target.value)}
-        helperText="Sent as the tenant (org_id)."
+        value={orgInput}
+        onChange={(event) => setOrgInput(event.target.value)}
+        error={orgInvalid}
+        helperText={orgInvalid ? 'Must be an organization slug, e.g. acme-k3x9qa.' : 'Sent as x-org-id (org_id).'}
         slotProps={idInputProps}
       />
       <TextField
         label="Project ID"
         size="small"
         required
-        value={workspaceId}
-        onChange={(event) => setWorkspaceId(event.target.value)}
-        error={workspaceInvalid}
-        helperText={workspaceInvalid ? 'Must be a project UUID.' : 'Sent as the workspace (proj_id).'}
+        value={projectInput}
+        onChange={(event) => setProjectInput(event.target.value)}
+        error={projectInvalid}
+        helperText={projectInvalid ? 'Must be a project slug, e.g. web-shop-9x2k1a.' : 'Sent as x-project-id (project_id).'}
         slotProps={idInputProps}
       />
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
         {onCancel && <Button onClick={onCancel}>Cancel</Button>}
-        <Button type="submit" variant="contained" disabled={!tenant || !workspace || workspaceInvalid}>
+        <Button type="submit" variant="contained" disabled={!orgId || !projectId || orgInvalid || projectInvalid}>
           {submitLabel}
         </Button>
       </Box>
