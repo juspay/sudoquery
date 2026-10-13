@@ -77,11 +77,32 @@ async fn health_check(State(s): State<AppState>) -> impl IntoResponse {
         }
     };
 
+    let opensearch_status = match s.opensearch.ping().await {
+        Ok(_) => "connected",
+        Err(e) => {
+            tracing::error!("Health check: OpenSearch connection failed: {}", e);
+            "disconnected"
+        }
+    };
+
+    let cdp_status = match &s.cdp {
+        None => "not_configured",
+        Some(cdp) => match cdp.ping().await {
+            Ok(_) => "connected",
+            Err(e) => {
+                tracing::error!("Health check: CDP connection failed: {}", e);
+                "disconnected"
+            }
+        },
+    };
+
     Json(json!({
         "running": true,
         "postgres": pg_status,
         "clickhouse": ch_status,
         "redpanda": kafka_status,
+        "opensearch": opensearch_status,
+        "cdp": cdp_status,
     }))
 }
 

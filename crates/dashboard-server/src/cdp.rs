@@ -91,6 +91,16 @@ impl Cdp {
         }
     }
 
+    /// Connectivity probe: the control plane answered with anything but a
+    /// server error.
+    pub async fn ping(&self) -> Result<(), CdpError> {
+        let response = self.request(Method::GET, "/v1/tenants", None).send().await?;
+        if response.status().is_server_error() {
+            return Err(status_error("ping", response).await);
+        }
+        Ok(())
+    }
+
     /// Creates the organization's tenant (if absent) and the project's
     /// workspace. Safe to run again: both already existing is success.
     pub async fn provision(
