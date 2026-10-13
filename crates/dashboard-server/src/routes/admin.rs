@@ -6,7 +6,6 @@
 //! `ERRORED` project can be provisioned again; finished steps are kept.
 
 use std::str::FromStr;
-use std::time::Duration;
 
 use axum::{
     extract::{Path, State},
@@ -16,17 +15,14 @@ use axum::{
 use canonical_event::{OrgId, ProjectId};
 use serde::Serialize;
 use serde_json::Value;
+use uuid::Uuid;
 
 use crate::{
     AppState,
     db::{self, ProjectStatus, ProvisioningStart},
     middleware::Admin,
-    provisioning,
+    provisioning::{self, STALE_CREATING_AFTER},
 };
-
-/// A `CREATING` project left unchanged this long lost its attempt (e.g. the
-/// server restarted mid-way), so it may be provisioned again.
-const STALE_CREATING_AFTER: Duration = Duration::from_secs(15 * 60);
 
 #[derive(Serialize)]
 pub struct ProvisioningStarted {
@@ -42,6 +38,8 @@ pub struct ProvisioningResponse {
     /// Set while the project is `ERRORED`: the failed step, its error, and
     /// which steps completed or were skipped.
     pub provisioning_error: Option<Value>,
+    /// When the last attempt started.
+    pub provisioning_started_at: Option<String>,
     pub updated_at: String,
 }
 
@@ -57,10 +55,11 @@ pub async fn provision_project(
     let start = db::start_provisioning(&state.db_pool, &project_id, STALE_CREATING_AFTER)
         .await
         .map_err(|e| AdminError::Database(e.to_string()))?;
-    let org_id = match start {
-        ProvisioningStart::Started(org_id) => org_id,
+    let (org_id, attempt) = match start {
+        ProvisioningStart::Started { org_id, attempt } => (org_id, attempt),
         ProvisioningStart::NotFound => return Err(AdminError::NotFound),
         ProvisioningStart::NoOrganization => return Err(AdminError::NoOrganization),
+        ProvisioningStart::OrganizationDeleted => return Err(AdminError::OrganizationDeleted),
         ProvisioningStart::Refused(status) => return Err(AdminError::Refused(status)),
     };
 
@@ -68,6 +67,7 @@ pub async fn provision_project(
         state.clone(),
         org_id,
         project_id.clone(),
+        attempt,
     ));
 
     Ok((
@@ -79,7 +79,12 @@ pub async fn provision_project(
     ))
 }
 
-async fn provision_in_background(state: AppState, org_id: OrgId, project_id: ProjectId) {
+async fn provision_in_background(
+    state: AppState,
+    org_id: OrgId,
+    project_id: ProjectId,
+    attempt: Uuid,
+) {
     let (status, error) = match provisioning::provision_project(&state, &org_id, &project_id).await
     {
         Ok(()) => {
@@ -98,13 +103,20 @@ async fn provision_in_background(state: AppState, org_id: OrgId, project_id: Pro
     };
 
     // Should this fail, the project stays CREATING until it goes stale.
-    if let Err(e) = db::finish_provisioning(&state.db_pool, &project_id, status, error).await {
-        tracing::error!(
+    match db::finish_provisioning(&state.db_pool, &project_id, attempt, status, error).await {
+        Ok(true) => {}
+        Ok(false) => tracing::warn!(
+            "Provisioning attempt {} for project {} was superseded; outcome {:?} not recorded",
+            attempt,
+            project_id,
+            status
+        ),
+        Err(e) => tracing::error!(
             "Failed to record provisioning outcome {:?} for project {}: {}",
             status,
             project_id,
             e
-        );
+        ),
     }
 }
 
@@ -127,6 +139,7 @@ pub async fn get_project_provisioning(
         organization_id: project.organization_id.map(|id| id.to_string()),
         status: project.status,
         provisioning_error: project.provisioning_error,
+        provisioning_started_at: project.provisioning_started_at.map(|at| at.to_rfc3339()),
         updated_at: project.updated_at.to_rfc3339(),
     }))
 }
@@ -141,6 +154,8 @@ pub enum AdminError {
     NotFound,
     #[error("Project has no organization to provision it under")]
     NoOrganization,
+    #[error("Project's organization was deleted")]
+    OrganizationDeleted,
     #[error("Project is {0:?}")]
     Refused(ProjectStatus),
     #[error("Database error: {0}")]
@@ -162,10 +177,15 @@ impl IntoResponse for AdminError {
                 StatusCode::CONFLICT,
                 serde_json::json!({ "error": "Project has no organization to provision it under" }),
             ),
+            AdminError::OrganizationDeleted => (
+                StatusCode::CONFLICT,
+                serde_json::json!({ "error": "Project's organization was deleted" }),
+            ),
             AdminError::Refused(project_status) => {
                 let message = match project_status {
                     ProjectStatus::Creating => "Project is already being provisioned",
                     ProjectStatus::Active => "Project is already provisioned",
+                    ProjectStatus::Deleting => "Project is being deleted",
                     ProjectStatus::Pending | ProjectStatus::Errored => {
                         "Project cannot be provisioned now"
                     }

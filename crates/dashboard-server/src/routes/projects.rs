@@ -6,7 +6,7 @@ use std::str::FromStr;
 
 use crate::{
     AppState,
-    db::{self, ProjectStatus},
+    db::{self, DeletionStart, ProjectStatus},
     entities,
     middleware::{AuthUser, OrgAdmin, OrgContext, ProjectAccess, ProjectAdminOrOrgAdmin},
     provisioning,
@@ -258,31 +258,26 @@ pub async fn delete_project(
     let project_id =
         ProjectId::from_str(project_id_str).map_err(|_| ProjectError::InvalidProjectId)?;
 
-    // Verify project belongs to organization
-    let project = db::get_project_by_id(&state.db_pool, &project_id)
-        .await
-        .map_err(|e| ProjectError::Database(e.to_string()))?
-        .ok_or(ProjectError::NotFound)?;
-
-    if project.organization_id.as_ref() != Some(&organization.id) {
-        return Err(ProjectError::NotFound);
-    }
-    // Deleting now would race the provisioning attempt, which could recreate
-    // what is dropped.
-    if project.status == ProjectStatus::Creating {
-        return Err(ProjectError::BeingProvisioned);
-    }
-
-    // Drop the project's topic, database and ClickHouse user before the row,
-    // so a failed drop leaves the project in place to delete again.
-    provisioning::deprovision_project(
-        &state.provisioning,
-        &provisioning::ClickHouseAdmin::of(&state),
-        &organization.id,
+    // DELETING keeps provisioning away while the infrastructure is dropped.
+    let start = db::start_deleting(
+        &state.db_pool,
         &project_id,
+        &organization.id,
+        provisioning::STALE_CREATING_AFTER,
     )
     .await
-    .map_err(|e| ProjectError::ClickHouse(format!("Failed to delete project data: {e}")))?;
+    .map_err(|e| ProjectError::Database(e.to_string()))?;
+    match start {
+        DeletionStart::Started => {}
+        DeletionStart::NotFound => return Err(ProjectError::NotFound),
+        DeletionStart::BeingProvisioned => return Err(ProjectError::BeingProvisioned),
+    }
+
+    // Drop the project's infrastructure before the row, so a failed drop
+    // leaves the project DELETING, to delete again.
+    provisioning::deprovision_project(&state, &organization.id, &project_id)
+        .await
+        .map_err(|e| ProjectError::Deprovision(format!("Failed to delete project data: {e}")))?;
 
     db::soft_delete_project(&state.db_pool, &project_id)
         .await
@@ -305,8 +300,8 @@ pub enum ProjectError {
     BeingProvisioned,
     #[error("Database error: {0}")]
     Database(String),
-    #[error("ClickHouse error: {0}")]
-    ClickHouse(String),
+    #[error("{0}")]
+    Deprovision(String),
     #[error(transparent)]
     Auth(#[from] crate::middleware::AuthError),
 }
@@ -325,10 +320,10 @@ impl axum::response::IntoResponse for ProjectError {
             ProjectError::NotFound => (StatusCode::NOT_FOUND, "Project not found".to_string()),
             ProjectError::BeingProvisioned => (
                 StatusCode::CONFLICT,
-                "Project is being provisioned; delete it once it is ACTIVE or ERRORED".to_string(),
+                "Project is being provisioned; try again in a few minutes".to_string(),
             ),
             ProjectError::Database(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
-            ProjectError::ClickHouse(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
+            ProjectError::Deprovision(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
             ProjectError::Auth(e) => return e.into_response(),
         };
         (status, Json(serde_json::json!({ "error": message }))).into_response()

@@ -1,6 +1,6 @@
 //! Read side of OpenSearch: queries the events `sink-opensearch` indexed.
-//! It also creates each project's data stream when the project is
-//! provisioned.
+//! Provisioning also creates and deletes each project's data stream through
+//! it, with the admin credentials when they are set.
 //!
 //! Every query goes through the same steps: check the client's query, wrap it
 //! in the project's scope, have OpenSearch validate it, then run it.
@@ -174,6 +174,7 @@ pub struct OpenSearch {
     http: reqwest::Client,
     base_url: String,
     credentials: Option<(String, String)>,
+    admin_credentials: Option<(String, String)>,
     index_template: String,
 }
 
@@ -195,8 +196,18 @@ impl OpenSearch {
             http,
             base_url: url.trim_end_matches('/').to_owned(),
             credentials,
+            admin_credentials: None,
             index_template,
         })
+    }
+
+    /// Credentials for creating and deleting data streams, which the read
+    /// credentials may not be allowed to do. Without them, the read
+    /// credentials are used.
+    #[must_use]
+    pub fn with_admin_credentials(mut self, credentials: Option<(String, String)>) -> Self {
+        self.admin_credentials = credentials;
+        self
     }
 
     /// One page of events, in the request's time order or `default_order`.
@@ -420,23 +431,10 @@ impl OpenSearch {
         org_id: &str,
         project_id: &str,
     ) -> Result<(), OpenSearchError> {
-        let name = self.index_name(org_id, project_id);
-        let mut request = self
-            .http
-            .put(format!("{}/_data_stream/{name}", self.base_url));
-        if let Some((username, password)) = &self.credentials {
-            request = request.basic_auth(username, Some(password));
-        }
-
-        let response = request
-            .send()
-            .await
-            .map_err(|error| OpenSearchError::Http(error.without_url().to_string()))?;
-        let status = response.status().as_u16();
-        let text = response
-            .text()
-            .await
-            .map_err(|error| OpenSearchError::Http(error.without_url().to_string()))?;
+        let path = format!("_data_stream/{}", self.index_name(org_id, project_id));
+        let (status, text) = self
+            .send(Method::PUT, &path, self.admin_credentials(), None)
+            .await?;
 
         match status {
             200..=299 => Ok(()),
@@ -448,6 +446,33 @@ impl OpenSearch {
                 body: excerpt(&text).to_owned(),
             }),
         }
+    }
+
+    /// Deletes the project's data stream with every event in it, treating
+    /// "does not exist" as success.
+    pub async fn delete_data_stream(
+        &self,
+        org_id: &str,
+        project_id: &str,
+    ) -> Result<(), OpenSearchError> {
+        let path = format!("_data_stream/{}", self.index_name(org_id, project_id));
+        let (status, text) = self
+            .send(Method::DELETE, &path, self.admin_credentials(), None)
+            .await?;
+
+        match status {
+            200..=299 | 404 => Ok(()),
+            _ => Err(OpenSearchError::Upstream {
+                status,
+                body: excerpt(&text).to_owned(),
+            }),
+        }
+    }
+
+    fn admin_credentials(&self) -> Option<&(String, String)> {
+        self.admin_credentials
+            .as_ref()
+            .or(self.credentials.as_ref())
     }
 
     fn index_name(&self, org_id: &str, project_id: &str) -> String {
@@ -504,9 +529,38 @@ impl OpenSearch {
         api: &str,
         body: Option<&Value>,
     ) -> Result<Option<Value>, OpenSearchError> {
-        let url = format!("{}/{}/{api}", self.base_url, target.index);
-        let mut request = self.http.request(method, url);
-        if let Some((username, password)) = &self.credentials {
+        let path = format!("{}/{api}", target.index);
+        let (status, text) = self
+            .send(method, &path, self.credentials.as_ref(), body)
+            .await?;
+
+        match status {
+            200..=299 => serde_json::from_str(&text).map(Some).map_err(decode_error),
+            404 => Ok(None),
+            400 => {
+                let reason = target.redact(&rejection_reason(&text));
+                Err(RequestError::InvalidQuery(reason).into())
+            }
+            _ => Err(OpenSearchError::Upstream {
+                status,
+                body: excerpt(&text).to_owned(),
+            }),
+        }
+    }
+
+    /// Sends `method {path}`; returns the status and body of whatever
+    /// OpenSearch answered.
+    async fn send(
+        &self,
+        method: Method,
+        path: &str,
+        credentials: Option<&(String, String)>,
+        body: Option<&Value>,
+    ) -> Result<(u16, String), OpenSearchError> {
+        let mut request = self
+            .http
+            .request(method, format!("{}/{path}", self.base_url));
+        if let Some((username, password)) = credentials {
             request = request.basic_auth(username, Some(password));
         }
         if let Some(body) = body {
@@ -522,19 +576,7 @@ impl OpenSearch {
             .text()
             .await
             .map_err(|error| OpenSearchError::Http(error.without_url().to_string()))?;
-
-        match status {
-            200..=299 => serde_json::from_str(&text).map(Some).map_err(decode_error),
-            404 => Ok(None),
-            400 => {
-                let reason = target.redact(&rejection_reason(&text));
-                Err(RequestError::InvalidQuery(reason).into())
-            }
-            _ => Err(OpenSearchError::Upstream {
-                status,
-                body: excerpt(&text).to_owned(),
-            }),
-        }
+        Ok((status, text))
     }
 }
 
@@ -643,7 +685,7 @@ fn decode_error(error: impl ToString) -> OpenSearchError {
     OpenSearchError::Decode(error.to_string())
 }
 
-fn excerpt(text: &str) -> &str {
+pub(crate) fn excerpt(text: &str) -> &str {
     match text.char_indices().nth(MAX_ERROR_TEXT) {
         Some((end, _)) => &text[..end],
         None => text,
@@ -1292,6 +1334,90 @@ mod tests {
 
         client.create_data_stream(ORG, PROJ).await.unwrap();
         client.create_data_stream(ORG, PROJ).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn data_streams_are_changed_with_the_admin_credentials() {
+        let server = MockServer::start().await;
+        for verb in ["PUT", "DELETE"] {
+            Mock::given(method(verb))
+                .and(path(format!("/_data_stream/{INDEX}")))
+                .and(basic_auth("admin", "s3cret"))
+                .respond_with(ResponseTemplate::new(200).set_body_json(json!({
+                    "acknowledged": true
+                })))
+                .expect(1)
+                .mount(&server)
+                .await;
+        }
+        let client = OpenSearch::new(
+            &server.uri(),
+            Some(("dashboard".into(), "hunter2".into())),
+            "events-{org_id}-{project_id}".into(),
+            Duration::from_secs(2),
+        )
+        .unwrap()
+        .with_admin_credentials(Some(("admin".into(), "s3cret".into())));
+
+        client.create_data_stream(ORG, PROJ).await.unwrap();
+        client.delete_data_stream(ORG, PROJ).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn data_streams_fall_back_to_the_read_credentials() {
+        let server = MockServer::start().await;
+        Mock::given(method("PUT"))
+            .and(path(format!("/_data_stream/{INDEX}")))
+            .and(basic_auth("dashboard", "hunter2"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(json!({ "acknowledged": true })))
+            .expect(1)
+            .mount(&server)
+            .await;
+        let client = OpenSearch::new(
+            &server.uri(),
+            Some(("dashboard".into(), "hunter2".into())),
+            "events-{org_id}-{project_id}".into(),
+            Duration::from_secs(2),
+        )
+        .unwrap();
+
+        client.create_data_stream(ORG, PROJ).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn deleting_a_missing_data_stream_succeeds() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path(format!("/_data_stream/{INDEX}")))
+            .respond_with(ResponseTemplate::new(404).set_body_json(json!({
+                "error": { "type": "index_not_found_exception" },
+                "status": 404,
+            })))
+            .expect(1)
+            .mount(&server)
+            .await;
+
+        client(&server).delete_data_stream(ORG, PROJ).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn deleting_a_data_stream_reports_other_failures() {
+        let server = MockServer::start().await;
+        Mock::given(method("DELETE"))
+            .and(path(format!("/_data_stream/{INDEX}")))
+            .respond_with(ResponseTemplate::new(403).set_body_string("forbidden"))
+            .mount(&server)
+            .await;
+
+        let error = client(&server)
+            .delete_data_stream(ORG, PROJ)
+            .await
+            .unwrap_err();
+
+        assert!(
+            matches!(&error, OpenSearchError::Upstream { status: 403, body } if body == "forbidden"),
+            "{error}"
+        );
     }
 
     #[tokio::test]

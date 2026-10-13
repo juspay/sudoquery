@@ -48,6 +48,9 @@ const INGEST_TIMEOUT: Duration = Duration::from_secs(30);
 const ADMIN_TOKEN: &str = "e2e-admin-token";
 /// How long provisioning may take once the admin API started it.
 const PROVISION_TIMEOUT: Duration = Duration::from_secs(60);
+/// Older than the server's stale window (15 minutes), so an attempt this
+/// old counts as dead.
+const STALE: Duration = Duration::from_secs(60 * 60);
 
 /// Everything a dashboard case can touch: the running servers, their
 /// database, Kafka, ClickHouse and the dummy OIDC provider.
@@ -205,16 +208,50 @@ async fn run_with_db(
         },
     )
     .await;
+    // A failed case may leave an attempt running; let it end first, so
+    // nothing it creates appears after cleanup looked.
+    wait_for_attempts(&ctx).await;
     // Databases first: dropping them stops ClickHouse consuming the topics.
-    let cleanup = drop_project_databases(&ctx).await;
+    // Every step runs even when an earlier one fails.
+    let databases = drop_project_databases(&ctx).await;
+    let topics = delete_topics(&ctx).await;
+    let data_streams = ctx
+        .opensearch
+        .delete_data_streams(&ctx.data_stream_prefix)
+        .await;
+    databases.and(topics).and(data_streams)?;
+    Ok(passed)
+}
+
+/// Waits, up to [`PROVISION_TIMEOUT`], until no project is `CREATING`.
+/// Best effort: cleanup goes ahead either way.
+async fn wait_for_attempts(ctx: &Ctx) {
+    let deadline = tokio::time::Instant::now() + PROVISION_TIMEOUT;
+    loop {
+        let creating: Result<i64, _> =
+            sqlx::query_scalar("SELECT count(*) FROM projects WHERE status = 'CREATING'")
+                .fetch_one(&ctx.pool)
+                .await;
+        match creating {
+            Ok(0) => return,
+            Ok(count) if tokio::time::Instant::now() >= deadline => {
+                eprintln!("cleanup: {count} projects still CREATING; cleaning up anyway");
+                return;
+            }
+            Ok(_) => tokio::time::sleep(Duration::from_millis(250)).await,
+            Err(err) => {
+                eprintln!("cleanup: cannot count CREATING projects: {err}");
+                return;
+            }
+        }
+    }
+}
+
+/// Deletes every topic the servers created in this run.
+async fn delete_topics(ctx: &Ctx) -> anyhow::Result<()> {
     let topics = ctx.kafka.topics_with_prefix(&ctx.topic_prefix).await?;
     ctx.kafka.adopt(topics);
-    ctx.kafka.delete_created().await?;
-    ctx.opensearch
-        .delete_data_streams(&ctx.data_stream_prefix)
-        .await?;
-    cleanup?;
-    Ok(passed)
+    ctx.kafka.delete_created().await
 }
 
 /// Drops the ClickHouse database and user of every project this run's
@@ -247,8 +284,12 @@ cases![Ctx:
     project_provisioning_records_the_failed_step,
     project_provisioning_requires_admin_token,
     project_provisioning_runs_once_at_a_time,
+    project_provisioning_staleness_ignores_project_edits,
+    project_provisioning_superseded_attempt_records_nothing,
+    project_provisioning_refuses_deleted_orgs,
     project_rejects_client_supplied_id,
-    project_deletion_drops_topic_database_and_user,
+    project_deletion_drops_topic_database_user_and_data_stream,
+    project_deletion_and_provisioning_exclude_each_other,
     project_queries_target_the_project_database,
 ];
 
@@ -674,10 +715,7 @@ async fn project_provisioning_runs_once_at_a_time(ctx: &Ctx) -> anyhow::Result<(
     let project_id = create_pending_project(ctx, &token, &org_id, "Busy Project").await?;
 
     // An attempt in progress.
-    sqlx::query("UPDATE projects SET status = 'CREATING', updated_at = NOW() WHERE id = $1")
-        .bind(&project_id)
-        .execute(&ctx.pool)
-        .await?;
+    start_attempt(ctx, &project_id, Duration::ZERO).await?;
     let response = provision(&ctx.http, &project_id).await?;
     expect_status(&response, 409)?;
     ensure!(
@@ -685,24 +723,11 @@ async fn project_provisioning_runs_once_at_a_time(ctx: &Ctx) -> anyhow::Result<(
         "unexpected refusal {}",
         response.body
     );
-    let response = ctx
-        .http
-        .delete(
-            "/project",
-            Some(&token),
-            &[
-                ("X-Organization-Id", &org_id),
-                ("X-Project-Id", &project_id),
-            ],
-        )
-        .await?;
+    let response = delete_project(ctx, &token, &org_id, &project_id).await?;
     expect_status(&response, 409).context("deleting a CREATING project")?;
 
     // An attempt that died with its server long ago is taken over.
-    sqlx::query("UPDATE projects SET updated_at = NOW() - INTERVAL '1 hour' WHERE id = $1")
-        .bind(&project_id)
-        .execute(&ctx.pool)
-        .await?;
+    start_attempt(ctx, &project_id, STALE).await?;
     let response = provision(&ctx.http, &project_id).await?;
     expect_status(&response, 202).context("taking over a stale attempt")?;
     let outcome = wait_for_provisioning(ctx, &project_id).await?;
@@ -718,7 +743,135 @@ async fn project_provisioning_runs_once_at_a_time(ctx: &Ctx) -> anyhow::Result<(
     Ok(())
 }
 
-async fn project_deletion_drops_topic_database_and_user(ctx: &Ctx) -> anyhow::Result<()> {
+/// A project edit moves `updated_at`, but staleness counts from when the
+/// attempt started.
+async fn project_provisioning_staleness_ignores_project_edits(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Edit Admin"));
+    let org_id = create_org(ctx, &token, "Edit Org").await?;
+    let project_id = create_pending_project(ctx, &token, &org_id, "Edited Project").await?;
+    let headers = [
+        ("X-Organization-Id", org_id.as_str()),
+        ("X-Project-Id", project_id.as_str()),
+    ];
+
+    // A fresh attempt on a project untouched for an hour is not stale.
+    start_attempt(ctx, &project_id, Duration::ZERO).await?;
+    sqlx::query("UPDATE projects SET updated_at = NOW() - INTERVAL '1 hour' WHERE id = $1")
+        .bind(&project_id)
+        .execute(&ctx.pool)
+        .await?;
+    let response = provision(&ctx.http, &project_id).await?;
+    expect_status(&response, 409).context("a fresh attempt on an old row")?;
+
+    // A dead attempt stays stale when the project is renamed.
+    start_attempt(ctx, &project_id, STALE).await?;
+    let response = ctx
+        .http
+        .patch(
+            "/project",
+            Some(&token),
+            &headers,
+            json!({ "name": "Renamed Project" }),
+        )
+        .await?;
+    expect_status(&response, 200).context("renaming the project")?;
+    let response = provision(&ctx.http, &project_id).await?;
+    expect_status(&response, 202).context("taking over after a rename")?;
+    let outcome = wait_for_provisioning(ctx, &project_id).await?;
+    ensure!(outcome["status"] == "ACTIVE", "takeover failed: {outcome}");
+    Ok(())
+}
+
+/// An attempt that was taken over cannot record how it ended.
+async fn project_provisioning_superseded_attempt_records_nothing(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Superseded Admin"));
+    let org_id = create_org(ctx, &token, "Superseded Org").await?;
+    let project_id = create_pending_project(ctx, &token, &org_id, "Raced Project").await?;
+
+    let response = provision(&ctx.http, &project_id).await?;
+    expect_status(&response, 202)?;
+    // Another attempt takes over while the first one is still running.
+    let newer = uuid::Uuid::new_v4();
+    let taken_over = sqlx::query(
+        "UPDATE projects SET provisioning_attempt = $2 WHERE id = $1 AND status = 'CREATING'",
+    )
+    .bind(&project_id)
+    .bind(newer)
+    .execute(&ctx.pool)
+    .await?
+    .rows_affected();
+    ensure!(
+        taken_over == 1,
+        "the first attempt ended before it could be superseded"
+    );
+
+    // The data stream is the first attempt's last step; give it a moment
+    // to record its outcome after that.
+    let stream = ctx.data_stream(&org_id, &project_id);
+    let deadline = tokio::time::Instant::now() + PROVISION_TIMEOUT;
+    while !ctx.opensearch.data_stream_exists(&stream).await? {
+        ensure!(
+            tokio::time::Instant::now() < deadline,
+            "the first attempt never created {stream}"
+        );
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+    tokio::time::sleep(Duration::from_secs(2)).await;
+
+    let (status, attempt): (String, Option<uuid::Uuid>) =
+        sqlx::query_as("SELECT status::text, provisioning_attempt FROM projects WHERE id = $1")
+            .bind(&project_id)
+            .fetch_one(&ctx.pool)
+            .await?;
+    ensure!(
+        status == "CREATING" && attempt == Some(newer),
+        "the superseded attempt recorded its outcome: {status}, attempt {attempt:?}"
+    );
+
+    // Once the newer attempt goes stale, the project can be provisioned.
+    start_attempt(ctx, &project_id, STALE).await?;
+    let response = provision(&ctx.http, &project_id).await?;
+    expect_status(&response, 202).context("taking over the stale attempt")?;
+    let outcome = wait_for_provisioning(ctx, &project_id).await?;
+    ensure!(outcome["status"] == "ACTIVE", "takeover failed: {outcome}");
+    Ok(())
+}
+
+async fn project_provisioning_refuses_deleted_orgs(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Gone Admin"));
+    let org_id = create_org(ctx, &token, "Gone Org").await?;
+    let project_id = create_pending_project(ctx, &token, &org_id, "Orphan Project").await?;
+
+    let response = ctx
+        .http
+        .delete(
+            "/organization",
+            Some(&token),
+            &[("X-Organization-Id", &org_id)],
+        )
+        .await?;
+    expect_status(&response, 204).context("deleting the organization")?;
+
+    let response = provision(&ctx.http, &project_id).await?;
+    expect_status(&response, 409)?;
+    ensure!(
+        project_status(ctx, &project_id).await? == "PENDING",
+        "a project of a deleted org left PENDING"
+    );
+    let topics = ctx
+        .kafka
+        .topics_with_prefix(&ctx.topic(&org_id, &project_id))
+        .await?;
+    ensure!(
+        topics.is_empty(),
+        "project of a deleted org got topics {topics:?}"
+    );
+    Ok(())
+}
+
+async fn project_deletion_drops_topic_database_user_and_data_stream(
+    ctx: &Ctx,
+) -> anyhow::Result<()> {
     let token = ctx.token(&ctx.user("Tidy Admin"));
     let org_id = create_org(ctx, &token, "Tidy Org").await?;
     let project_id = create_project(ctx, &token, &org_id, "Short Lived").await?;
@@ -726,23 +879,22 @@ async fn project_deletion_drops_topic_database_and_user(ctx: &Ctx) -> anyhow::Re
     expect_project_database(ctx, &project_id, &topic)
         .await
         .context("before deletion")?;
+    let stream = ctx.data_stream(&org_id, &project_id);
+    ensure!(
+        ctx.opensearch.data_stream_exists(&stream).await?,
+        "data stream {stream} missing before deletion"
+    );
 
-    let response = ctx
-        .http
-        .delete(
-            "/project",
-            Some(&token),
-            &[
-                ("X-Organization-Id", &org_id),
-                ("X-Project-Id", &project_id),
-            ],
-        )
-        .await?;
+    let response = delete_project(ctx, &token, &org_id, &project_id).await?;
     expect_status(&response, 204)?;
 
     expect_no_project_database(ctx, &project_id).await?;
     let topics = ctx.kafka.topics_with_prefix(&topic).await?;
     ensure!(topics.is_empty(), "deleted project left topics {topics:?}");
+    ensure!(
+        !ctx.opensearch.data_stream_exists(&stream).await?,
+        "deleted project left data stream {stream}"
+    );
 
     let deleted: bool =
         sqlx::query_scalar("SELECT deleted_at IS NOT NULL FROM projects WHERE id = $1")
@@ -750,6 +902,38 @@ async fn project_deletion_drops_topic_database_and_user(ctx: &Ctx) -> anyhow::Re
             .fetch_one(&ctx.pool)
             .await?;
     ensure!(deleted, "project {project_id} was not soft-deleted");
+    Ok(())
+}
+
+/// Deletion waits for a live attempt but not a dead one, and provisioning
+/// never takes a project that is being deleted.
+async fn project_deletion_and_provisioning_exclude_each_other(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Exclusive Admin"));
+    let org_id = create_org(ctx, &token, "Exclusive Org").await?;
+
+    let project_id = create_pending_project(ctx, &token, &org_id, "Dying Attempt").await?;
+    start_attempt(ctx, &project_id, Duration::ZERO).await?;
+    let response = delete_project(ctx, &token, &org_id, &project_id).await?;
+    expect_status(&response, 409).context("deleting during a live attempt")?;
+    start_attempt(ctx, &project_id, STALE).await?;
+    let response = delete_project(ctx, &token, &org_id, &project_id).await?;
+    expect_status(&response, 204).context("deleting after the attempt died")?;
+
+    // A deletion that failed half-way leaves the project DELETING.
+    let project_id = create_pending_project(ctx, &token, &org_id, "Half Deleted").await?;
+    sqlx::query("UPDATE projects SET status = 'DELETING' WHERE id = $1")
+        .bind(&project_id)
+        .execute(&ctx.pool)
+        .await?;
+    let response = provision(&ctx.http, &project_id).await?;
+    expect_status(&response, 409).context("provisioning a DELETING project")?;
+    ensure!(
+        response.json()?["status"] == "DELETING",
+        "unexpected refusal {}",
+        response.body
+    );
+    let response = delete_project(ctx, &token, &org_id, &project_id).await?;
+    expect_status(&response, 204).context("retrying the deletion")?;
     Ok(())
 }
 
@@ -1190,6 +1374,37 @@ async fn wait_for_provisioning(ctx: &Ctx, project_id: &str) -> anyhow::Result<Va
         );
         tokio::time::sleep(Duration::from_millis(250)).await;
     }
+}
+
+/// Puts the project `CREATING` under a new attempt that started `age` ago;
+/// returns the attempt.
+async fn start_attempt(ctx: &Ctx, project_id: &str, age: Duration) -> anyhow::Result<uuid::Uuid> {
+    let attempt = uuid::Uuid::new_v4();
+    sqlx::query(
+        "UPDATE projects SET status = 'CREATING', provisioning_attempt = $2, \
+         provisioning_started_at = NOW() - make_interval(secs => $3) WHERE id = $1",
+    )
+    .bind(project_id)
+    .bind(attempt)
+    .bind(age.as_secs_f64())
+    .execute(&ctx.pool)
+    .await?;
+    Ok(attempt)
+}
+
+async fn delete_project(
+    ctx: &Ctx,
+    token: &str,
+    org_id: &str,
+    project_id: &str,
+) -> anyhow::Result<Response> {
+    ctx.http
+        .delete(
+            "/project",
+            Some(token),
+            &[("X-Organization-Id", org_id), ("X-Project-Id", project_id)],
+        )
+        .await
 }
 
 async fn project_status(ctx: &Ctx, project_id: &str) -> anyhow::Result<String> {

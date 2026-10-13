@@ -212,6 +212,21 @@ impl Http {
         send(request).await
     }
 
+    pub(crate) async fn patch(
+        &self,
+        path: &str,
+        token: Option<&str>,
+        headers: &[(&str, &str)],
+        body: Value,
+    ) -> anyhow::Result<Response> {
+        let request = self
+            .client
+            .patch(format!("{}{path}", self.base))
+            .headers(build_headers(token, headers)?)
+            .json(&body);
+        send(request).await
+    }
+
     pub(crate) async fn delete(
         &self,
         path: &str,

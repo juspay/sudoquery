@@ -82,13 +82,32 @@ GET  /api/admin/projects/{project_id}             # status, provisioning_error
 ```
 
 Both need the `X-Admin-Token` header to match `ADMIN_API_TOKEN` (unset
-disables the admin API). Provisioning runs in the background and ends
-`ACTIVE`, or `ERRORED` with `provisioning_error` naming the `failed_step`,
-its `error`, and the `completed_steps` and `skipped_steps`. An `ERRORED`
-project can be provisioned again; completed steps are kept. A project left
-`CREATING` for 15 minutes (its server died mid-way) can be provisioned
-again too. Deleting a project drops its topic, database and user, but not
-its data stream.
+disables the admin API). Locally, start dashboard-server with e.g.
+`ADMIN_API_TOKEN=dev-admin-token` and provision a project with:
+
+```
+curl -X POST -H 'X-Admin-Token: dev-admin-token' \
+  http://localhost:3000/api/admin/projects/<project_id>/provision
+```
+
+Provisioning runs in the background and ends `ACTIVE`, or `ERRORED` with
+`provisioning_error` naming the `failed_step`, its `error` (the project's
+ClickHouse password redacted), and the `completed_steps` and
+`skipped_steps`. Each step times out after 2 minutes. An `ERRORED` project
+can be provisioned again; completed steps are kept. A project whose attempt
+started 15 minutes ago and is still `CREATING` (its server died mid-way) can
+be provisioned or deleted again; only the latest attempt records how
+provisioning ended. Projects of deleted organizations are not provisioned.
+
+Deleting a project moves it to `DELETING`, then drops its topic, database,
+user and data stream; a deletion that fails half-way leaves it `DELETING`,
+and can be retried. A project is not deleted while an attempt is
+provisioning it, and a `DELETING` project is not provisioned. The dashboard
+shows a project that is not `ACTIVE` as being set up, and does not query it.
+
+The data stream is created and deleted with `OPENSEARCH_ADMIN_USERNAME` and
+`OPENSEARCH_ADMIN_PASSWORD` when set (both or neither), since
+`OPENSEARCH_USERNAME`/`OPENSEARCH_PASSWORD` may only be allowed to read.
 
 ## Database tasks
 
@@ -179,12 +198,15 @@ postgres redpanda clickhouse opensearch opensearch-init`):
   objects, the project user's grants, an event produced to the topic
   reaching the project's tables, and every query path (`/query`, `/events`,
   `/events/today/count`, `/event_props`) reading only the requesting
-  project's database. Deletion must drop the topic, database and user. A
-  second server with a wrong ClickHouse admin password produces real
-  provisioning failures, which must be recorded as `ERRORED` and succeed on
-  retry.
-- **Cleanup:** every project database, ClickHouse user, topic and data
-  stream the run created is dropped. `CLICKHOUSE_URL`, `CLICKHOUSE_USER`,
+  project's database. Deletion must drop the topic, database, user and data
+  stream. A second server with a wrong ClickHouse admin password produces
+  real provisioning failures, which must be recorded as `ERRORED` and
+  succeed on retry. Attempts are fenced: a superseded attempt records
+  nothing, staleness ignores project edits, deletion and provisioning
+  exclude each other, and projects of deleted organizations are refused.
+- **Cleanup:** waits for any attempt still `CREATING`, then drops every
+  project database, ClickHouse user, topic and data stream the run created;
+  each step runs even when an earlier one fails. `CLICKHOUSE_URL`, `CLICKHOUSE_USER`,
   `CLICKHOUSE_PASSWORD`, `CLICKHOUSE_KAFKA_BROKERS` and `OPENSEARCH_URL`
   override the compose defaults.
 - **Server:** runs from a scratch directory (`DASHBOARD_BIND_ADDR` sets the

@@ -89,7 +89,8 @@ CREATE TYPE public.project_status AS ENUM (
     'PENDING',
     'CREATING',
     'ERRORED',
-    'ACTIVE'
+    'ACTIVE',
+    'DELETING'
 );
 
 
@@ -265,7 +266,9 @@ CREATE TABLE public.projects (
     updated_at timestamp with time zone DEFAULT now(),
     timezone text,
     status public.project_status DEFAULT 'PENDING'::public.project_status NOT NULL,
-    provisioning_error jsonb
+    provisioning_error jsonb,
+    provisioning_attempt uuid,
+    provisioning_started_at timestamp with time zone
 );
 
 

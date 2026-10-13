@@ -1,16 +1,21 @@
 //! Per-project infrastructure: the project's Kafka topic, its ClickHouse
 //! database (`ckh/project.sql`) and user, and its OpenSearch data stream.
 //! The admin API provisions them after the project is created (see
-//! `routes/admin.rs`); deleting the project drops all but the data stream.
+//! `routes/admin.rs`); deleting the project drops them all.
 //!
 //! Every step is idempotent in both directions, so provisioning or
-//! deprovisioning can be re-run after a partial failure.
+//! deprovisioning can be re-run after a partial failure. Every step is
+//! bounded by [`STEP_TIMEOUT`], so an attempt always ends before
+//! [`STALE_CREATING_AFTER`] lets another attempt take the project over.
 
+use std::any::Any;
 use std::future::Future;
+use std::panic::AssertUnwindSafe;
 use std::time::Duration;
 
 use canonical_event::{OrgId, ProjectId};
 use chrono::{DateTime, Utc};
+use futures_util::FutureExt;
 use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
 use rdkafka::client::DefaultClientContext;
 use rdkafka::config::ClientConfig;
@@ -20,7 +25,7 @@ use serde::Serialize;
 
 use crate::AppState;
 use crate::clickhouse::{self, ClickHouseError};
-use crate::opensearch::OpenSearchError;
+use crate::opensearch::{self, OpenSearchError};
 
 /// Per-project ClickHouse objects; see the file header for placeholders.
 const PROJECT_SQL: &str = include_str!("../../../ckh/project.sql");
@@ -34,6 +39,17 @@ const PROJECT_ID_PLACEHOLDER: &str = "{project_id}";
 const MAX_TOPIC_LEN: usize = 249;
 const ADMIN_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How long one provisioning or deprovisioning step may take.
+pub const STEP_TIMEOUT: Duration = Duration::from_secs(2 * 60);
+
+/// A `CREATING` project whose attempt started this long ago lost it (e.g.
+/// the server restarted mid-way), so it may be provisioned or deleted.
+pub const STALE_CREATING_AFTER: Duration = Duration::from_secs(15 * 60);
+
+// A live attempt must end before it can be taken over.
+const _: () =
+    assert!(STEP_TIMEOUT.as_secs() * (Step::ALL.len() as u64) < STALE_CREATING_AFTER.as_secs());
+
 #[derive(Debug, thiserror::Error)]
 pub enum ProvisionError {
     #[error("failed to {action} Kafka topic {topic}: {reason}")]
@@ -46,6 +62,10 @@ pub enum ProvisionError {
     ClickHouse(#[from] ClickHouseError),
     #[error(transparent)]
     OpenSearch(#[from] OpenSearchError),
+    #[error("timed out after {0:?}")]
+    TimedOut(Duration),
+    #[error("panicked: {0}")]
+    Panicked(String),
 }
 
 /// One provisioning step. Serialized names appear in `provisioning_error`.
@@ -170,22 +190,36 @@ impl<'a> ClickHouseAdmin<'a> {
 /// project that already has some or all of its infrastructure.
 ///
 /// # Errors
-/// Stops at the first step that fails; earlier steps stay in place.
+/// Stops at the first step that fails, times out or panics; earlier steps
+/// stay in place.
 pub async fn provision_project(
     state: &AppState,
     org: &OrgId,
     project: &ProjectId,
 ) -> Result<(), ProvisioningFailure> {
-    run_steps(|step| run_step(state, step, org, project)).await
+    run_steps(STEP_TIMEOUT, |step| run_step(state, step, org, project))
+        .await
+        .map_err(|mut failure| {
+            failure.error = stored_error(&failure.error, &state.clickhouse_project_password);
+            failure
+        })
 }
 
-async fn run_steps<F, Fut>(mut run: F) -> Result<(), ProvisioningFailure>
+async fn run_steps<F, Fut>(step_timeout: Duration, mut run: F) -> Result<(), ProvisioningFailure>
 where
     F: FnMut(Step) -> Fut,
     Fut: Future<Output = Result<(), ProvisionError>>,
 {
     for (index, step) in Step::ALL.into_iter().enumerate() {
-        if let Err(error) = run(step).await {
+        // A hang or a panic fails the step like an error does, so the
+        // attempt always records how it ended.
+        let outcome = AssertUnwindSafe(run(step)).catch_unwind();
+        let outcome = match tokio::time::timeout(step_timeout, outcome).await {
+            Ok(Ok(outcome)) => outcome,
+            Ok(Err(panic)) => Err(ProvisionError::Panicked(panic_message(panic.as_ref()))),
+            Err(_) => Err(ProvisionError::TimedOut(step_timeout)),
+        };
+        if let Err(error) = outcome {
             return Err(ProvisioningFailure {
                 failed_step: step,
                 error: error.to_string(),
@@ -196,6 +230,36 @@ where
         }
     }
     Ok(())
+}
+
+fn panic_message(panic: &(dyn Any + Send)) -> String {
+    panic
+        .downcast_ref::<&str>()
+        .map(|message| (*message).to_owned())
+        .or_else(|| panic.downcast_ref::<String>().cloned())
+        .unwrap_or_else(|| "non-string panic payload".to_owned())
+}
+
+/// `error` as `provisioning_error` stores it: without the project password,
+/// which a ClickHouse error may echo, and cut to a bounded length.
+fn stored_error(error: &str, project_password: &str) -> String {
+    let redacted = if project_password.is_empty() {
+        error.to_owned()
+    } else {
+        error.replace(project_password, "[REDACTED]")
+    };
+    opensearch::excerpt(&redacted).to_owned()
+}
+
+/// Runs a deprovisioning step, failing it after [`STEP_TIMEOUT`].
+async fn bounded<T, E>(step: impl Future<Output = Result<T, E>>) -> Result<T, ProvisionError>
+where
+    ProvisionError: From<E>,
+{
+    match tokio::time::timeout(STEP_TIMEOUT, step).await {
+        Ok(outcome) => outcome.map_err(ProvisionError::from),
+        Err(_) => Err(ProvisionError::TimedOut(STEP_TIMEOUT)),
+    }
 }
 
 async fn run_step(
@@ -239,36 +303,47 @@ async fn run_step(
 }
 
 /// Drops `project`'s ClickHouse database (with its Kafka table and views),
-/// its ClickHouse user and its topic, permanently deleting its events. Safe
-/// to run for a project that has some or none of them.
+/// its ClickHouse user, its topic and its data stream, permanently deleting
+/// its events. Safe to run for a project that has some or none of them.
 ///
 /// # Errors
 /// Every step is attempted even when an earlier one fails, so as much as
 /// possible is removed; the first failure is returned.
 pub async fn deprovision_project(
-    config: &ProvisioningConfig,
-    admin: &ClickHouseAdmin<'_>,
+    state: &AppState,
     org: &OrgId,
     project: &ProjectId,
 ) -> Result<(), ProvisionError> {
+    let config = &state.provisioning;
+    let admin = ClickHouseAdmin::of(state);
     // The database first: dropping its Kafka table stops ClickHouse
-    // consuming before the topic disappears.
+    // consuming before the topic disappears. The topic before the data
+    // stream, so sink-opensearch has nothing left to write to it.
     let drop_database = format!("DROP DATABASE IF EXISTS `{}` SYNC", project.as_ref());
-    let database = clickhouse::execute_admin_query(
+    let database = bounded(clickhouse::execute_admin_query(
         &Client::new(),
         admin.url,
         admin.user,
         admin.password,
         &drop_database,
-    )
+    ))
     .await
-    .map(drop)
-    .map_err(ProvisionError::from);
-    let user = clickhouse::drop_project_user(admin.url, admin.user, admin.password, project)
-        .await
-        .map_err(ProvisionError::from);
-    let topic = delete_topic(config, &config.topic(org, project)).await;
-    database.and(user).and(topic)
+    .map(drop);
+    let user = bounded(clickhouse::drop_project_user(
+        admin.url,
+        admin.user,
+        admin.password,
+        project,
+    ))
+    .await;
+    let topic = bounded(delete_topic(config, &config.topic(org, project))).await;
+    let data_stream = bounded(
+        state
+            .opensearch
+            .delete_data_stream(org.as_ref(), project.as_ref()),
+    )
+    .await;
+    database.and(user).and(topic).and(data_stream)
 }
 
 fn kafka_admin(
@@ -300,9 +375,59 @@ async fn create_topic(config: &ProvisioningConfig, topic: &str) -> Result<(), Pr
         .map_err(|e| error(e.to_string()))?;
     for result in results {
         match result {
-            Ok(_) | Err((_, RDKafkaErrorCode::TopicAlreadyExists)) => {}
+            Ok(_) => {}
+            Err((_, RDKafkaErrorCode::TopicAlreadyExists)) => {
+                check_existing_topic(config, topic).await.map_err(error)?;
+            }
             Err((_, code)) => return Err(error(code.to_string())),
         }
+    }
+    Ok(())
+}
+
+/// Checks that the existing `topic` has at least the configured partitions
+/// and replication. A topic the broker auto-created from early traffic has
+/// the broker's defaults instead, which provisioning must not adopt silently.
+async fn check_existing_topic(config: &ProvisioningConfig, topic: &str) -> Result<(), String> {
+    let config = config.clone();
+    let topic = topic.to_owned();
+    // `fetch_metadata` blocks.
+    tokio::task::spawn_blocking(move || {
+        let admin = kafka_admin(&config).map_err(|e| e.to_string())?;
+        let metadata = admin
+            .inner()
+            .fetch_metadata(Some(&topic), ADMIN_TIMEOUT)
+            .map_err(|e| e.to_string())?;
+        let partitions = metadata
+            .topics()
+            .iter()
+            .find(|found| found.name() == topic)
+            .map(|found| found.partitions())
+            .unwrap_or_default();
+        let replication = partitions
+            .iter()
+            .map(|partition| partition.replicas().len())
+            .min()
+            .unwrap_or(0);
+        check_topic_shape(&config, partitions.len(), replication)
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+fn check_topic_shape(
+    config: &ProvisioningConfig,
+    partitions: usize,
+    replication: usize,
+) -> Result<(), String> {
+    let wanted_partitions = usize::try_from(config.topic_partitions).unwrap_or(usize::MAX);
+    let wanted_replication = usize::try_from(config.topic_replication).unwrap_or(usize::MAX);
+    if partitions < wanted_partitions || replication < wanted_replication {
+        return Err(format!(
+            "it already exists with {partitions} partitions and replication {replication}, \
+             below the configured {wanted_partitions} and {wanted_replication}; delete it and \
+             provision again"
+        ));
     }
     Ok(())
 }
@@ -477,7 +602,7 @@ mod tests {
     /// Runs the steps, failing at `failing` (if any); returns the steps run.
     async fn run_failing_at(failing: Option<Step>) -> (Vec<Step>, Result<(), ProvisioningFailure>) {
         let mut ran = Vec::new();
-        let outcome = run_steps(|step| {
+        let outcome = run_steps(STEP_TIMEOUT, |step| {
             ran.push(step);
             async move {
                 if Some(step) == failing {
@@ -534,6 +659,65 @@ mod tests {
             .unwrap_err();
         assert_eq!(last.completed_steps, &Step::ALL[..3]);
         assert!(last.skipped_steps.is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_hanging_step_times_out() {
+        let timeout = Duration::from_millis(10);
+        let failure = run_steps(timeout, |step| async move {
+            if step == Step::ClickhouseUser {
+                std::future::pending::<()>().await;
+            }
+            Ok(())
+        })
+        .await
+        .unwrap_err();
+
+        assert_eq!(failure.failed_step, Step::ClickhouseUser);
+        assert_eq!(failure.error, "timed out after 10ms");
+        assert_eq!(failure.skipped_steps, [Step::OpensearchIndex]);
+    }
+
+    #[tokio::test]
+    async fn a_panicking_step_fails_it() {
+        let failure = run_steps(STEP_TIMEOUT, |step| async move {
+            assert_ne!(step, Step::ClickhouseDatabase, "broken step");
+            Ok(())
+        })
+        .await
+        .unwrap_err();
+
+        assert_eq!(failure.failed_step, Step::ClickhouseDatabase);
+        assert!(failure.error.starts_with("panicked: "), "{}", failure.error);
+        assert!(failure.error.contains("broken step"), "{}", failure.error);
+        assert_eq!(failure.completed_steps, [Step::KafkaTopic]);
+    }
+
+    #[test]
+    fn stored_errors_hide_the_project_password_and_are_bounded() {
+        let error = "Code: 62. Syntax error: ... BY 'hunter2' ...";
+        assert_eq!(
+            stored_error(error, "hunter2"),
+            "Code: 62. Syntax error: ... BY '[REDACTED]' ..."
+        );
+        // An empty password redacts nothing, rather than every gap.
+        assert_eq!(stored_error("plain", ""), "plain");
+
+        let long = "x".repeat(10_000);
+        assert!(stored_error(&long, "hunter2").len() < 1_000);
+    }
+
+    #[test]
+    fn an_existing_topic_needs_the_configured_shape() {
+        let mut config = config();
+        config.topic_partitions = 3;
+        config.topic_replication = 2;
+
+        assert!(check_topic_shape(&config, 3, 2).is_ok());
+        assert!(check_topic_shape(&config, 6, 3).is_ok());
+        let error = check_topic_shape(&config, 1, 2).unwrap_err();
+        assert!(error.contains("1 partitions"), "{error}");
+        assert!(check_topic_shape(&config, 3, 1).is_err());
     }
 
     #[test]
