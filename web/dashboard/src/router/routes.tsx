@@ -45,6 +45,11 @@ const SQLConsole = lazy(() => import('../pages/SQLConsole'));
 const DiscoverPage = lazy(() => import('../pages/DiscoverPage'));
 const SessionsPage = lazy(() => import('../pages/SessionsPage'));
 const SessionDetailPage = lazy(() => import('../pages/SessionDetailPage'));
+const CustomersPage = lazy(() => import('../pages/CustomersPage'));
+const SegmentsPage = lazy(() => import('../pages/SegmentsPage'));
+const SegmentDetailPage = lazy(() => import('../pages/SegmentDetailPage'));
+const ProfileDetailPage = lazy(() => import('../pages/ProfileDetailPage'));
+const CustomersSetupPage = lazy(() => import('../pages/CustomersSetupPage'));
 
 function PageLoader() {
   return <LoadingSkeleton variant="page" />;
@@ -99,6 +104,12 @@ export function AppRoutes() {
           <Route path="discover" element={<DiscoverPage />} />
           <Route path="discover/sessions" element={<SessionsPage />} />
           <Route path="discover/sessions/:sessionId" element={<SessionDetailPage />} />
+          <Route path="customers" element={<CustomersPage />} />
+          <Route path="customers/segments" element={<SegmentsPage />} />
+          <Route path="customers/setup" element={<CustomersSetupPage />} />
+          <Route path="customers/segments/:segmentId" element={<SegmentDetailPage />} />
+          <Route path="customers/profiles" element={<Navigate to="/app/customers" replace />} />
+          <Route path="customers/profiles/:profileId" element={<ProfileDetailPage />} />
           <Route path="settings" element={<SettingsLayout />}>
             <Route index element={<Navigate to="account" replace />} />
             <Route path="account" element={<AccountSettingsPage />} />

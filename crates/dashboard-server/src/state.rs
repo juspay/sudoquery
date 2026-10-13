@@ -2,6 +2,7 @@ use reqwest::Client;
 use sea_orm::DatabaseConnection;
 use sqlx::PgPool;
 
+use crate::cdp::Cdp;
 use crate::keycloak::KeycloakAdmin;
 use crate::opensearch::OpenSearch;
 use crate::provisioning::ProvisioningConfig;
@@ -24,6 +25,8 @@ pub struct AppState {
     pub clickhouse_project_password: String,
     pub opensearch: OpenSearch,
     pub provisioning: ProvisioningConfig,
+    /// The CDP control plane; `None` when it isn't configured.
+    pub cdp: Option<Cdp>,
     /// Token the admin API requires (`ADMIN_API_TOKEN`); `None` disables it.
     pub admin_api_token: Option<String>,
 }

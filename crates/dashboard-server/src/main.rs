@@ -2,7 +2,7 @@ use axum::{
     Json, Router,
     extract::State,
     response::IntoResponse,
-    routing::{delete, get, patch, post},
+    routing::{delete, get, patch, post, put},
 };
 use rdkafka::config::ClientConfig;
 use rdkafka::producer::{FutureProducer, Producer};
@@ -12,6 +12,7 @@ use serde_json::json;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
+mod cdp;
 mod clickhouse;
 mod db;
 mod entities;
@@ -393,6 +394,11 @@ async fn main() {
     .expect("Failed to create OpenSearch client")
     .with_admin_credentials(get_opensearch_admin_credentials());
 
+    let cdp = cdp::Cdp::from_env();
+    if cdp.is_none() {
+        tracing::warn!("CDP_CONTROL_PLANE_URL / CDP_PLATFORM_TOKEN not set; the CDP is disabled");
+    }
+
     let admin_api_token = get_admin_api_token();
     if admin_api_token.is_none() {
         tracing::warn!("ADMIN_API_TOKEN is not set; the admin API is disabled");
@@ -415,6 +421,7 @@ async fn main() {
         clickhouse_project_password,
         opensearch,
         provisioning,
+        cdp,
         admin_api_token,
     };
 
@@ -640,6 +647,42 @@ async fn main() {
         .route("/doc/{doc_id}", get(routes::search::get_doc))
         .route("/session", post(routes::sessions::list_sessions))
         .route("/session/{session_id}", post(routes::sessions::get_session))
+        // CDP: the project's customer profiles and segments (routes/cdp.rs).
+        .route("/cdp/summary", get(routes::cdp::summary))
+        .route("/cdp/profiles", get(routes::cdp::list_profiles))
+        .route("/cdp/profiles/lookup", get(routes::cdp::lookup_profile))
+        .route("/cdp/profiles/{profile_id}", get(routes::cdp::get_profile))
+        .route(
+            "/cdp/profiles/{profile_id}/segments",
+            get(routes::cdp::profile_segments),
+        )
+        .route("/cdp/segments", get(routes::cdp::list_segments))
+        .route("/cdp/segments/preview", post(routes::cdp::preview_segment))
+        .route(
+            "/cdp/segments/{segment_id}",
+            get(routes::cdp::get_segment)
+                .put(routes::cdp::create_segment)
+                .delete(routes::cdp::delete_segment),
+        )
+        .route(
+            "/cdp/segments/{segment_id}/status",
+            put(routes::cdp::set_segment_status),
+        )
+        .route(
+            "/cdp/segments/{segment_id}/members",
+            get(routes::cdp::segment_members),
+        )
+        .route(
+            "/cdp/metric-definitions",
+            get(routes::cdp::metric_definitions)
+                .put(routes::cdp::put_metric_definition)
+                .delete(routes::cdp::delete_metric_definition),
+        )
+        .route("/cdp/event-types", get(routes::cdp::event_types))
+        .route(
+            "/cdp/event-types/{event_name}",
+            put(routes::cdp::put_event_type).delete(routes::cdp::delete_event_type),
+        )
         .route("/histogram", post(routes::aggregations::histogram))
         .route("/facets", post(routes::aggregations::facets))
         .with_state(state);

@@ -8,6 +8,8 @@
 //!   localstack (KMS), reading published events back from per-test topics.
 //! * `kafka-to-s3`: the kafka-to-s3 archiver against the local compose
 //!   Redpanda and MinIO, reading archived objects back from a per-run bucket.
+//! * `cdp`: the Customers (CDP) integration — dashboard-server and
+//!   events-collector against the compose stack plus a running CDP.
 
 /// Declares a suite's `CASES` table from its async case functions, each
 /// `async fn(&Ctx) -> anyhow::Result<()>`.
@@ -22,6 +24,7 @@ macro_rules! cases {
     };
 }
 
+mod cdp;
 mod clickhouse;
 mod collector;
 mod dashboard;
@@ -54,6 +57,7 @@ pub fn main(args: Vec<String>) {
             Some("dashboard") => dashboard::run(filter.as_deref()).await,
             Some("collector") => collector::run(filter.as_deref()).await,
             Some("kafka-to-s3") => kafka_to_s3::run(filter.as_deref()).await,
+            Some("cdp") => cdp::run(filter.as_deref()).await,
             _ => usage(),
         }
     });
@@ -82,6 +86,10 @@ Suites:
   kafka-to-s3 Archiving through kafka-to-s3 from Kafka into S3
               (needs the compose redpanda and minio:
               `cargo xtask setup redpanda minio`)
+  cdp         Customer profiles and segments from a project's events,
+              through dashboard-server and events-collector into the CDP
+              (needs what `dashboard` needs, plus the CDP running next to
+              this stack: see the CDP repo's deploy/compose/sudoquery.env)
 
 [filter] runs only the cases whose name contains it."
     );
@@ -209,6 +217,21 @@ impl Http {
             .client
             .get(format!("{}{path}", self.base))
             .headers(build_headers(token, headers)?);
+        send(request).await
+    }
+
+    pub(crate) async fn put(
+        &self,
+        path: &str,
+        token: Option<&str>,
+        headers: &[(&str, &str)],
+        body: Value,
+    ) -> anyhow::Result<Response> {
+        let request = self
+            .client
+            .put(format!("{}{path}", self.base))
+            .headers(build_headers(token, headers)?)
+            .json(&body);
         send(request).await
     }
 
