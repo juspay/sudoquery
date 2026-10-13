@@ -15,7 +15,8 @@ function EventsTodayBadge() {
   const [count, setCount] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!currentOrganization || !currentProject) {
+    // Only an ACTIVE project has events to count.
+    if (!currentOrganization || !currentProject || currentProject.status !== 'ACTIVE') {
       setCount(null);
       return;
     }
@@ -42,7 +43,7 @@ function EventsTodayBadge() {
       isActive = false;
       window.clearInterval(intervalId);
     };
-  }, [currentOrganization?.id, currentProject?.id]);
+  }, [currentOrganization?.id, currentProject?.id, currentProject?.status]);
 
   if (count === null) return null;
 

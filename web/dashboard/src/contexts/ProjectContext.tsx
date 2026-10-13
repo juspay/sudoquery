@@ -1,7 +1,12 @@
 import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
 import { projectService, type Project } from '../services/projectService';
 import { useOrganization } from './OrganizationContext';
+import { useToast } from './ToastContext';
 import { PROJECT_STORAGE_KEY } from '../config/storage';
+import { useAutoRefresh } from '../discover/autoRefresh';
+
+/** How often a project that is not ACTIVE yet is checked again. */
+const STATUS_POLL_INTERVAL = '10s';
 
 interface ProjectContextType {
   projects: Project[];
@@ -17,6 +22,7 @@ const ProjectContext = createContext<ProjectContextType | null>(null);
 
 export function ProjectProvider({ children }: { children: ReactNode }) {
   const { currentOrganization } = useOrganization();
+  const { showSuccess } = useToast();
   const [projects, setProjects] = useState<Project[]>([]);
   const [currentProject, setCurrentProject] = useState<Project | null>(null);
   const [loading, setLoading] = useState(false);
@@ -72,6 +78,26 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       await loadProjects(currentOrganization.id);
     }
   };
+
+  // An operator provisions new projects; watch the current one until it can be queried.
+  const pollStatus = async () => {
+    if (!currentOrganization || !currentProject) return;
+    try {
+      const latest = await projectService.get(currentOrganization.id, currentProject.id);
+      if (latest.status === currentProject.status) return;
+      setCurrentProject((current) => (current?.id === latest.id ? { ...current, ...latest } : current));
+      setProjects((list) => list.map((p) => (p.id === latest.id ? { ...p, ...latest } : p)));
+      if (latest.status === 'ACTIVE') {
+        showSuccess(`${latest.name} is ready`);
+      }
+    } catch (err) {
+      console.error('Failed to check project status:', err);
+    }
+  };
+  useAutoRefresh(
+    currentProject && currentProject.status !== 'ACTIVE' ? STATUS_POLL_INTERVAL : null,
+    pollStatus,
+  );
 
   const createProject = async (name: string): Promise<Project> => {
     if (!currentOrganization) throw new Error('No organization selected');

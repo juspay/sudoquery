@@ -8,7 +8,6 @@ type AccessLevel =
 
 export interface Organization {
   id: string;
-  slug: string;
   name: string;
   created_at: string;
   /** How the current user has access to this organization */
@@ -23,13 +22,11 @@ interface OrgMember {
 }
 
 interface CreateOrganizationRequest {
-  slug: string;
   name: string;
 }
 
 interface UpdateOrganizationRequest {
   name?: string;
-  slug?: string;
 }
 
 interface AddOrgMemberRequest {

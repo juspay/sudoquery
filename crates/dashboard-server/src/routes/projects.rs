@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 use crate::{
-    AppState, clickhouse, db, entities,
+    AppState,
+    db::{self, DeletionStart, ProjectStatus},
+    entities,
     middleware::{AuthUser, OrgAdmin, OrgContext, ProjectAccess, ProjectAdminOrOrgAdmin},
     provisioning,
 };
@@ -23,6 +25,7 @@ pub struct CreateProjectResponse {
     pub id: String,
     pub organization_id: Option<String>,
     pub name: String,
+    pub status: ProjectStatus,
     pub project_token: String,
     pub created_at: String,
 }
@@ -35,38 +38,11 @@ pub async fn create_project(
     }: OrgAdmin,
     Json(req): Json<CreateProjectRequest>,
 ) -> Result<(StatusCode, Json<CreateProjectResponse>), ProjectError> {
+    // The project starts PENDING: its topic, ClickHouse database and user,
+    // and OpenSearch data stream are provisioned through the admin API.
     let project = db::create_project(&state.db_pool, Some(&organization.id), &req.name)
         .await
         .map_err(|e| ProjectError::Database(e.to_string()))?;
-
-    // Create the project's topic, ClickHouse database and ClickHouse user -
-    // fail the API if any step fails.
-    if let Err(e) = provision(&state, &organization.id, &project.id).await {
-        // Remove whatever was created, then the project row. Best effort:
-        // the original error is what the caller needs to see.
-        if let Err(cleanup_err) = provisioning::deprovision_project(
-            &state.provisioning,
-            &clickhouse_admin(&state),
-            &organization.id,
-            &project.id,
-        )
-        .await
-        {
-            tracing::error!(
-                "Failed to remove infrastructure of project {} after provisioning error: {}",
-                project.id,
-                cleanup_err
-            );
-        }
-        if let Err(cleanup_err) = db::soft_delete_project(&state.db_pool, &project.id).await {
-            tracing::error!(
-                "Failed to cleanup project {} after provisioning error: {}",
-                project.id,
-                cleanup_err
-            );
-        }
-        return Err(e);
-    }
 
     // Add the creator as project admin
     db::add_user_to_project(
@@ -84,6 +60,7 @@ pub async fn create_project(
             id: project.id.to_string(),
             organization_id: project.organization_id.map(|id| id.to_string()),
             name: project.name,
+            status: project.status,
             project_token: project.project_token.to_string(),
             created_at: project.created_at.to_rfc3339(),
         }),
@@ -98,6 +75,7 @@ pub struct ProjectResponse {
     pub organization_id: Option<String>,
     pub name: String,
     pub timezone: Option<String>,
+    pub status: ProjectStatus,
     pub created_at: String,
 }
 
@@ -118,6 +96,7 @@ pub async fn list_projects(
             organization_id: p.organization_id.map(|id| id.to_string()),
             name: p.name,
             timezone: p.timezone,
+            status: p.status,
             created_at: p.created_at.to_rfc3339(),
         })
         .collect();
@@ -146,6 +125,7 @@ pub async fn list_my_projects(
                 organization_id: project.organization_id.map(|id| id.to_string()),
                 name: project.name,
                 timezone: project.timezone,
+                status: project.status,
                 created_at: project.created_at.to_rfc3339(),
             });
         }
@@ -164,6 +144,7 @@ pub async fn get_project(
         organization_id: project.organization_id.map(|id| id.to_string()),
         name: project.name,
         timezone: project.timezone,
+        status: project.status,
         created_at: project.created_at.to_rfc3339(),
     }))
 }
@@ -217,6 +198,8 @@ pub async fn update_project(
         organization_id: updated.organization_id.map(|id| id.to_string()),
         name: updated.name,
         timezone: updated.timezone,
+        // The update leaves the status alone.
+        status: project.status,
         created_at: updated.created_at.to_rfc3339(),
     }))
 }
@@ -275,66 +258,32 @@ pub async fn delete_project(
     let project_id =
         ProjectId::from_str(project_id_str).map_err(|_| ProjectError::InvalidProjectId)?;
 
-    // Verify project belongs to organization
-    let project = db::get_project_by_id(&state.db_pool, &project_id)
-        .await
-        .map_err(|e| ProjectError::Database(e.to_string()))?
-        .ok_or(ProjectError::NotFound)?;
-
-    if project.organization_id.as_ref() != Some(&organization.id) {
-        return Err(ProjectError::NotFound);
-    }
-
-    // Drop the project's topic, database and ClickHouse user before the row,
-    // so a failed drop leaves the project in place to delete again.
-    provisioning::deprovision_project(
-        &state.provisioning,
-        &clickhouse_admin(&state),
-        &organization.id,
+    // DELETING keeps provisioning away while the infrastructure is dropped.
+    let start = db::start_deleting(
+        &state.db_pool,
         &project_id,
+        &organization.id,
+        provisioning::STALE_CREATING_AFTER,
     )
     .await
-    .map_err(|e| ProjectError::ClickHouse(format!("Failed to delete project data: {e}")))?;
+    .map_err(|e| ProjectError::Database(e.to_string()))?;
+    match start {
+        DeletionStart::Started => {}
+        DeletionStart::NotFound => return Err(ProjectError::NotFound),
+        DeletionStart::BeingProvisioned => return Err(ProjectError::BeingProvisioned),
+    }
+
+    // Drop the project's infrastructure before the row, so a failed drop
+    // leaves the project DELETING, to delete again.
+    provisioning::deprovision_project(&state, &organization.id, &project_id)
+        .await
+        .map_err(|e| ProjectError::Deprovision(format!("Failed to delete project data: {e}")))?;
 
     db::soft_delete_project(&state.db_pool, &project_id)
         .await
         .map_err(|e| ProjectError::Database(e.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
-}
-
-fn clickhouse_admin(state: &AppState) -> provisioning::ClickHouseAdmin<'_> {
-    provisioning::ClickHouseAdmin {
-        url: &state.clickhouse_admin_url,
-        user: &state.clickhouse_admin_user,
-        password: &state.clickhouse_admin_password,
-    }
-}
-
-/// Topic and database first, user last, so the user never sees a
-/// half-built database.
-async fn provision(
-    state: &AppState,
-    org_id: &canonical_event::OrgId,
-    project_id: &ProjectId,
-) -> Result<(), ProjectError> {
-    provisioning::provision_project(
-        &state.provisioning,
-        &clickhouse_admin(state),
-        org_id,
-        project_id,
-    )
-    .await
-    .map_err(|e| ProjectError::ClickHouse(format!("Failed to provision project: {e}")))?;
-    clickhouse::create_project_user(
-        &state.clickhouse_admin_url,
-        &state.clickhouse_admin_user,
-        &state.clickhouse_admin_password,
-        &state.clickhouse_project_password,
-        project_id,
-    )
-    .await
-    .map_err(|e| ProjectError::ClickHouse(format!("Failed to create ClickHouse user: {e}")))
 }
 
 // ============ Error Types ============
@@ -347,10 +296,12 @@ pub enum ProjectError {
     InvalidTimezone,
     #[error("Project not found")]
     NotFound,
+    #[error("Project is being provisioned")]
+    BeingProvisioned,
     #[error("Database error: {0}")]
     Database(String),
-    #[error("ClickHouse error: {0}")]
-    ClickHouse(String),
+    #[error("{0}")]
+    Deprovision(String),
     #[error(transparent)]
     Auth(#[from] crate::middleware::AuthError),
 }
@@ -367,8 +318,12 @@ impl axum::response::IntoResponse for ProjectError {
                 (StatusCode::BAD_REQUEST, "Invalid timezone".to_string())
             }
             ProjectError::NotFound => (StatusCode::NOT_FOUND, "Project not found".to_string()),
+            ProjectError::BeingProvisioned => (
+                StatusCode::CONFLICT,
+                "Project is being provisioned; try again in a few minutes".to_string(),
+            ),
             ProjectError::Database(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
-            ProjectError::ClickHouse(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
+            ProjectError::Deprovision(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
             ProjectError::Auth(e) => return e.into_response(),
         };
         (status, Json(serde_json::json!({ "error": message }))).into_response()

@@ -13,6 +13,15 @@ export class ApiError extends Error {
   }
 }
 
+/** The server's `{"error": "…"}` message, which `apiClient` leaves as raw JSON text. */
+export function apiErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof ApiError) {
+    const data = error.data as { error?: unknown } | undefined;
+    if (typeof data?.error === 'string') return data.error;
+  }
+  return error instanceof Error && error.message ? error.message : fallback;
+}
+
 interface RequestOptions extends Omit<RequestInit, 'headers'> {
   headers?: Record<string, string>;
   params?: Record<string, string>;

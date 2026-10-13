@@ -1,9 +1,16 @@
 import { apiClient } from './apiClient';
 
+/**
+ * Where a project is in provisioning its infrastructure. Only an `ACTIVE`
+ * project can be queried; an operator provisions new projects.
+ */
+export type ProjectStatus = 'PENDING' | 'CREATING' | 'ERRORED' | 'ACTIVE' | 'DELETING';
+
 export interface Project {
   id: string;
   organization_id: string | null;
   name: string;
+  status: ProjectStatus;
   project_token?: string;
   timezone?: string;
   created_at: string;
@@ -58,6 +65,12 @@ export const projectService = {
   async list(organizationId: string): Promise<Project[]> {
     return apiClient.get('/projects', {}, {
       headers: orgHeader(organizationId),
+    });
+  },
+
+  async get(organizationId: string, projectId: string): Promise<Project> {
+    return apiClient.get('/project', {}, {
+      headers: { ...orgHeader(organizationId), 'X-Project-Id': projectId },
     });
   },
 

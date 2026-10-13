@@ -263,13 +263,29 @@ fn get_opensearch_index() -> String {
     std::env::var("OPENSEARCH_INDEX").unwrap_or_else(|_| "events-{org_id}-{project_id}".to_string())
 }
 
+fn get_admin_api_token() -> Option<String> {
+    std::env::var("ADMIN_API_TOKEN")
+        .ok()
+        .map(|token| token.trim().to_owned())
+        .filter(|token| !token.is_empty())
+}
+
 fn get_opensearch_credentials() -> Option<(String, String)> {
-    let username = std::env::var("OPENSEARCH_USERNAME").ok();
-    let password = std::env::var("OPENSEARCH_PASSWORD").ok();
+    credentials_from_env("OPENSEARCH_USERNAME", "OPENSEARCH_PASSWORD")
+}
+
+// Creates and deletes data streams during provisioning; unset, the read credentials do.
+fn get_opensearch_admin_credentials() -> Option<(String, String)> {
+    credentials_from_env("OPENSEARCH_ADMIN_USERNAME", "OPENSEARCH_ADMIN_PASSWORD")
+}
+
+fn credentials_from_env(username_var: &str, password_var: &str) -> Option<(String, String)> {
+    let username = std::env::var(username_var).ok();
+    let password = std::env::var(password_var).ok();
     match (username, password) {
         (Some(username), Some(password)) => Some((username, password)),
         (None, None) => None,
-        _ => panic!("OPENSEARCH_USERNAME and OPENSEARCH_PASSWORD must be set together"),
+        _ => panic!("{username_var} and {password_var} must be set together"),
     }
 }
 
@@ -374,7 +390,13 @@ async fn main() {
         get_opensearch_index(),
         get_opensearch_request_timeout(),
     )
-    .expect("Failed to create OpenSearch client");
+    .expect("Failed to create OpenSearch client")
+    .with_admin_credentials(get_opensearch_admin_credentials());
+
+    let admin_api_token = get_admin_api_token();
+    if admin_api_token.is_none() {
+        tracing::warn!("ADMIN_API_TOKEN is not set; the admin API is disabled");
+    }
 
     let state = AppState {
         http: Client::new(),
@@ -393,6 +415,7 @@ async fn main() {
         clickhouse_project_password,
         opensearch,
         provisioning,
+        admin_api_token,
     };
 
     let api_routes = Router::new()
@@ -461,6 +484,15 @@ async fn main() {
         .route("/project", delete(routes::projects::delete_project))
         .route("/project/tokens", get(routes::projects::get_project_tokens))
         .route("/timezones", get(routes::projects::get_timezones))
+        // Admin routes (X-Admin-Token)
+        .route(
+            "/admin/projects/{project_id}",
+            get(routes::admin::get_project_provisioning),
+        )
+        .route(
+            "/admin/projects/{project_id}/provision",
+            post(routes::admin::provision_project),
+        )
         // Project member routes
         .route("/project/members", post(routes::users::add_project_member))
         .route(

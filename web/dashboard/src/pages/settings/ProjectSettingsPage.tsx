@@ -30,13 +30,14 @@ import { useOrganization } from '../../contexts/OrganizationContext';
 import { useProject } from '../../contexts/ProjectContext';
 import { useToast } from '../../contexts/ToastContext';
 import { projectService } from '../../services/projectService';
+import { apiErrorMessage } from '../../services/apiClient';
 import { invitationService, type Invitation } from '../../services/invitationService';
 import type { RoleType } from '../../components/Settings/RoleBadge';
 import { trackEvent } from '../../utils/analytics';
 
 export default function ProjectSettingsPage() {
   const { currentOrganization } = useOrganization();
-  const { currentProject, setCurrentProject, projects, setProjects } = useProject();
+  const { currentProject, setCurrentProject, projects, setProjects, refreshProjects } = useProject();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -196,8 +197,9 @@ export default function ProjectSettingsPage() {
       closeDeleteDialog();
       navigate('/app/dashboard');
     } catch (err) {
-      const message = err instanceof Error ? err.message : 'Failed to delete project';
-      showError(message);
+      showError(apiErrorMessage(err, 'Failed to delete project'));
+      // A deletion that failed half-way leaves the project DELETING.
+      await refreshProjects();
     } finally {
       setIsDeleting(false);
     }
@@ -221,6 +223,14 @@ export default function ProjectSettingsPage() {
         title="Project Settings"
         description={`Manage settings for ${currentProject.name}.`}
       />
+
+      {currentProject.status !== 'ACTIVE' && (
+        <Alert severity="info" sx={{ mb: 3 }}>
+          {currentProject.status === 'DELETING'
+            ? 'This project is being deleted. If deleting it failed, you can retry below.'
+            : 'This project is not set up yet, so it cannot receive events or be queried. Events sent with its token before then are lost.'}
+        </Alert>
+      )}
 
       <ProjectSettingsForm />
 

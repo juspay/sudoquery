@@ -81,6 +81,21 @@ CREATE TYPE public.project_role AS ENUM (
 
 ALTER TYPE public.project_role OWNER TO hyper_analytics_user;
 
+--
+-- Name: project_status; Type: TYPE; Schema: public; Owner: hyper_analytics_user
+--
+
+CREATE TYPE public.project_status AS ENUM (
+    'PENDING',
+    'CREATING',
+    'ERRORED',
+    'ACTIVE',
+    'DELETING'
+);
+
+
+ALTER TYPE public.project_status OWNER TO hyper_analytics_user;
+
 SET default_tablespace = '';
 
 SET default_table_access_method = heap;
@@ -249,7 +264,11 @@ CREATE TABLE public.projects (
     deleted_at timestamp with time zone,
     created_at timestamp with time zone DEFAULT now(),
     updated_at timestamp with time zone DEFAULT now(),
-    timezone text
+    timezone text,
+    status public.project_status DEFAULT 'PENDING'::public.project_status NOT NULL,
+    provisioning_error jsonb,
+    provisioning_attempt uuid,
+    provisioning_started_at timestamp with time zone
 );
 
 

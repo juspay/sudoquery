@@ -1,4 +1,4 @@
-import { ApiError, apiClient } from './apiClient';
+import { apiClient, apiErrorMessage } from './apiClient';
 import type { EventDoc, SortOrder } from '../discover/types';
 
 type Dsl = Record<string, unknown>;
@@ -59,11 +59,7 @@ export function isAbort(error: unknown): boolean {
 
 /** The server's `{"error": "…"}` message, which `apiClient` leaves as raw JSON text. */
 export function searchErrorMessage(error: unknown, fallback: string): string {
-  if (error instanceof ApiError) {
-    const data = error.data as { error?: unknown } | undefined;
-    if (typeof data?.error === 'string') return data.error;
-  }
-  return error instanceof Error && error.message ? error.message : fallback;
+  return apiErrorMessage(error, fallback);
 }
 
 export const searchService = {

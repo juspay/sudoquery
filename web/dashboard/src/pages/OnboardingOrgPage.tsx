@@ -10,13 +10,11 @@ export default function OnboardingOrgPage() {
   const navigate = useNavigate();
   const { createOrganization } = useOrganization();
   const [name, setName] = useState('');
-  const [slug, setSlug] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleChange = (newName: string, newSlug: string) => {
+  const handleChange = (newName: string) => {
     setName(newName);
-    setSlug(newSlug);
     setError(null);
   };
 
@@ -25,12 +23,10 @@ export default function OnboardingOrgPage() {
       setError('Please enter an organization name.');
       return;
     }
-    // Auto-generate slug if empty
-    const finalSlug = slug.trim() || name.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
     setLoading(true);
     setError(null);
     try {
-      await createOrganization(name.trim(), finalSlug);
+      await createOrganization(name.trim());
       navigate('/onboarding/project', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create organization. Please try again.');

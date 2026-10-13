@@ -35,6 +35,8 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { CreateOrganizationDialog } from '../Organization/CreateOrganizationDialog';
 import { CreateProjectDialog } from '../Organization/CreateProjectDialog';
+import { ProjectStatusChip } from './ProjectStatus';
+import type { ProjectStatus } from '../../services/projectService';
 
 // Get initials from name (max 2 characters)
 function getInitials(name: string): string {
@@ -173,11 +175,12 @@ function OrgItem({ id, name, selected, onClick }: OrgItemProps) {
 interface ProjectItemProps {
   id: string;
   name: string;
+  status: ProjectStatus;
   selected: boolean;
   onClick: () => void;
 }
 
-function ProjectItem({ id, name, selected, onClick }: ProjectItemProps) {
+function ProjectItem({ id, name, status, selected, onClick }: ProjectItemProps) {
   return (
     <Box
       onClick={onClick}
@@ -222,6 +225,7 @@ function ProjectItem({ id, name, selected, onClick }: ProjectItemProps) {
           {name}
         </Typography>
       </Box>
+      <ProjectStatusChip status={status} />
       <CopyIdButton id={id} label="workspace ID" />
       {selected && (
         <CheckCircleIcon size={20} style={{ color: '#2AA99E', flexShrink: 0 }} />
@@ -461,6 +465,7 @@ export function OrgProjectSwitcher() {
                     key={proj.id}
                     id={proj.id}
                     name={proj.name}
+                    status={proj.status}
                     selected={proj.id === currentProject?.id}
                     onClick={() => handleSelectProject(proj.id)}
                   />

@@ -19,7 +19,8 @@ export function SchemaProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
-    if (!currentProject?.id) {
+    // Only an ACTIVE project has a database to query.
+    if (!currentProject?.id || currentProject.status !== 'ACTIVE') {
       setEventsNeedingDescription(0);
       setPropertiesNeedingDescription(0);
       return;
@@ -64,7 +65,7 @@ export function SchemaProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [currentProject?.id]);
+  }, [currentProject?.id, currentProject?.status]);
 
   useEffect(() => {
     refresh();
