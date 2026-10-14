@@ -16,6 +16,7 @@ import { panelSx } from '../components/Discover/styles';
 import { EmptyStateCard } from '../components/shared/EmptyStateCard';
 import { formatCount } from '../cdp/format';
 import { usePaged } from '../cdp/usePaged';
+import { useAsyncResult } from '../discover/useDiscover';
 import { useProject } from '../contexts/ProjectContext';
 import { apiErrorMessage } from '../services/apiClient';
 import { cdpService, type ProfileType } from '../services/cdpService';
@@ -99,7 +100,8 @@ export default function CustomersPage() {
     (cursor) => cdpService.customers(cursor, profileType),
     (p) => ({ items: p.profiles, next: p.next_cursor }),
   );
-  const totals = paged.first.data;
+  // Totals are workspace-wide, so they don't depend on the filter.
+  const totals = useAsyncResult(active ? currentProject.id : null, () => cdpService.totals()).data;
 
   if (!currentProject) {
     return (

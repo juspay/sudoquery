@@ -1,8 +1,10 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   Alert,
+  Autocomplete,
   Box,
   Button,
+  Chip,
   IconButton,
   MenuItem,
   Skeleton,
@@ -18,7 +20,13 @@ import { useAsyncResult } from '../discover/useDiscover';
 import { useProject } from '../contexts/ProjectContext';
 import { apiErrorMessage } from '../services/apiClient';
 import { cdpService, type NewMetric, type ValueKind } from '../services/cdpService';
+import { eventService } from '../services/eventService';
 import { colorInk60 } from '../theme/tokens';
+
+const NUMERIC_TYPES = /^(U?Int\d+|Float\d+|Decimal.*)$/;
+
+/** Catalog properties live under `properties`; the CDP addresses them as `properties.<path>`. */
+const toPath = (property: string) => `properties.${property}`;
 
 const KIND_LABELS: Record<ValueKind, string> = {
   count: 'Count of events',
@@ -67,6 +75,8 @@ export default function CustomersSetupPage() {
   const key = currentProject && currentProject.status === 'ACTIVE' ? `${currentProject.id}:${reload}` : null;
   const events = useAsyncResult(key, () => cdpService.eventTypes());
   const metrics = useAsyncResult(key, () => cdpService.metricDefinitions());
+  // Suggestions: the events and properties this project has actually sent.
+  const catalog = useAsyncResult(key, () => eventService.getEventSchemaCatalog());
 
   const [eventName, setEventName] = useState('');
   const [dedupPath, setDedupPath] = useState('');
@@ -118,6 +128,15 @@ export default function CustomersSetupPage() {
   };
 
   const eventRows = events.data ?? [];
+  const catalogRows = catalog.data;
+
+  const catalogEvents = useMemo(() => [...new Set((catalogRows ?? []).map((r) => r.event_name))].sort(), [catalogRows]);
+  const propertiesOf = (event: string, numericOnly = false) =>
+    (catalogRows ?? [])
+      .filter((r) => r.event_name === event && (!numericOnly || NUMERIC_TYPES.test(r.type)))
+      .map((r) => toPath(r.property));
+  const declared = new Set(eventRows.map((e) => e.event_name));
+  const suggestedEvents = catalogEvents.filter((n) => !declared.has(n));
   const metricRows = metrics.data ?? [];
 
   return (
@@ -150,19 +169,38 @@ export default function CustomersSetupPage() {
             }}
             sx={{ display: 'flex', gap: 1, p: 1.5, borderBottom: HAIRLINE }}
           >
-            <TextField size="small" label="Event name" value={eventName} onChange={(e) => setEventName(e.target.value)} sx={{ flex: 1 }} />
-            <TextField
+            <Autocomplete
+              freeSolo
               size="small"
-              label="Dedup on (optional)"
-              placeholder="properties.order_id"
-              value={dedupPath}
-              onChange={(e) => setDedupPath(e.target.value)}
+              options={suggestedEvents}
+              inputValue={eventName}
+              onInputChange={(_, v) => setEventName(v)}
+              renderInput={(params) => <TextField {...params} label="Event name" />}
+              sx={{ flex: 1 }}
+            />
+            <Autocomplete
+              freeSolo
+              size="small"
+              options={[...new Set(propertiesOf(eventName.trim()))]}
+              inputValue={dedupPath}
+              onInputChange={(_, v) => setDedupPath(v)}
+              renderInput={(params) => (
+                <TextField {...params} label="Dedup on (optional)" placeholder="properties.order_id" />
+              )}
               sx={{ flex: 1 }}
             />
             <Button type="submit" variant="outlined" size="small" disabled={busy || !eventName.trim()}>
               Add
             </Button>
           </Box>
+          {suggestedEvents.length > 0 ? (
+            <Box sx={{ px: 1.5, py: 1, borderBottom: HAIRLINE, display: 'flex', flexWrap: 'wrap', gap: 0.5, alignItems: 'center' }}>
+              <Typography sx={{ fontSize: '12px', color: colorInk60, mr: 0.5 }}>Seen in your data:</Typography>
+              {suggestedEvents.slice(0, 12).map((n) => (
+                <Chip key={n} size="small" label={n} disabled={busy} onClick={() => setEventName(n)} />
+              ))}
+            </Box>
+          ) : null}
           {!events.data && events.loading ? <Skeleton height={34} sx={{ mx: 2 }} /> : null}
           {events.data && eventRows.length === 0 ? (
             <Typography sx={{ px: 2, py: 1.5, fontSize: '13px', color: colorInk60 }}>
@@ -239,12 +277,13 @@ export default function CustomersSetupPage() {
               ))}
             </TextField>
             {needsPath ? (
-              <TextField
+              <Autocomplete
+                freeSolo
                 size="small"
-                label="Property path"
-                placeholder="properties.amount"
-                value={metric.value_path ?? ''}
-                onChange={(e) => setMetric({ ...metric, value_path: e.target.value })}
+                options={[...new Set(propertiesOf(metric.event_name, metric.value_kind === 'property_number'))]}
+                inputValue={metric.value_path ?? ''}
+                onInputChange={(_, v) => setMetric({ ...metric, value_path: v })}
+                renderInput={(params) => <TextField {...params} label="Property path" placeholder="properties.amount" />}
                 sx={{ flex: '1 1 150px' }}
               />
             ) : null}

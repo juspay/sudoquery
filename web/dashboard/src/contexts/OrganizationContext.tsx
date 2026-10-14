@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useState, useEffect, useRef, type ReactNode } from 'react';
 import { organizationService, type Organization } from '../services/organizationService';
 import { useAuth } from './AuthContext';
 import { ORG_STORAGE_KEY } from '../config/storage';
@@ -23,6 +23,9 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [initialized, setInitialized] = useState(false);
+  // Responses other than the list (create, update) carry no `access_level`, which
+  // gates the admin-only tabs; remember what the list said so it is never lost.
+  const accessLevels = useRef(new Map<string, Organization['access_level']>());
 
   // Load organizations when authenticated
   useEffect(() => {
@@ -44,6 +47,7 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
       const orgs = await organizationService.list();
       console.log('[OrganizationContext] Loaded orgs:', orgs);
       setOrganizations(orgs);
+      for (const o of orgs) accessLevels.current.set(o.id, o.access_level);
 
       // Restore previously selected organization
       const storedOrgId = localStorage.getItem(ORG_STORAGE_KEY);
@@ -75,7 +79,10 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
     }
   };
 
-  const handleSetCurrentOrganization = (org: Organization | null) => {
+  const handleSetCurrentOrganization = (incoming: Organization | null) => {
+    const org = incoming
+      ? { ...incoming, access_level: incoming.access_level ?? accessLevels.current.get(incoming.id) }
+      : null;
     setCurrentOrganization(org);
     if (org) {
       localStorage.setItem(ORG_STORAGE_KEY, org.id);
@@ -90,6 +97,8 @@ export function OrganizationProvider({ children }: { children: ReactNode }) {
 
   const createOrganization = async (name: string): Promise<Organization> => {
     const org = await organizationService.create({ name });
+    // The creator is always the org admin; the create response doesn't say so.
+    accessLevels.current.set(org.id, 'org_admin');
     await refreshOrganizations();
     handleSetCurrentOrganization(org);
     return org;

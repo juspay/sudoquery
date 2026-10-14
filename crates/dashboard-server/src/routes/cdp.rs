@@ -142,8 +142,10 @@ async fn workspace_read(
 pub async fn summary(
     State(state): State<AppState>,
     ProjectAccess { project, .. }: ProjectAccess,
+    Query(query): Query<HashMap<String, String>>,
 ) -> CdpResult {
-    workspace_read(&state, &project, "/profiles/summary", &[]).await
+    let query = allowed(&query, &["limit", "cursor", "profile_type"]);
+    workspace_read(&state, &project, "/profiles/summary", &query).await
 }
 
 pub async fn list_profiles(

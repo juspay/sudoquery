@@ -145,8 +145,24 @@ function pageParams(cursor?: string | null, profileType?: ProfileType | null): R
 }
 
 export const cdpService = {
+  /**
+   * One page of profiles. `/cdp/summary` ignores `profile_type`, so a filtered
+   * list comes from `/cdp/profiles` (which has no workspace totals; see `totals`).
+   */
   customers(cursor?: string | null, profileType?: ProfileType | null): Promise<CustomerPage> {
-    return apiClient.get('/cdp/summary', { limit: '50', ...pageParams(cursor, profileType) });
+    if (profileType) {
+      return apiClient
+        .get<{ profiles: CustomerRow[]; next_cursor: string | null }>('/cdp/profiles', {
+          limit: '50',
+          ...pageParams(cursor, profileType),
+        })
+        .then((page) => ({ ...page, workspace_members: null, workspace_customers: null, workspace_visitors: null }));
+    }
+    return apiClient.get('/cdp/summary', { limit: '50', ...pageParams(cursor) });
+  },
+
+  totals(): Promise<WorkspaceTotals> {
+    return apiClient.get('/cdp/summary', { limit: '1' });
   },
 
   lookup(type: string, value: string): Promise<Profile> {

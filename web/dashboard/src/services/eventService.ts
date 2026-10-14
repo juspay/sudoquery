@@ -39,7 +39,7 @@ export const eventService = {
   },
 
   async getEventNamesFromClickHouse(): Promise<string[]> {
-    const query = 'SELECT DISTINCT event_name FROM events_v1 ORDER BY event_name';
+    const query = 'SELECT DISTINCT event_name FROM events_v2 ORDER BY event_name';
     const result = await executeQuery(query);
 
     if (!result.success || !result.response?.data) {
