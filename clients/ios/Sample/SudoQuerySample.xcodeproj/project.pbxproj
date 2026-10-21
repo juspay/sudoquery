@@ -1,0 +1,277 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		5D0A1000000000000000000B /* SudoQuery in Frameworks */ = {isa = PBXBuildFile; productRef = 5D0A1000000000000000000D /* SudoQuery */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		5D0A10000000000000000005 /* SudoQuerySample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SudoQuerySample.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		5D0A10000000000000000006 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		5D0A10000000000000000004 /* SudoQuerySample */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = SudoQuerySample;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		5D0A10000000000000000009 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				5D0A1000000000000000000B /* SudoQuery in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		5D0A10000000000000000002 = {
+			isa = PBXGroup;
+			children = (
+				5D0A10000000000000000004 /* SudoQuerySample */,
+				5D0A10000000000000000006 /* Info.plist */,
+				5D0A10000000000000000003 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		5D0A10000000000000000003 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				5D0A10000000000000000005 /* SudoQuerySample.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		5D0A10000000000000000007 /* SudoQuerySample */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5D0A1000000000000000000F /* Build configuration list for PBXNativeTarget "SudoQuerySample" */;
+			buildPhases = (
+				5D0A10000000000000000008 /* Sources */,
+				5D0A10000000000000000009 /* Frameworks */,
+				5D0A1000000000000000000A /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				5D0A10000000000000000004 /* SudoQuerySample */,
+			);
+			name = SudoQuerySample;
+			packageProductDependencies = (
+				5D0A1000000000000000000D /* SudoQuery */,
+			);
+			productName = SudoQuerySample;
+			productReference = 5D0A10000000000000000005 /* SudoQuerySample.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		5D0A10000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2600;
+				LastUpgradeCheck = 2600;
+				TargetAttributes = {
+					5D0A10000000000000000007 = {
+						CreatedOnToolsVersion = 26.0;
+					};
+				};
+			};
+			buildConfigurationList = 5D0A1000000000000000000E /* Build configuration list for PBXProject "SudoQuerySample" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = 5D0A10000000000000000002;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				5D0A1000000000000000000C /* XCLocalSwiftPackageReference ".." */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 5D0A10000000000000000003 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				5D0A10000000000000000007 /* SudoQuerySample */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5D0A1000000000000000000A /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		5D0A10000000000000000008 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		5D0A10000000000000000010 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		5D0A10000000000000000011 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		5D0A10000000000000000012 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "SudoQuery Sample";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.juspay.sudoquery.sample;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUDOQUERY_ENDPOINT = "http://localhost:3001/v1/events/batch";
+				SUDOQUERY_ORG_ID = "acme-k3x9qa";
+				SUDOQUERY_PROJECT_ID = "ios-demo1";
+				SWIFT_OBJC_BRIDGING_HEADER = "SudoQuerySample/SudoQuerySample-Bridging-Header.h";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		5D0A10000000000000000013 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "SudoQuery Sample";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.juspay.sudoquery.sample;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUDOQUERY_ENDPOINT = "http://localhost:3001/v1/events/batch";
+				SUDOQUERY_ORG_ID = "acme-k3x9qa";
+				SUDOQUERY_PROJECT_ID = "ios-demo1";
+				SWIFT_OBJC_BRIDGING_HEADER = "SudoQuerySample/SudoQuerySample-Bridging-Header.h";
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		5D0A1000000000000000000E /* Build configuration list for PBXProject "SudoQuerySample" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5D0A10000000000000000010 /* Debug */,
+				5D0A10000000000000000011 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5D0A1000000000000000000F /* Build configuration list for PBXNativeTarget "SudoQuerySample" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				5D0A10000000000000000012 /* Debug */,
+				5D0A10000000000000000013 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		5D0A1000000000000000000C /* XCLocalSwiftPackageReference ".." */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "..";
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		5D0A1000000000000000000D /* SudoQuery */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SudoQuery;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 5D0A10000000000000000001 /* Project object */;
+}

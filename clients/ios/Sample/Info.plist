@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>SudoQueryEndpoint</key>
+	<string>$(SUDOQUERY_ENDPOINT)</string>
+	<key>SudoQueryOrgId</key>
+	<string>$(SUDOQUERY_ORG_ID)</string>
+	<key>SudoQueryProjectId</key>
+	<string>$(SUDOQUERY_PROJECT_ID)</string>
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+</dict>
+</plist>
