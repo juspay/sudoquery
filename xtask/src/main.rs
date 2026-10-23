@@ -67,6 +67,7 @@ Tasks:
   db status       Check the database is up and all migrations are applied
   db migration    Apply pending migrations (auto-baselines the pg_schema.sql base)
   db migration add <name>  Create a new migration file
+  db reset [--yes]         Drop all data and re-run every migration from scratch
   e2e dashboard [filter]   End-to-end org/project tests against dashboard-server
                            (needs the compose postgres, redpanda and clickhouse)
   e2e collector [filter]   End-to-end ingestion tests through events-collector

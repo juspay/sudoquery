@@ -29,7 +29,6 @@ CREATE TYPE public.chat_type AS ENUM (
 );
 
 
-ALTER TYPE public.chat_type OWNER TO sudoquery_user;
 
 --
 -- Name: invitation_status; Type: TYPE; Schema: public; Owner: sudoquery_user
@@ -43,7 +42,6 @@ CREATE TYPE public.invitation_status AS ENUM (
 );
 
 
-ALTER TYPE public.invitation_status OWNER TO sudoquery_user;
 
 --
 -- Name: invitation_type; Type: TYPE; Schema: public; Owner: sudoquery_user
@@ -55,7 +53,6 @@ CREATE TYPE public.invitation_type AS ENUM (
 );
 
 
-ALTER TYPE public.invitation_type OWNER TO sudoquery_user;
 
 --
 -- Name: org_role; Type: TYPE; Schema: public; Owner: sudoquery_user
@@ -67,7 +64,6 @@ CREATE TYPE public.org_role AS ENUM (
 );
 
 
-ALTER TYPE public.org_role OWNER TO sudoquery_user;
 
 --
 -- Name: project_role; Type: TYPE; Schema: public; Owner: sudoquery_user
@@ -79,7 +75,6 @@ CREATE TYPE public.project_role AS ENUM (
 );
 
 
-ALTER TYPE public.project_role OWNER TO sudoquery_user;
 
 SET default_tablespace = '';
 
@@ -100,7 +95,6 @@ CREATE TABLE public.chats (
 );
 
 
-ALTER TABLE public.chats OWNER TO sudoquery_user;
 
 --
 -- Name: event_descriptions; Type: TABLE; Schema: public; Owner: sudoquery_user
@@ -116,7 +110,6 @@ CREATE TABLE public.event_descriptions (
 );
 
 
-ALTER TABLE public.event_descriptions OWNER TO sudoquery_user;
 
 --
 -- Name: invitations; Type: TABLE; Schema: public; Owner: sudoquery_user
@@ -136,7 +129,6 @@ CREATE TABLE public.invitations (
 );
 
 
-ALTER TABLE public.invitations OWNER TO sudoquery_user;
 
 --
 -- Name: live_dashboards; Type: TABLE; Schema: public; Owner: sudoquery_user
@@ -157,7 +149,6 @@ CREATE TABLE public.live_dashboards (
 );
 
 
-ALTER TABLE public.live_dashboards OWNER TO sudoquery_user;
 
 --
 -- Name: messages; Type: TABLE; Schema: public; Owner: sudoquery_user
@@ -173,7 +164,6 @@ CREATE TABLE public.messages (
 );
 
 
-ALTER TABLE public.messages OWNER TO sudoquery_user;
 
 --
 -- Name: organization_memberships; Type: TABLE; Schema: public; Owner: sudoquery_user
@@ -189,7 +179,6 @@ CREATE TABLE public.organization_memberships (
 );
 
 
-ALTER TABLE public.organization_memberships OWNER TO sudoquery_user;
 
 --
 -- Name: organizations; Type: TABLE; Schema: public; Owner: sudoquery_user
@@ -204,7 +193,6 @@ CREATE TABLE public.organizations (
 );
 
 
-ALTER TABLE public.organizations OWNER TO sudoquery_user;
 
 --
 -- Name: project_memberships; Type: TABLE; Schema: public; Owner: sudoquery_user
@@ -220,7 +208,6 @@ CREATE TABLE public.project_memberships (
 );
 
 
-ALTER TABLE public.project_memberships OWNER TO sudoquery_user;
 
 --
 -- Name: project_tokens; Type: TABLE; Schema: public; Owner: sudoquery_user
@@ -236,7 +223,6 @@ CREATE TABLE public.project_tokens (
 );
 
 
-ALTER TABLE public.project_tokens OWNER TO sudoquery_user;
 
 --
 -- Name: projects; Type: TABLE; Schema: public; Owner: sudoquery_user
@@ -253,7 +239,6 @@ CREATE TABLE public.projects (
 );
 
 
-ALTER TABLE public.projects OWNER TO sudoquery_user;
 
 --
 -- Name: property_descriptions; Type: TABLE; Schema: public; Owner: sudoquery_user
@@ -271,7 +256,6 @@ CREATE TABLE public.property_descriptions (
 );
 
 
-ALTER TABLE public.property_descriptions OWNER TO sudoquery_user;
 
 --
 -- Name: user_project_consoles; Type: TABLE; Schema: public; Owner: sudoquery_user
@@ -288,7 +272,6 @@ CREATE TABLE public.user_project_consoles (
 );
 
 
-ALTER TABLE public.user_project_consoles OWNER TO sudoquery_user;
 
 --
 -- Name: users; Type: TABLE; Schema: public; Owner: sudoquery_user
@@ -305,7 +288,6 @@ CREATE TABLE public.users (
 );
 
 
-ALTER TABLE public.users OWNER TO sudoquery_user;
 
 --
 -- Name: chats chats_pkey; Type: CONSTRAINT; Schema: public; Owner: sudoquery_user

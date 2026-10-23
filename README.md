@@ -27,6 +27,7 @@ directory. The first invocation compiles the binary; later runs are fast.
 | `db status` | Check the database is up and all migrations are applied |
 | `db migration` | Apply pending migrations |
 | `db migration add <name>` | Create a new migration file |
+| `db reset [--yes]` | Drop all data and re-run every migration from scratch |
 | `e2e dashboard [filter]` | End-to-end org/project tests against dashboard-server |
 | `e2e collector [filter]` | End-to-end ingestion tests through events-collector into Kafka |
 | `e2e kafka-to-s3 [filter]` | End-to-end archiving tests through kafka-to-s3 into S3 |
@@ -185,6 +186,13 @@ migrations: 4 applied, 0 pending
 Creates an empty `migrations/<timestamp>_<name>.sql` scaffold. The name must
 match `^[a-z0-9_]+$`. Write your SQL into it, then apply with
 `cargo xtask db migration`.
+
+### `db reset [--yes]`
+
+Drops and recreates the `public` schema (all tables, data and the
+`_sqlx_migrations` history), then applies every migration from scratch,
+baseline included. Asks for confirmation first unless `--yes`/`-y` is passed.
+Only Postgres is reset — ClickHouse project databases are left alone.
 
 ### Workflow
 
