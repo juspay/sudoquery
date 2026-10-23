@@ -37,8 +37,8 @@ extension WireEvent {
 
 /// Envelope "1.0". Mirrors `CollectorEvent` in crates/events-collector/src/collector_event.rs and
 /// `Event` in clients/typescript/src/types.ts field for field and in the same order, including the
-/// `envelop_version` and `occured_at` spellings. The workspace id goes out as `project_id`, the
-/// collector's name for it.
+/// `envelop_version` and `occured_at` spellings, except that it sends `workspace_id` where they have
+/// `project_id`.
 struct EventV1: WireEvent, Sendable {
     var envelopVersion = "1.0"
     var id: String
@@ -74,7 +74,7 @@ struct EventV1: WireEvent, Sendable {
             ("id", .string(id)),
             ("name", .string(name)),
             ("org_id", .string(orgId)),
-            ("project_id", .string(workspaceId)),
+            ("workspace_id", .string(workspaceId)),
             ("session_id", string(sessionId)),
             ("anon_id", .string(anonId)),
             ("actor_id", string(actorId)),

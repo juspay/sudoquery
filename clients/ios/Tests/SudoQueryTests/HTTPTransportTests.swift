@@ -55,7 +55,7 @@ final class HTTPTransportTests: XCTestCase {
         XCTAssertEqual(request.bodyText, #"{"events":[]}"#)
         XCTAssertEqual(request.header("Content-Type"), "application/json")
         XCTAssertEqual(request.header("x-org-id"), "acme-k3x9qa")
-        XCTAssertEqual(request.header("x-project-id"), "ios-demo1")
+        XCTAssertEqual(request.header("x-workspace-id"), "ios-demo1")
         XCTAssertEqual(request.header("Authorization"), "Bearer secret")
         XCTAssertEqual(request.header("X-Api-Key"), "k")
         let userAgent = try XCTUnwrap(request.header("User-Agent"))
@@ -118,12 +118,12 @@ final class HTTPTransportTests: XCTestCase {
             ],
             userAgent: "sudoquery-ios/0.1.0"
         )
-        XCTAssertEqual(headers.map(\.name), ["content-type", "user-agent", "x-org-id", "x-project-id", "Authorization"])
+        XCTAssertEqual(headers.map(\.name), ["content-type", "user-agent", "x-org-id", "x-workspace-id", "Authorization"])
         XCTAssertEqual(headers.map(\.value), ["application/x-ndjson", "custom", "acme-k3x9qa", "ios-demo1", "Bearer secret"])
     }
 
     func testAnEmptyTokenIsNotSent() {
         let headers = requestHeaders(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", token: "", custom: [:], userAgent: "ua")
-        XCTAssertEqual(headers.map(\.name), ["Content-Type", "User-Agent", "x-org-id", "x-project-id"])
+        XCTAssertEqual(headers.map(\.name), ["Content-Type", "User-Agent", "x-org-id", "x-workspace-id"])
     }
 }

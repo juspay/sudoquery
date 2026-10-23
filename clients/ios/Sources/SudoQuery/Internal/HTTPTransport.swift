@@ -15,7 +15,7 @@ protocol Transport: Sendable {
 }
 
 /// Request headers, with the TS client's precedence: custom headers can replace `Content-Type` and
-/// `User-Agent`, but `x-org-id`, `x-project-id` and the bearer token always win. Names are compared
+/// `User-Agent`, but `x-org-id`, `x-workspace-id` and the bearer token always win. Names are compared
 /// case-insensitively. (hyper-sdk-ios merged headers through a dictionary, so which of two
 /// duplicates won depended on the dictionary's order.)
 func requestHeaders(
@@ -36,7 +36,7 @@ func requestHeaders(
         put(name, value)
     }
     put("x-org-id", orgId)
-    put("x-project-id", workspaceId)
+    put("x-workspace-id", workspaceId)
     if let token, !token.isEmpty {
         put("Authorization", "Bearer \(token)")
     }

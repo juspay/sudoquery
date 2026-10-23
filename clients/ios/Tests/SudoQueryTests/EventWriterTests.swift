@@ -75,7 +75,7 @@ final class EventWriterTests: XCTestCase {
         XCTAssertEqual(text(event, "envelop_version"), "1.0")
         XCTAssertEqual(text(event, "name"), "button_click")
         XCTAssertEqual(text(event, "org_id"), "acme-k3x9qa")
-        XCTAssertEqual(text(event, "project_id"), "ios-demo1")
+        XCTAssertEqual(text(event, "workspace_id"), "ios-demo1")
         XCTAssertEqual(text(event, "source"), "ios")
         XCTAssertEqual(text(event, "occured_at"), "2025-10-09T08:53:20.000Z")
         XCTAssertEqual(canonicalJSON(event["properties"] as Any), #"{"page":"/home"}"#)

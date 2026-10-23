@@ -33,13 +33,13 @@ public struct SudoQueryConfig: Sendable {
     ///   - orgId: The organization id (a server-generated slug such as `acme-store-k3x9qa`), sent as
     ///     `x-org-id` and in every event.
     ///   - workspaceId: The project's id (a server-generated slug): the dashboard's Project ID, which
-    ///     its switcher copies as the workspace ID. Sent as `x-project-id` and in every event as
-    ///     `project_id`, the collector's names for it.
+    ///     its switcher copies as the workspace ID. Sent as `x-workspace-id` and in every event as
+    ///     `workspace_id`.
     ///   - endpoint: The full URL of the collector's batch route, e.g.
     ///     `https://collector.example.com/v1/events/batch`.
     ///   - token: Sent as `Authorization: Bearer <token>`, for a proxy or gateway in front of the collector.
     ///   - headers: Extra headers for every request. They can replace `Content-Type` and `User-Agent`,
-    ///     but not `x-org-id`, `x-project-id` or the bearer token.
+    ///     but not `x-org-id`, `x-workspace-id` or the bearer token.
     ///   - source: The `source` of every event.
     ///   - sessionId: Use this session id for every event instead of SDK-managed sessions.
     ///   - batchSize: Events per batch file and per request, 1 to 500.

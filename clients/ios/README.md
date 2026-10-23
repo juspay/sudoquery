@@ -88,8 +88,8 @@ if (![SQSudoQuery initializeWithConfig:config error:&error]) {
 
 `orgId` and `workspaceId` are the server-generated slugs of the organization and the project. The
 dashboard's project settings show them as Organization ID and Project ID, and its switcher copies
-them as the tenant ID and the workspace ID. The collector reads them from `x-org-id` /
-`x-project-id` and from every event's `org_id` / `project_id`.
+them as the tenant ID and the workspace ID. They are sent as the `x-org-id` / `x-workspace-id`
+headers and as every event's `org_id` / `workspace_id`.
 
 ## Configuration
 
@@ -99,7 +99,7 @@ them as the tenant ID and the workspace ID. The collector reads them from `x-org
 |---|---|---|
 | `endpoint` | required | Full URL of the batch route, e.g. `https://collector.example.com/v1/events/batch`. |
 | `token` | none | Sent as `Authorization: Bearer <token>`, for a proxy or gateway in front of the collector. |
-| `headers` | none | Extra headers. They can't replace `x-org-id`, `x-project-id` or the bearer token. |
+| `headers` | none | Extra headers. They can't replace `x-org-id`, `x-workspace-id` or the bearer token. |
 | `source` | `"ios"` | The `source` of every event. |
 | `sessionId` | managed | Use a fixed session id instead of SDK-managed sessions. |
 | `batchSize` | `50` | Events per batch and request (1 to 500). |
@@ -176,11 +176,12 @@ queue and anonymous id. Extensions get no lifecycle hooks; their events go out o
 All wire types live in one file, [`Sources/SudoQuery/Event.swift`](Sources/SudoQuery/Event.swift).
 `EventV1` mirrors `CollectorEvent` in `crates/events-collector/src/collector_event.rs`, the TS
 client's `Event` and the Android SDK's `EventV1`, including the `envelop_version` and `occured_at`
-spellings. Every key is written out, nulls included, in the same order:
+spellings, except that it has `workspace_id` where they have `project_id`. Every key is written out,
+nulls included, in the same order:
 
 ```json
 {"events":[{"envelop_version":"1.0","id":"3b241101-e2bb-4255-8caf-4136c566a962","name":"button_click",
-"org_id":"acme-k3x9qa","project_id":"ios-demo1","session_id":"9f1c2d3e-…","anon_id":"6e8bc430-…",
+"org_id":"acme-k3x9qa","workspace_id":"ios-demo1","session_id":"9f1c2d3e-…","anon_id":"6e8bc430-…",
 "actor_id":null,"source":"ios","occured_at":"2026-10-14T09:30:12.345Z","properties":{"page":"/checkout"},
 "correlation_id":null,"trace_id":null,"system_properties":null}],
 "system_properties":{"geo":null,"timezone":"Asia/Kolkata"}}
@@ -203,7 +204,7 @@ queued by an older app version are sent exactly as they were written. If the new
 ## Differences from the TypeScript and Android clients
 
 - **Like Android:** `endpoint` is required; events are persisted and retried by status code; the user id persists across restarts and `reset()` exists; sessions end after inactivity; calls before `initialize` are dropped with a warning instead of throwing; properties are always a JSON object.
-- **`workspaceId`** is what the TS and Android clients call `projectId`. It goes out the same way, as `x-project-id` and `project_id`.
+- **The workspace id** goes out as `x-workspace-id` and `workspace_id`. The TS and Android clients call it `projectId` and send `x-project-id` and `project_id`.
 - **`source` defaults to `"ios"`.**
 - **Intervals are seconds**, as `TimeInterval`s.
 - **Property keys are sorted** when a Swift or Objective-C dictionary (which has no order) is turned into JSON; super properties keep the order they were set in.

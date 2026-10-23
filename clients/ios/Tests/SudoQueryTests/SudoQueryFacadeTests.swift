@@ -80,7 +80,7 @@ final class SudoQueryFacadeTests: XCTestCase {
 
         let request = try XCTUnwrap(server.takeRequest(timeout: 10), "no request reached the server")
         XCTAssertEqual(request.header("x-org-id"), "acme-k3x9qa")
-        XCTAssertEqual(request.header("x-project-id"), "ios-demo1")
+        XCTAssertEqual(request.header("x-workspace-id"), "ios-demo1")
         XCTAssertTrue(request.header("User-Agent")?.hasPrefix("sudoquery-ios/") ?? false)
 
         let events = events(request)
