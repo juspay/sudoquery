@@ -23,6 +23,7 @@ import { Plus as AddIcon, X as CloseIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../../components/shared/PageHeader';
 import { ProjectSettingsForm } from '../../components/Settings/ProjectSettingsForm';
+import { CollectorKeysSection } from '../../components/Settings/CollectorKeysSection';
 import { DangerZone } from '../../components/Settings/DangerZone';
 import { MembersTable } from '../../components/Settings/MembersTable';
 import type { MemberRow } from '../../components/Settings/MembersTable';
@@ -228,11 +229,13 @@ export default function ProjectSettingsPage() {
         <Alert severity="info" sx={{ mb: 3 }}>
           {currentProject.status === 'DELETING'
             ? 'This project is being deleted. If deleting it failed, you can retry below.'
-            : 'This project is not set up yet, so it cannot receive events or be queried. Events sent with its token before then are lost.'}
+            : 'This project is not set up yet, so it cannot receive events or be queried. Events sent to it before then are lost.'}
         </Alert>
       )}
 
       <ProjectSettingsForm />
+
+      <CollectorKeysSection key={currentProject.id} />
 
       {/* Members Section */}
       <Box sx={{ mt: 4 }}>

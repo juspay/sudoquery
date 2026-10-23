@@ -118,6 +118,25 @@ CREATE TABLE public.chats (
 ALTER TABLE public.chats OWNER TO hyper_analytics_user;
 
 --
+-- Name: collector_keys; Type: TABLE; Schema: public; Owner: hyper_analytics_user
+--
+
+CREATE TABLE public.collector_keys (
+    kid text NOT NULL,
+    project_id text NOT NULL,
+    hashed_secret bytea NOT NULL,
+    key_name text NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    created_by uuid,
+    expires_at timestamp with time zone,
+    revoked_at timestamp with time zone,
+    CONSTRAINT collector_keys_hashed_secret_check CHECK ((octet_length(hashed_secret) = 32))
+);
+
+
+ALTER TABLE public.collector_keys OWNER TO hyper_analytics_user;
+
+--
 -- Name: event_descriptions; Type: TABLE; Schema: public; Owner: hyper_analytics_user
 --
 
@@ -238,22 +257,6 @@ CREATE TABLE public.project_memberships (
 ALTER TABLE public.project_memberships OWNER TO hyper_analytics_user;
 
 --
--- Name: project_tokens; Type: TABLE; Schema: public; Owner: hyper_analytics_user
---
-
-CREATE TABLE public.project_tokens (
-    id uuid NOT NULL,
-    project_id text NOT NULL,
-    token uuid NOT NULL,
-    name character varying(255),
-    last_used_at timestamp with time zone,
-    created_at timestamp with time zone DEFAULT now()
-);
-
-
-ALTER TABLE public.project_tokens OWNER TO hyper_analytics_user;
-
---
 -- Name: projects; Type: TABLE; Schema: public; Owner: hyper_analytics_user
 --
 
@@ -332,6 +335,14 @@ ALTER TABLE public.users OWNER TO hyper_analytics_user;
 
 ALTER TABLE ONLY public.chats
     ADD CONSTRAINT chats_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: collector_keys collector_keys_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+--
+
+ALTER TABLE ONLY public.collector_keys
+    ADD CONSTRAINT collector_keys_pkey PRIMARY KEY (kid);
 
 
 --
@@ -423,22 +434,6 @@ ALTER TABLE ONLY public.project_memberships
 
 
 --
--- Name: project_tokens project_tokens_pkey; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
---
-
-ALTER TABLE ONLY public.project_tokens
-    ADD CONSTRAINT project_tokens_pkey PRIMARY KEY (id);
-
-
---
--- Name: project_tokens project_tokens_token_key; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
---
-
-ALTER TABLE ONLY public.project_tokens
-    ADD CONSTRAINT project_tokens_token_key UNIQUE (token);
-
-
---
 -- Name: projects projects_id_slug_check; Type: CONSTRAINT; Schema: public; Owner: hyper_analytics_user
 --
 
@@ -506,6 +501,13 @@ CREATE INDEX idx_chats_chat_type ON public.chats USING btree (chat_type);
 --
 
 CREATE INDEX idx_chats_project_user ON public.chats USING btree (project_id, user_id);
+
+
+--
+-- Name: idx_collector_keys_project_id; Type: INDEX; Schema: public; Owner: hyper_analytics_user
+--
+
+CREATE INDEX idx_collector_keys_project_id ON public.collector_keys USING btree (project_id);
 
 
 --
@@ -600,20 +602,6 @@ CREATE INDEX idx_project_memberships_user_id ON public.project_memberships USING
 
 
 --
--- Name: idx_project_tokens_project_id; Type: INDEX; Schema: public; Owner: hyper_analytics_user
---
-
-CREATE INDEX idx_project_tokens_project_id ON public.project_tokens USING btree (project_id);
-
-
---
--- Name: idx_project_tokens_token; Type: INDEX; Schema: public; Owner: hyper_analytics_user
---
-
-CREATE INDEX idx_project_tokens_token ON public.project_tokens USING btree (token);
-
-
---
 -- Name: idx_projects_deleted_at; Type: INDEX; Schema: public; Owner: hyper_analytics_user
 --
 
@@ -700,6 +688,14 @@ ALTER TABLE ONLY public.chats
 
 
 --
+-- Name: collector_keys collector_keys_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
+--
+
+ALTER TABLE ONLY public.collector_keys
+    ADD CONSTRAINT collector_keys_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id);
+
+
+--
 -- Name: event_descriptions event_descriptions_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
 --
 
@@ -769,14 +765,6 @@ ALTER TABLE ONLY public.project_memberships
 
 ALTER TABLE ONLY public.project_memberships
     ADD CONSTRAINT project_memberships_user_id_fkey FOREIGN KEY (user_id) REFERENCES public.users(id) ON DELETE CASCADE;
-
-
---
--- Name: project_tokens project_tokens_project_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: hyper_analytics_user
---
-
-ALTER TABLE ONLY public.project_tokens
-    ADD CONSTRAINT project_tokens_project_id_fkey FOREIGN KEY (project_id) REFERENCES public.projects(id) ON DELETE CASCADE;
 
 
 --

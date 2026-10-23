@@ -215,8 +215,8 @@ postgres redpanda clickhouse opensearch opensearch-init`):
 ### `e2e collector`
 
 Event ingestion through `events-collector` into Kafka. Needs the compose
-redpanda and localstack (`cargo xtask setup redpanda localstack`), or any
-brokers in `KAFKA_BOOTSTRAP_SERVERS` and any KMS at `LOCALSTACK_URL`:
+redpanda and postgres (`cargo xtask setup redpanda postgres`), or any
+brokers in `KAFKA_BOOTSTRAP_SERVERS` and any Postgres in `DATABASE_URL`:
 
 - **Topics:** the collector runs with `KAFKA_TOPIC=e2e-collector-<run>.{org_id}.{project_id}`,
   so every test org/project publishes to its own topic. Cases create those
@@ -226,10 +226,17 @@ brokers in `KAFKA_BOOTSTRAP_SERVERS` and any KMS at `LOCALSTACK_URL`:
   properties, the record key, per-project topic isolation, and that rejected
   requests (header/body mismatch, missing or invalid ids, no bearer token)
   publish nothing.
-- **Authenticated endpoint:** its bearer token is a KMS ciphertext. Cases
-  start their own collector with a token encrypted by a fresh localstack
-  KMS key: the right token publishes and a wrong one gets 401; a ciphertext
-  KMS cannot decrypt is reported by `/v1/health` and refused with 500.
+- **Database:** a throwaway `collector_e2e_<random>` database, migrated
+  from scratch and dropped afterwards, as for `e2e dashboard`. Cases insert
+  their orgs, projects and API keys directly.
+- **Authenticated endpoint:** takes per-project API keys
+  (`Authorization: Bearer sk_<kid>_<secret>`) from `collector_keys`. A key
+  publishes to its own project without org/project headers, marked
+  `authenticated`; events for another project are rejected; malformed,
+  unknown, wrong-secret, revoked and expired keys, and keys of deleted
+  projects or orgs, get 401. A collector with key caching on keeps
+  accepting a revoked key until its cached lookup expires; one without
+  `DATABASE_URL` reports it in `/v1/health` and refuses keys with 500.
 - **Server:** reads the real `crates/events-collector/cac.toml` (via
   `COLLECTOR_CONFIG`).
 

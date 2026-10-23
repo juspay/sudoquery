@@ -19,11 +19,13 @@ uuid = { workspace = true }
 futures = "0.3.34"
 superposition_provider = "0.117.1"
 serde_with = { workspace = true }
-aws-config = { version = "1", features = ["behavior-version-latest"] }
-aws-sdk-kms = "1"
-base64 = "0.22"
 subtle = "2"
-google-cloud-kms = "0.6"
-google-cloud-googleapis = { version = "0.16", features = ["kms"] }
+sqlx = { version = "0.8", default-features = false, features = [
+    "runtime-tokio",
+    "tls-rustls",
+    "postgres",
+    "chrono",
+    "derive",
+] }
 
 [dev-dependencies]

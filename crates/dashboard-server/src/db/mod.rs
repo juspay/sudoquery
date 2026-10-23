@@ -1,4 +1,5 @@
 pub mod chat;
+pub mod collector_key;
 pub mod event_description;
 pub mod invitation;
 pub mod live_dashboard;
@@ -22,6 +23,7 @@ pub fn is_unique_violation(err: &sqlx::Error) -> bool {
 }
 
 pub use chat::*;
+pub use collector_key::*;
 pub use event_description::*;
 pub use invitation::*;
 pub use live_dashboard::*;

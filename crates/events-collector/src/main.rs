@@ -1,14 +1,15 @@
 use std::net::SocketAddr;
 use std::str;
+use std::sync::Arc;
 
 use axum::body::Bytes;
-use axum::extract::ConnectInfo;
+use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use canonical_event::is_valid_slug;
-use event_collector::auth;
+use event_collector::auth::KeyStore;
 use event_collector::config::{
     ServerConfig, get_config_from_local_file, get_default_config_from_local_file,
 };
@@ -30,24 +31,26 @@ const ROUTE_PREFIX: &str = "/v1";
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let server_config = ServerConfig::from_env()?;
+    let keys = Arc::new(KeyStore::from_env()?);
     let addr = server_config.addr;
     let listener = TcpListener::bind(&addr).await?;
 
     println!("listening on http://{}", addr);
     axum::serve(
         listener,
-        app(server_config.accept_cors).into_make_service_with_connect_info::<SocketAddr>(),
+        app(server_config.accept_cors, keys).into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
     Ok(())
 }
 
-fn app(accept_cors: bool) -> Router {
+fn app(accept_cors: bool, keys: Arc<KeyStore>) -> Router {
     let routes = Router::new()
         .route("/health", get(health))
         .route("/events/batch", post(push_batch))
         .route("/events", post(push_events))
-        .route("/events/authenticated", post(push_events_authenticated));
+        .route("/events/authenticated", post(push_events_authenticated))
+        .with_state(keys);
 
     let router = Router::new().nest(ROUTE_PREFIX, routes);
 
@@ -58,7 +61,7 @@ fn app(accept_cors: bool) -> Router {
     }
 }
 
-async fn health() -> Result<Json<HealthResponse>, ApiError> {
+async fn health(State(keys): State<Arc<KeyStore>>) -> Result<Json<HealthResponse>, ApiError> {
     let config = get_default_config_from_local_file().await?;
     let kafka_connector = config.kafka_connector;
 
@@ -71,7 +74,7 @@ async fn health() -> Result<Json<HealthResponse>, ApiError> {
             ApiError::service_unavailable(format!("kafka connection check failed: {}", error))
         })?;
 
-    let authenticated_endpoint = match auth::health_check().await {
+    let authenticated_endpoint = match keys.health_check().await {
         Ok(()) => "ok".to_string(),
         Err(error) => error.to_string(),
     };
@@ -122,23 +125,22 @@ async fn push_events(
     Ok(Json(status))
 }
 
+/// The API key decides the org and project; `x-org-id` / `x-project-id`
+/// are ignored.
 async fn push_events_authenticated(
+    State(keys): State<Arc<KeyStore>>,
     ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Json<CollectionStatus>, ApiError> {
-    auth::validate_bearer_token(&headers).await?;
-    let context = RequestContext::from_headers(&headers, Some(peer_addr))?;
+    let key_scope = keys.authenticate(&headers).await?;
+    let ip_address = client_ip(&headers, Some(peer_addr))?;
     let config =
-        get_config_from_local_file(context.org_id.clone(), context.project_id.clone()).await?;
+        get_config_from_local_file(key_scope.org_id.clone(), key_scope.project_id.clone()).await?;
     let body = request_body_as_str(&body)?;
-    let status = collect_events_authenticated(
-        body,
-        &config,
-        &context.scope(),
-        context.ip_address.as_deref(),
-    )
-    .await?;
+    let status =
+        collect_events_authenticated(body, &config, &key_scope.scope(), ip_address.as_deref())
+            .await?;
 
     Ok(Json(status))
 }
@@ -164,8 +166,7 @@ impl RequestContext {
     fn from_headers(headers: &HeaderMap, peer_addr: Option<SocketAddr>) -> Result<Self, ApiError> {
         let org_id = required_slug_header(headers, ORG_ID_HEADER)?;
         let project_id = required_slug_header(headers, PROJECT_ID_HEADER)?;
-        let ip_address =
-            forwarded_ip(headers)?.or_else(|| peer_addr.map(|addr| addr.ip().to_string()));
+        let ip_address = client_ip(headers, peer_addr)?;
 
         Ok(Self {
             org_id,
@@ -212,6 +213,14 @@ fn validate_slug_header(name: &'static str, value: &str) -> Result<(), ApiError>
             name
         )))
     }
+}
+
+/// The client's IP: from `x-forwarded-for` / `x-real-ip`, else the peer's.
+fn client_ip(
+    headers: &HeaderMap,
+    peer_addr: Option<SocketAddr>,
+) -> Result<Option<String>, ApiError> {
+    Ok(forwarded_ip(headers)?.or_else(|| peer_addr.map(|addr| addr.ip().to_string())))
 }
 
 fn forwarded_ip(headers: &HeaderMap) -> Result<Option<String>, ApiError> {
@@ -275,8 +284,13 @@ impl IntoResponse for ApiError {
             }
             Self::App(AppError::InvalidToken) => (
                 StatusCode::UNAUTHORIZED,
-                "invalid bearer token".to_string(),
+                "invalid api key".to_string(),
                 true,
+            ),
+            Self::App(AppError::Database(error)) => (
+                StatusCode::SERVICE_UNAVAILABLE,
+                format!("api key lookup failed: {}", error),
+                false,
             ),
             Self::App(AppError::MissingCredentials) => (
                 StatusCode::UNAUTHORIZED,

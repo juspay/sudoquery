@@ -6,7 +6,6 @@ pub use super::organization::Entity as Organization;
 pub use super::organization_membership::Entity as OrganizationMembership;
 pub use super::project::Entity as Project;
 pub use super::project_membership::Entity as ProjectMembership;
-pub use super::project_token::Entity as ProjectToken;
 pub use super::property_description::Entity as PropertyDescription;
 pub use super::user::Entity as User;
 pub use super::user_project_console::Entity as UserProjectConsole;

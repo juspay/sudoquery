@@ -29,8 +29,6 @@ pub enum Relation {
     Organization,
     #[sea_orm(has_many = "super::project_membership::Entity")]
     ProjectMembership,
-    #[sea_orm(has_many = "super::project_token::Entity")]
-    ProjectToken,
 }
 
 impl Related<super::organization::Entity> for Entity {
@@ -42,12 +40,6 @@ impl Related<super::organization::Entity> for Entity {
 impl Related<super::project_membership::Entity> for Entity {
     fn to() -> RelationDef {
         Relation::ProjectMembership.def()
-    }
-}
-
-impl Related<super::project_token::Entity> for Entity {
-    fn to() -> RelationDef {
-        Relation::ProjectToken.def()
     }
 }
 

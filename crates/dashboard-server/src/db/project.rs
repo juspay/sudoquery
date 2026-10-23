@@ -39,91 +39,43 @@ pub struct Project {
     pub updated_at: DateTime<Utc>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct ProjectToken {
-    pub id: Uuid,
-    pub project_id: ProjectId,
-    pub token: Uuid,
-    pub name: Option<String>,
-    pub last_used_at: Option<DateTime<Utc>>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ProjectWithToken {
-    pub id: ProjectId,
-    pub organization_id: Option<OrgId>,
-    pub name: String,
-    pub status: ProjectStatus,
-    pub project_token: Uuid,
-    pub created_at: DateTime<Utc>,
-}
-
 pub async fn create_project(
     pool: &PgPool,
     organization_id: Option<&OrgId>,
     name: &str,
-) -> Result<ProjectWithToken, sqlx::Error> {
+) -> Result<Project, sqlx::Error> {
     let mut attempt = 0;
     loop {
         let id = ids::generate_project_id(name);
-        let token_id = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
-        let project_token = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
         attempt += 1;
 
-        let mut tx = pool.begin().await?;
-
-        let inserted = sqlx::query(
+        let inserted = sqlx::query_as::<_, Project>(
             r#"
             INSERT INTO projects (id, organization_id, name, status)
             VALUES ($1, $2, $3, $4)
+            RETURNING id, organization_id, name, timezone, status, deleted_at, created_at, updated_at
             "#,
         )
         .bind(&id)
         .bind(organization_id)
         .bind(name)
         .bind(ProjectStatus::Pending)
-        .execute(&mut *tx)
+        .fetch_one(pool)
         .await;
 
-        if let Err(err) = inserted {
+        match inserted {
             // A unique violation means the random slug suffix collided with
-            // an existing project; dropping `tx` rolls the transaction back
-            // and the loop retries with a fresh suffix.
-            if attempt < MAX_SLUG_INSERT_ATTEMPTS && is_unique_violation(&err) {
+            // an existing project; the loop retries with a fresh suffix.
+            Err(err) if attempt < MAX_SLUG_INSERT_ATTEMPTS && is_unique_violation(&err) => {
                 tracing::warn!(
                     "generated project slug '{}' collided (attempt {}/{}); regenerating suffix",
                     id,
                     attempt,
                     MAX_SLUG_INSERT_ATTEMPTS
                 );
-                continue;
             }
-            return Err(err);
+            result => return result,
         }
-
-        sqlx::query(
-            r#"
-            INSERT INTO project_tokens (id, project_id, token, name)
-            VALUES ($1, $2, $3, 'default')
-            "#,
-        )
-        .bind(token_id)
-        .bind(&id)
-        .bind(project_token)
-        .execute(&mut *tx)
-        .await?;
-
-        tx.commit().await?;
-
-        return Ok(ProjectWithToken {
-            id,
-            organization_id: organization_id.cloned(),
-            name: name.to_string(),
-            status: ProjectStatus::Pending,
-            project_token,
-            created_at: Utc::now(),
-        });
     }
 }
 
@@ -422,116 +374,4 @@ pub async fn start_deleting(
             Some(_) => DeletionStart::BeingProvisioned,
         },
     )
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct ProjectWithTokenRow {
-    pub project_id: ProjectId,
-    pub organization_id: Option<OrgId>,
-    pub project_name: String,
-    pub project_deleted_at: Option<DateTime<Utc>>,
-    pub project_created_at: DateTime<Utc>,
-    pub project_updated_at: DateTime<Utc>,
-    pub token_id: Uuid,
-    pub token: Uuid,
-    pub token_name: Option<String>,
-    pub token_last_used_at: Option<DateTime<Utc>>,
-    pub token_created_at: DateTime<Utc>,
-}
-
-pub async fn get_project_by_token(
-    pool: &PgPool,
-    token: Uuid,
-) -> Result<Option<ProjectWithTokenRow>, sqlx::Error> {
-    sqlx::query_as::<_, ProjectWithTokenRow>(
-        r#"
-        SELECT
-            p.id AS project_id,
-            p.organization_id,
-            p.name AS project_name,
-            p.deleted_at AS project_deleted_at,
-            p.created_at AS project_created_at,
-            p.updated_at AS project_updated_at,
-            pt.id AS token_id,
-            pt.token,
-            pt.name AS token_name,
-            pt.last_used_at AS token_last_used_at,
-            pt.created_at AS token_created_at
-        FROM projects p
-        JOIN project_tokens pt ON p.id = pt.project_id
-        WHERE pt.token = $1 AND p.deleted_at IS NULL
-        "#,
-    )
-    .bind(token)
-    .fetch_optional(pool)
-    .await
-}
-
-pub async fn update_token_last_used(pool: &PgPool, token: Uuid) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        r#"
-        UPDATE project_tokens
-        SET last_used_at = NOW()
-        WHERE token = $1
-        "#,
-    )
-    .bind(token)
-    .execute(pool)
-    .await?;
-
-    Ok(())
-}
-
-pub async fn create_additional_token(
-    pool: &PgPool,
-    project_id: &ProjectId,
-    name: &str,
-) -> Result<ProjectToken, sqlx::Error> {
-    let token_id = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
-    let project_token = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
-
-    sqlx::query_as::<_, ProjectToken>(
-        r#"
-        INSERT INTO project_tokens (id, project_id, token, name)
-        VALUES ($1, $2, $3, $4)
-        RETURNING id, project_id, token, name, last_used_at, created_at
-        "#,
-    )
-    .bind(token_id)
-    .bind(project_id)
-    .bind(project_token)
-    .bind(name)
-    .fetch_one(pool)
-    .await
-}
-
-pub async fn list_tokens_by_project(
-    pool: &PgPool,
-    project_id: &ProjectId,
-) -> Result<Vec<ProjectToken>, sqlx::Error> {
-    sqlx::query_as::<_, ProjectToken>(
-        r#"
-        SELECT id, project_id, token, name, last_used_at, created_at
-        FROM project_tokens
-        WHERE project_id = $1
-        ORDER BY created_at DESC
-        "#,
-    )
-    .bind(project_id)
-    .fetch_all(pool)
-    .await
-}
-
-pub async fn delete_token(pool: &PgPool, token: Uuid) -> Result<(), sqlx::Error> {
-    sqlx::query(
-        r#"
-        DELETE FROM project_tokens
-        WHERE token = $1
-        "#,
-    )
-    .bind(token)
-    .execute(pool)
-    .await?;
-
-    Ok(())
 }

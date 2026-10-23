@@ -133,14 +133,6 @@ services:
     depends_on:
       - redpanda
 
-  # AWS stand-in; the collector e2e suite uses its KMS for the
-  # authenticated endpoint's token.
-  localstack:
-    image: localstack/localstack:4.14.0
-    restart: unless-stopped
-    ports:
-      - "4566:4566"
-
   # Search backend for sink-opensearch and dashboard-server's Discover.
   opensearch:
     image: opensearchproject/opensearch:2.19.1

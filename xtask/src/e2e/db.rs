@@ -14,11 +14,12 @@ pub(crate) struct TestDb {
 }
 
 impl TestDb {
-    pub(crate) async fn create() -> anyhow::Result<Self> {
+    /// Creates `{suite}_e2e_<random>` and migrates it.
+    pub(crate) async fn create(suite: &str) -> anyhow::Result<Self> {
         let admin_url = database_url();
         let mut admin = wait_for_database(&admin_url).await;
 
-        let name = format!("dashboard_e2e_{}", uuid::Uuid::new_v4().simple());
+        let name = format!("{suite}_e2e_{}", uuid::Uuid::new_v4().simple());
         admin
             .execute(format!(r#"CREATE DATABASE "{name}""#).as_str())
             .await

@@ -5,17 +5,23 @@
 //! publishes to its own topic. Cases create those topics up front, send
 //! events over HTTP and read what landed in Kafka.
 //!
-//! The authenticated endpoint's bearer token is a KMS ciphertext the
-//! collector decrypts at runtime; those cases start their own collector
-//! against KMS on the compose localstack.
+//! The authenticated endpoint takes per-project API keys from the
+//! `collector_keys` table. The collector reads them from a throwaway
+//! database on the compose Postgres, where cases insert their orgs,
+//! projects and keys directly.
 
 use std::collections::HashSet;
+use std::time::Duration;
 
 use anyhow::{Context, ensure};
+use canonical_event::CollectorKey;
+use canonical_event::collector_key::{KID_BYTES, SECRET_BYTES};
+use chrono::{DateTime, Utc};
 use serde_json::{Value, json};
+use sqlx::PgPool;
 
+use super::db::TestDb;
 use super::kafka::{Kafka, Record};
-use super::kms::Kms;
 use super::server::Service;
 use super::{Case, Http, Response, run_cases, select};
 
@@ -27,7 +33,8 @@ const CLIENT_COUNTRY: &str = "IN";
 pub(crate) struct Ctx {
     http: Http,
     kafka: Kafka,
-    kms: Kms,
+    pool: PgPool,
+    database_url: String,
     topic_prefix: String,
 }
 
@@ -84,12 +91,78 @@ impl Ctx {
             .await
     }
 
-    /// A collector of its own whose bearer token is `kms_ciphertext`,
-    /// decrypted through the localstack KMS.
-    async fn collector_with_kms(&self, kms_ciphertext: String) -> anyhow::Result<Service> {
-        let mut env = collector_env(&self.kafka, &self.topic_prefix);
-        env.extend(self.kms.collector_env());
-        env.push(("KMS_CIPHERTEXT", kms_ciphertext));
+    /// POSTs `events` to the authenticated endpoint with `key` as the bearer
+    /// token, and no org/project headers.
+    async fn post_authenticated(
+        &self,
+        http: &Http,
+        key: &str,
+        events: &[Value],
+    ) -> anyhow::Result<Response> {
+        let bearer = format!("Bearer {key}");
+        http.post_raw(
+            "/v1/events/authenticated",
+            &[("authorization", &bearer), ("x-forwarded-for", CLIENT_IP)],
+            ndjson(events),
+        )
+        .await
+    }
+
+    /// Records `scope`'s org and project in the database, as the dashboard
+    /// would have.
+    async fn register(&self, scope: &Scope) -> anyhow::Result<()> {
+        sqlx::query("INSERT INTO organizations (id, name) VALUES ($1, $1) ON CONFLICT DO NOTHING")
+            .bind(&scope.org_id)
+            .execute(&self.pool)
+            .await?;
+        sqlx::query(
+            "INSERT INTO projects (id, organization_id, name, status) \
+             VALUES ($1, $2, $1, 'ACTIVE') ON CONFLICT DO NOTHING",
+        )
+        .bind(&scope.project_id)
+        .bind(&scope.org_id)
+        .execute(&self.pool)
+        .await?;
+        Ok(())
+    }
+
+    /// A new API key for `scope`'s project, expiring at `expires_at`;
+    /// returns it in full.
+    async fn create_key(
+        &self,
+        scope: &Scope,
+        expires_at: Option<DateTime<Utc>>,
+    ) -> anyhow::Result<CollectorKey> {
+        self.register(scope).await?;
+        let key = CollectorKey::new(
+            rand::random::<[u8; KID_BYTES]>(),
+            rand::random::<[u8; SECRET_BYTES]>(),
+        );
+        sqlx::query(
+            "INSERT INTO collector_keys (kid, project_id, hashed_secret, key_name, expires_at) \
+             VALUES ($1, $2, $3, 'e2e', $4)",
+        )
+        .bind(key.kid())
+        .bind(&scope.project_id)
+        .bind(key.hashed_secret().as_slice())
+        .bind(expires_at)
+        .execute(&self.pool)
+        .await?;
+        Ok(key)
+    }
+
+    async fn revoke_key(&self, key: &CollectorKey) -> anyhow::Result<()> {
+        sqlx::query("UPDATE collector_keys SET revoked_at = NOW() WHERE kid = $1")
+            .bind(key.kid())
+            .execute(&self.pool)
+            .await?;
+        Ok(())
+    }
+
+    /// A collector of its own with `extra` settings on top of the suite's.
+    async fn collector_with(&self, extra: &[(&'static str, String)]) -> anyhow::Result<Service> {
+        let mut env = collector_env(&self.kafka, &self.topic_prefix, &self.database_url);
+        env.extend_from_slice(extra);
         Service::start(PACKAGE, "SERVER_ADDR", None, &env).await
     }
 }
@@ -102,8 +175,13 @@ fn ndjson(events: &[Value]) -> String {
         .join("\n")
 }
 
-/// What every collector in this suite runs with.
-fn collector_env(kafka: &Kafka, topic_prefix: &str) -> Vec<(&'static str, String)> {
+/// What every collector in this suite runs with. Key lookups are not
+/// cached, so a revocation applies at once.
+fn collector_env(
+    kafka: &Kafka,
+    topic_prefix: &str,
+    database_url: &str,
+) -> Vec<(&'static str, String)> {
     vec![
         (
             "COLLECTOR_CONFIG",
@@ -120,18 +198,22 @@ fn collector_env(kafka: &Kafka, topic_prefix: &str) -> Vec<(&'static str, String
             "KAFKA_TOPIC",
             format!("{topic_prefix}.{{org_id}}.{{project_id}}"),
         ),
+        ("DATABASE_URL", database_url.to_owned()),
+        ("KEY_CACHE_TTL_SECS", "0".to_owned()),
         ("RUST_LOG", "warn".to_owned()),
     ]
 }
 
-/// Builds events-collector, starts it against Kafka, runs the selected cases
-/// and deletes the topics they created. Returns whether every case passed.
+/// Builds events-collector, creates a throwaway database, starts the
+/// collector against Kafka and the database, runs the selected cases and
+/// deletes the topics and database. Returns whether every case passed.
 pub(crate) async fn run(filter: Option<&str>) -> anyhow::Result<bool> {
     let cases = select(CASES, filter)?;
+    // Build first: a failed build exits the process, which must not leak a database.
     Service::build(PACKAGE);
 
     let kafka = Kafka::connect().await?;
-    let kms = Kms::connect().await?;
+    let db = TestDb::create("collector").await?;
     let topic_prefix = format!(
         "e2e-collector-{}",
         &uuid::Uuid::new_v4().simple().to_string()[..8]
@@ -139,10 +221,13 @@ pub(crate) async fn run(filter: Option<&str>) -> anyhow::Result<bool> {
     let ctx = Ctx {
         http: Http::new(String::new()),
         kafka,
-        kms,
+        pool: db.pool.clone(),
+        database_url: db.url.clone(),
         topic_prefix,
     };
-    run_with_infra(ctx, &cases).await
+    let outcome = run_with_infra(ctx, &cases).await;
+    db.drop_database().await?;
+    outcome
 }
 
 async fn run_with_infra(mut ctx: Ctx, cases: &[&Case<Ctx>]) -> anyhow::Result<bool> {
@@ -150,7 +235,7 @@ async fn run_with_infra(mut ctx: Ctx, cases: &[&Case<Ctx>]) -> anyhow::Result<bo
         PACKAGE,
         "SERVER_ADDR",
         None,
-        &collector_env(&ctx.kafka, &ctx.topic_prefix),
+        &collector_env(&ctx.kafka, &ctx.topic_prefix, &ctx.database_url),
     )
     .await;
     let passed = match server {
@@ -161,10 +246,8 @@ async fn run_with_infra(mut ctx: Ctx, cases: &[&Case<Ctx>]) -> anyhow::Result<bo
         Err(err) => Err(err),
     };
     let topics = ctx.kafka.delete_created().await;
-    let keys = ctx.kms.delete_created().await;
     let passed = passed?;
     topics?;
-    keys?;
     Ok(passed)
 }
 
@@ -176,8 +259,11 @@ cases![Ctx:
     requests_without_valid_ids_are_rejected,
     authenticated_endpoint_requires_a_bearer_token,
     health_check_passes_with_a_templated_topic,
-    kms_token_unlocks_the_authenticated_endpoint,
-    undecryptable_kms_token_is_reported_and_refuses_requests,
+    api_key_publishes_to_its_project,
+    api_key_rejects_events_for_another_project,
+    unusable_api_keys_are_refused,
+    revoked_api_key_works_until_its_cached_lookup_expires,
+    api_keys_without_a_database_are_reported_and_refused,
 ];
 
 async fn events_are_published_to_the_project_topic(ctx: &Ctx) -> anyhow::Result<()> {
@@ -360,54 +446,167 @@ async fn health_check_passes_with_a_templated_topic(ctx: &Ctx) -> anyhow::Result
     Ok(())
 }
 
-/// The collector decrypts its bearer token through KMS: the right token
-/// publishes, a wrong one is refused, and health reports the endpoint ok.
-async fn kms_token_unlocks_the_authenticated_endpoint(ctx: &Ctx) -> anyhow::Result<()> {
-    let key_id = ctx.kms.create_key().await?;
-    let token = format!("e2e-token-{}", uuid::Uuid::new_v4().simple());
+/// A key publishes to its own project's topic without org/project headers,
+/// marked authenticated, and health reports the endpoint ok.
+async fn api_key_publishes_to_its_project(ctx: &Ctx) -> anyhow::Result<()> {
+    let health = ctx.http.get("/v1/health", None, &[]).await?;
+    expect_status(&health, 200)?;
+    let health = health.json()?;
+    ensure!(
+        health["authenticated_endpoint"] == "ok",
+        "unexpected health {health}"
+    );
+
+    let scope = ctx.scope().await?;
+    let key = ctx.create_key(&scope, None).await?;
+    let (first_id, first) = scope.event("login");
+    let (second_id, second) = scope.event("purchase");
+
+    let response = ctx
+        .post_authenticated(&ctx.http, &key.to_string(), &[first, second])
+        .await?;
+    expect_status(&response, 200)?;
+    let status = response.json()?;
+    ensure!(
+        status == json!({ "filtered": 0, "collected": 2, "total": 2 }),
+        "unexpected collection status {status}"
+    );
+
+    let records = ctx.kafka.read(&scope.topic, 2).await?;
+    expect_ids(&records, &[&first_id, &second_id])?;
+    for record in &records {
+        let event = &record.value;
+        ensure!(
+            event["authenticated"] == true,
+            "event not marked authenticated: {event}"
+        );
+        ensure!(
+            event["system_properties"]["ip_address"] == CLIENT_IP,
+            "client IP not enriched in {event}"
+        );
+    }
+    Ok(())
+}
+
+/// A key is for one project: events for another project of the same org are
+/// rejected, and nothing is published.
+async fn api_key_rejects_events_for_another_project(ctx: &Ctx) -> anyhow::Result<()> {
+    let shop = ctx.scope().await?;
+    let blog = ctx.scope_in(&shop.org_id).await?;
+    let key = ctx.create_key(&shop, None).await?;
+    ctx.register(&blog).await?;
+    let (_, own) = shop.event("purchase");
+    let (_, foreign) = blog.event("comment");
+
+    let response = ctx
+        .post_authenticated(&ctx.http, &key.to_string(), &[own, foreign])
+        .await?;
+    expect_status(&response, 400)?;
+    ensure!(
+        response.body.contains("event 1"),
+        "error does not name the offending event: {}",
+        response.body
+    );
+
+    expect_ids(&ctx.kafka.read(&shop.topic, 0).await?, &[]).context("shop topic")?;
+    expect_ids(&ctx.kafka.read(&blog.topic, 0).await?, &[]).context("blog topic")
+}
+
+/// Malformed, unknown, wrong-secret, revoked and expired keys, and keys of
+/// deleted projects or orgs, get 401 and publish nothing.
+async fn unusable_api_keys_are_refused(ctx: &Ctx) -> anyhow::Result<()> {
+    let scope = ctx.scope().await?;
+    let valid = ctx.create_key(&scope, None).await?;
+    let revoked = ctx.create_key(&scope, None).await?;
+    ctx.revoke_key(&revoked).await?;
+    let expired = ctx
+        .create_key(&scope, Some(Utc::now() - chrono::Duration::minutes(1)))
+        .await?;
+    let unknown = CollectorKey::new(
+        rand::random::<[u8; KID_BYTES]>(),
+        rand::random::<[u8; SECRET_BYTES]>(),
+    );
+    // The valid key's kid with another secret.
+    let wrong_secret = format!("sk_{}_{}", valid.kid(), "0".repeat(SECRET_BYTES * 2));
+
+    let deleted_project = ctx.scope_in(&scope.org_id).await?;
+    let deleted_project_key = ctx.create_key(&deleted_project, None).await?;
+    sqlx::query("UPDATE projects SET deleted_at = NOW() WHERE id = $1")
+        .bind(&deleted_project.project_id)
+        .execute(&ctx.pool)
+        .await?;
+    let deleted_org = ctx.scope().await?;
+    let deleted_org_key = ctx.create_key(&deleted_org, None).await?;
+    sqlx::query("UPDATE organizations SET deleted_at = NOW() WHERE id = $1")
+        .bind(&deleted_org.org_id)
+        .execute(&ctx.pool)
+        .await?;
+
+    for (label, key, scope) in [
+        ("malformed", "sk_not_a_key".to_owned(), &scope),
+        ("unknown kid", unknown.to_string(), &scope),
+        ("wrong secret", wrong_secret, &scope),
+        ("revoked", revoked.to_string(), &scope),
+        ("expired", expired.to_string(), &scope),
+        (
+            "deleted project",
+            deleted_project_key.to_string(),
+            &deleted_project,
+        ),
+        ("deleted org", deleted_org_key.to_string(), &deleted_org),
+    ] {
+        let (_, event) = scope.event("login");
+        let response = ctx.post_authenticated(&ctx.http, &key, &[event]).await?;
+        expect_status(&response, 401).context(label)?;
+        ensure!(
+            response
+                .headers
+                .get("www-authenticate")
+                .is_some_and(|value| value == "Bearer"),
+            "{label}: missing `WWW-Authenticate: Bearer` on {:?}",
+            response.headers
+        );
+    }
+
+    for scope in [&scope, &deleted_project, &deleted_org] {
+        expect_ids(&ctx.kafka.read(&scope.topic, 0).await?, &[])
+            .with_context(|| format!("topic {}", scope.topic))?;
+    }
+    Ok(())
+}
+
+/// With caching on, a lookup is reused for `KEY_CACHE_TTL_SECS`: a revoked
+/// key keeps working until then, and is refused after.
+async fn revoked_api_key_works_until_its_cached_lookup_expires(ctx: &Ctx) -> anyhow::Result<()> {
+    const TTL: Duration = Duration::from_secs(2);
+
     let collector = ctx
-        .collector_with_kms(ctx.kms.encrypt(&key_id, &token).await?)
+        .collector_with(&[("KEY_CACHE_TTL_SECS", TTL.as_secs().to_string())])
         .await?;
     let result = async {
         let http = Http::new(collector.base_url());
-
-        let health = http.get("/v1/health", None, &[]).await?;
-        expect_status(&health, 200)?;
-        let health = health.json()?;
-        ensure!(
-            health["authenticated_endpoint"] == "ok",
-            "unexpected health {health}"
-        );
-
         let scope = ctx.scope().await?;
-        let (event_id, event) = scope.event("login");
-        let bearer = format!("Bearer {token}");
-        let mut headers = scope.headers();
-        headers.push(("authorization", "Bearer not-the-token"));
-        let response = http
-            .post_raw(
-                "/v1/events/authenticated",
-                &headers,
-                ndjson(std::slice::from_ref(&event)),
-            )
-            .await?;
-        expect_status(&response, 401).context("wrong token")?;
+        let key = ctx.create_key(&scope, None).await?.to_string();
 
-        headers.pop();
-        headers.push(("authorization", bearer.as_str()));
-        let response = http
-            .post_raw("/v1/events/authenticated", &headers, ndjson(&[event]))
-            .await?;
-        expect_status(&response, 200).context("right token")?;
+        let (cached_id, event) = scope.event("login");
+        let response = ctx.post_authenticated(&http, &key, &[event]).await?;
+        expect_status(&response, 200).context("before revocation")?;
 
-        let records = ctx.kafka.read(&scope.topic, 1).await?;
-        expect_ids(&records, &[&event_id])?;
-        ensure!(
-            records[0].value["authenticated"] == true,
-            "event not marked authenticated: {}",
-            records[0].value
-        );
-        Ok(())
+        ctx.revoke_key(&CollectorKey::parse(&key).context("unparsable key")?)
+            .await?;
+        let (revoked_id, event) = scope.event("login");
+        let response = ctx.post_authenticated(&http, &key, &[event]).await?;
+        expect_status(&response, 200).context("revoked, lookup still cached")?;
+
+        tokio::time::sleep(TTL + Duration::from_millis(500)).await;
+        let (_, event) = scope.event("login");
+        let response = ctx.post_authenticated(&http, &key, &[event]).await?;
+        expect_status(&response, 401).context("revoked, cached lookup expired")?;
+
+        expect_ids(
+            &ctx.kafka.read(&scope.topic, 2).await?,
+            &[&cached_id, &revoked_id],
+        )
     }
     .await;
     if result.is_err() {
@@ -416,13 +615,15 @@ async fn kms_token_unlocks_the_authenticated_endpoint(ctx: &Ctx) -> anyhow::Resu
     result
 }
 
-/// A ciphertext KMS cannot decrypt (tampered after encryption): health
-/// reports the error, and the authenticated endpoint refuses every request
-/// without publishing.
-async fn undecryptable_kms_token_is_reported_and_refuses_requests(ctx: &Ctx) -> anyhow::Result<()> {
-    let key_id = ctx.kms.create_key().await?;
-    let ciphertext = ctx.kms.encrypt(&key_id, "e2e-unusable-token").await?;
-    let collector = ctx.collector_with_kms(tamper(&ciphertext)?).await?;
+/// Without `DATABASE_URL`, health reports the configuration error, and the
+/// authenticated endpoint refuses well-formed keys with 500 without
+/// publishing.
+async fn api_keys_without_a_database_are_reported_and_refused(ctx: &Ctx) -> anyhow::Result<()> {
+    // Empty counts as unset, and overrides any `DATABASE_URL` inherited
+    // from this process.
+    let collector = ctx
+        .collector_with(&[("DATABASE_URL", String::new())])
+        .await?;
     let result = async {
         let http = Http::new(collector.base_url());
 
@@ -433,16 +634,15 @@ async fn undecryptable_kms_token_is_reported_and_refuses_requests(ctx: &Ctx) -> 
             .as_str()
             .unwrap_or_default();
         ensure!(
-            health["status"] == "ok" && reported.contains("KMS"),
-            "health does not report the KMS failure: {health}"
+            health["status"] == "ok" && reported.contains("DATABASE_URL"),
+            "health does not report the missing DATABASE_URL: {health}"
         );
 
         let scope = ctx.scope().await?;
+        let key = ctx.create_key(&scope, None).await?;
         let (_, event) = scope.event("login");
-        let mut headers = scope.headers();
-        headers.push(("authorization", "Bearer e2e-unusable-token"));
-        let response = http
-            .post_raw("/v1/events/authenticated", &headers, ndjson(&[event]))
+        let response = ctx
+            .post_authenticated(&http, &key.to_string(), &[event])
             .await?;
         expect_status(&response, 500)?;
         expect_ids(&ctx.kafka.read(&scope.topic, 0).await?, &[])
@@ -455,18 +655,6 @@ async fn undecryptable_kms_token_is_reported_and_refuses_requests(ctx: &Ctx) -> 
 }
 
 // ============ Helpers ============
-
-/// `ciphertext` (base64) with its last byte flipped, which breaks KMS's
-/// authentication of it.
-fn tamper(ciphertext: &str) -> anyhow::Result<String> {
-    use base64::Engine;
-    use base64::engine::general_purpose::STANDARD;
-
-    let mut bytes = STANDARD.decode(ciphertext)?;
-    let last = bytes.last_mut().context("empty ciphertext")?;
-    *last ^= 0xff;
-    Ok(STANDARD.encode(bytes))
-}
 
 fn event_for(org_id: &str, project_id: &str, name: &str) -> (String, Value) {
     let id = uuid::Uuid::new_v4().to_string();

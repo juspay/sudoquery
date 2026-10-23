@@ -5,7 +5,7 @@
 //!   compose Postgres, Redpanda, ClickHouse and OpenSearch, with an
 //!   in-process dummy OIDC provider.
 //! * `collector`: events-collector against the local compose Redpanda and
-//!   localstack (KMS), reading published events back from per-test topics.
+//!   Postgres, reading published events back from per-test topics.
 //! * `kafka-to-s3`: the kafka-to-s3 archiver against the local compose
 //!   Redpanda and MinIO, reading archived objects back from a per-run bucket.
 
@@ -28,7 +28,6 @@ mod dashboard;
 mod db;
 mod kafka;
 mod kafka_to_s3;
-mod kms;
 mod mock;
 mod opensearch;
 mod s3;
@@ -77,8 +76,8 @@ Suites:
               opensearch: `cargo xtask setup postgres redpanda clickhouse
               opensearch opensearch-init`)
   collector   Event ingestion through events-collector into Kafka
-              (needs the compose redpanda and localstack:
-              `cargo xtask setup redpanda localstack`)
+              (needs the compose redpanda and postgres:
+              `cargo xtask setup redpanda postgres`)
   kafka-to-s3 Archiving through kafka-to-s3 from Kafka into S3
               (needs the compose redpanda and minio:
               `cargo xtask setup redpanda minio`)

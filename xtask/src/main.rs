@@ -70,7 +70,7 @@ Tasks:
   e2e dashboard [filter]   End-to-end org/project tests against dashboard-server
                            (needs the compose postgres, redpanda and clickhouse)
   e2e collector [filter]   End-to-end ingestion tests through events-collector
-                           into Kafka (needs the compose redpanda and localstack)
+                           into Kafka (needs the compose redpanda and postgres)
   e2e kafka-to-s3 [filter] End-to-end archiving tests through kafka-to-s3
                            into S3 (needs the compose redpanda and minio)
   ls              List available tasks

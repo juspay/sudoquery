@@ -1,6 +1,7 @@
 pub mod admin;
 pub mod aggregations;
 pub mod chats;
+pub mod collector_keys;
 pub mod event_descriptions;
 pub mod invitations;
 pub mod live_dashboards;

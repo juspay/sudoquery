@@ -14,11 +14,11 @@ pub mod enrichment;
 pub mod kafka_connector;
 pub mod result;
 
-/// The org and project a request is for, from its `x-org-id` and
-/// `x-project-id` headers. Every event in the request must carry the same
-/// ids: the headers choose the request's config (including its Kafka topic),
-/// so an event for another org or project would be published under the
-/// wrong one.
+/// The org and project a request is for: from its `x-org-id` and
+/// `x-project-id` headers, or on the authenticated endpoint from its API
+/// key. Every event in the request must carry the same ids: the scope
+/// chooses the request's config (including its Kafka topic), so an event for
+/// another org or project would be published under the wrong one.
 pub struct Scope<'a> {
     pub org_id: &'a str,
     pub project_id: &'a str,
@@ -32,8 +32,8 @@ fn ensure_in_scope<'e>(
     for (index, event) in events.into_iter().enumerate() {
         if event.org_id != scope.org_id || event.project_id != scope.project_id {
             return Err(result::AppError::ScopeMismatch(format!(
-                "event {index} is for org {:?} / project {:?}, but the request's \
-                 `x-org-id` / `x-project-id` headers are {:?} / {:?}",
+                "event {index} is for org {:?} / project {:?}, but the request is for \
+                 org {:?} / project {:?}",
                 event.org_id, event.project_id, scope.org_id, scope.project_id
             )));
         }

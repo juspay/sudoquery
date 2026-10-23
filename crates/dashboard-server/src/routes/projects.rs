@@ -26,7 +26,6 @@ pub struct CreateProjectResponse {
     pub organization_id: Option<String>,
     pub name: String,
     pub status: ProjectStatus,
-    pub project_token: String,
     pub created_at: String,
 }
 
@@ -61,7 +60,6 @@ pub async fn create_project(
             organization_id: project.organization_id.map(|id| id.to_string()),
             name: project.name,
             status: project.status,
-            project_token: project.project_token.to_string(),
             created_at: project.created_at.to_rfc3339(),
         }),
     ))
@@ -208,39 +206,6 @@ pub async fn update_project(
 
 pub async fn get_timezones() -> Json<Vec<&'static str>> {
     Json(AvailableTimezones.to_vec())
-}
-
-// ============ Get Project Tokens ============
-
-#[derive(Serialize)]
-pub struct ProjectTokenResponse {
-    pub id: String,
-    pub token: String,
-    pub name: Option<String>,
-    pub last_used_at: Option<String>,
-    pub created_at: String,
-}
-
-pub async fn get_project_tokens(
-    State(state): State<AppState>,
-    ProjectAccess { project, .. }: ProjectAccess,
-) -> Result<Json<Vec<ProjectTokenResponse>>, ProjectError> {
-    let tokens = db::list_tokens_by_project(&state.db_pool, &project.id)
-        .await
-        .map_err(|e| ProjectError::Database(e.to_string()))?;
-
-    let response: Vec<ProjectTokenResponse> = tokens
-        .into_iter()
-        .map(|t| ProjectTokenResponse {
-            id: t.id.to_string(),
-            token: t.token.to_string(),
-            name: t.name,
-            last_used_at: t.last_used_at.map(|dt| dt.to_rfc3339()),
-            created_at: t.created_at.to_rfc3339(),
-        })
-        .collect();
-
-    Ok(Json(response))
 }
 
 // ============ Delete Project ============

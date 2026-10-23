@@ -20,8 +20,11 @@ pub enum AppError {
     #[error("Missing or malformed authorization credentials")]
     MissingCredentials,
 
-    #[error("Invalid bearer token")]
+    #[error("Invalid API key")]
     InvalidToken,
+
+    #[error("Database error: {0}")]
+    Database(#[from] sqlx::Error),
 
     /// An event's `org_id` / `project_id` differ from the request headers.
     #[error("{0}")]

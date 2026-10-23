@@ -482,7 +482,18 @@ async fn main() {
         .route("/project", get(routes::projects::get_project))
         .route("/project", patch(routes::projects::update_project))
         .route("/project", delete(routes::projects::delete_project))
-        .route("/project/tokens", get(routes::projects::get_project_tokens))
+        .route(
+            "/project/collector-keys",
+            post(routes::collector_keys::create_collector_key),
+        )
+        .route(
+            "/project/collector-keys",
+            get(routes::collector_keys::list_collector_keys),
+        )
+        .route(
+            "/project/collector-keys/{kid}/revoke",
+            post(routes::collector_keys::revoke_collector_key),
+        )
         .route("/timezones", get(routes::projects::get_timezones))
         // Admin routes (X-Admin-Token)
         .route(

@@ -11,7 +11,6 @@ export interface Project {
   organization_id: string | null;
   name: string;
   status: ProjectStatus;
-  project_token?: string;
   timezone?: string;
   created_at: string;
 }
@@ -35,14 +34,6 @@ interface ProjectMember {
   email: string;
   username: string;
   role: 'project_admin' | 'project_user';
-}
-
-interface ProjectToken {
-  id: string;
-  token: string;
-  name: string;
-  last_used_at: string | null;
-  created_at: string;
 }
 
 interface AddProjectMemberResponse {
@@ -106,12 +97,6 @@ export const projectService = {
 
   async updateMemberRole(organizationId: string, projectId: string, userId: string, role: 'project_admin' | 'project_user'): Promise<void> {
     await apiClient.post(`/project/members/${userId}/role`, { role }, {
-      headers: { ...orgHeader(organizationId), 'X-Project-Id': projectId },
-    });
-  },
-
-  async getProjectTokens(organizationId: string, projectId: string): Promise<Record<string, ProjectToken>> {
-    return apiClient.get('/project/tokens', {}, {
       headers: { ...orgHeader(organizationId), 'X-Project-Id': projectId },
     });
   },

@@ -12,7 +12,7 @@
 use std::time::Duration;
 
 use anyhow::{Context, ensure};
-use canonical_event::is_valid_slug;
+use canonical_event::{CollectorKey, is_valid_slug};
 use serde_json::{Value, json};
 use sqlx::PgPool;
 
@@ -122,7 +122,7 @@ pub(crate) async fn run(filter: Option<&str>) -> anyhow::Result<bool> {
     let kafka = Kafka::connect().await?;
     let clickhouse = ClickHouse::connect().await?;
     let opensearch = OpenSearch::connect().await?;
-    let db = TestDb::create().await?;
+    let db = TestDb::create("dashboard").await?;
     let outcome = run_with_db(&db, kafka, clickhouse, opensearch, &cases).await;
     db.drop_database().await?;
     outcome
@@ -291,6 +291,9 @@ cases![Ctx:
     project_deletion_drops_topic_database_user_and_data_stream,
     project_deletion_and_provisioning_exclude_each_other,
     project_queries_target_the_project_database,
+    collector_keys_are_created_listed_and_revoked,
+    collector_key_creation_validates_input,
+    collector_keys_require_project_access,
 ];
 
 // ============ Organizations ============
@@ -455,9 +458,10 @@ async fn project_creation_starts_pending(ctx: &Ctx) -> anyhow::Result<()> {
         body["organization_id"] == org_id.as_str() && body["status"] == "PENDING",
         "unexpected project {body}"
     );
-    let project_token: uuid::Uuid = str_field(&body, "project_token")?
-        .parse()
-        .context("project_token is not a UUID")?;
+    ensure!(
+        body.get("project_token").is_none(),
+        "project creation still returns a project_token: {body}"
+    );
 
     let (stored_org, status, deleted): (Option<String>, String, bool) = sqlx::query_as(
         "SELECT organization_id, status::text, deleted_at IS NOT NULL FROM projects WHERE id = $1",
@@ -472,18 +476,6 @@ async fn project_creation_starts_pending(ctx: &Ctx) -> anyhow::Result<()> {
     );
     ensure!(status == "PENDING", "stored status {status}");
     ensure!(!deleted, "project is soft-deleted");
-
-    let tokens: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM project_tokens WHERE project_id = $1 AND token = $2",
-    )
-    .bind(project_id)
-    .bind(project_token)
-    .fetch_one(&ctx.pool)
-    .await?;
-    ensure!(
-        tokens == 1,
-        "expected the returned token to be stored, found {tokens}"
-    );
 
     let role = project_role(ctx, &user.sub, project_id).await?;
     ensure!(
@@ -1065,6 +1057,208 @@ async fn project_rejects_client_supplied_id(ctx: &Ctx) -> anyhow::Result<()> {
         .await?;
     expect_client_error(&response)?;
     expect_no_project(ctx, "Picked Id Project").await
+}
+
+// ============ Collector keys ============
+
+/// A created key is returned in full once, stored only as its kid and
+/// `sha256(secret)`, listed without its secret, and revoked idempotently.
+async fn collector_keys_are_created_listed_and_revoked(ctx: &Ctx) -> anyhow::Result<()> {
+    let user = ctx.user("Kim Keymaker");
+    let token = ctx.token(&user);
+    let org_id = create_org(ctx, &token, "Key Org").await?;
+    let project_id = create_pending_project(ctx, &token, &org_id, "Keyed Shop").await?;
+    let headers = [
+        ("X-Organization-Id", org_id.as_str()),
+        ("X-Project-Id", project_id.as_str()),
+    ];
+    let expires_at = "2099-01-01T00:00:00+00:00";
+
+    let response = ctx
+        .post(
+            "/project/collector-keys",
+            Some(&token),
+            &headers,
+            json!({ "key_name": "  Web SDK  ", "expires_at": expires_at }),
+        )
+        .await?;
+    expect_status(&response, 201)?;
+    let created = response.json()?;
+    let key = CollectorKey::parse(str_field(&created, "key")?)
+        .with_context(|| format!("malformed key in {created}"))?;
+    ensure!(
+        created["kid"] == key.kid()
+            && created["key_name"] == "Web SDK"
+            && created["expires_at"] == expires_at
+            && created["revoked_at"].is_null(),
+        "unexpected created key {created}"
+    );
+
+    let (project, hashed_secret, created_by): (String, Vec<u8>, Option<uuid::Uuid>) =
+        sqlx::query_as(
+            "SELECT project_id, hashed_secret, created_by FROM collector_keys WHERE kid = $1",
+        )
+        .bind(key.kid())
+        .fetch_one(&ctx.pool)
+        .await
+        .context("key row missing")?;
+    ensure!(project == project_id, "key stored for project {project}");
+    ensure!(
+        hashed_secret == key.hashed_secret(),
+        "stored hash is not sha256 of the secret"
+    );
+    let creator: uuid::Uuid =
+        sqlx::query_scalar("SELECT id FROM users WHERE keycloak_user_id = $1")
+            .bind(&user.sub)
+            .fetch_one(&ctx.pool)
+            .await?;
+    ensure!(
+        created_by == Some(creator) && created["created_by"] == creator.to_string(),
+        "created_by is {created_by:?}, expected {creator}"
+    );
+
+    let listed = project_get(ctx, &token, &headers, "/project/collector-keys".to_owned()).await?;
+    let listed = listed.as_array().context("key list is not an array")?;
+    ensure!(
+        listed.len() == 1 && listed[0]["kid"] == key.kid(),
+        "unexpected key list {listed:?}"
+    );
+    ensure!(
+        listed[0].get("key").is_none() && listed[0].get("hashed_secret").is_none(),
+        "key list exposes the secret: {listed:?}"
+    );
+
+    let revoke_path = format!("/project/collector-keys/{}/revoke", key.kid());
+    let response = ctx
+        .post(&revoke_path, Some(&token), &headers, json!({}))
+        .await?;
+    expect_status(&response, 200)?;
+    let revoked = response.json()?;
+    let revoked_at = str_field(&revoked, "revoked_at")?.to_owned();
+    ensure!(
+        revoked["kid"] == key.kid(),
+        "unexpected revoked key {revoked}"
+    );
+
+    let response = ctx
+        .post(&revoke_path, Some(&token), &headers, json!({}))
+        .await?;
+    expect_status(&response, 200).context("revoking again")?;
+    ensure!(
+        response.json()?["revoked_at"] == revoked_at.as_str(),
+        "revoking again moved revoked_at"
+    );
+
+    let response = ctx
+        .post(
+            &format!("/project/collector-keys/{}/revoke", "0".repeat(16)),
+            Some(&token),
+            &headers,
+            json!({}),
+        )
+        .await?;
+    expect_status(&response, 404).context("unknown kid")
+}
+
+async fn collector_key_creation_validates_input(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Val Idator"));
+    let org_id = create_org(ctx, &token, "Validating Org").await?;
+    let project_id = create_pending_project(ctx, &token, &org_id, "Validated").await?;
+    let headers = [
+        ("X-Organization-Id", org_id.as_str()),
+        ("X-Project-Id", project_id.as_str()),
+    ];
+
+    for (label, body) in [
+        ("blank name", json!({ "key_name": "   " })),
+        ("long name", json!({ "key_name": "k".repeat(256) })),
+        (
+            "past expiry",
+            json!({ "key_name": "Old", "expires_at": "2000-01-01T00:00:00Z" }),
+        ),
+        (
+            "client-chosen kid",
+            json!({ "key_name": "Mine", "kid": "0123456789abcdef" }),
+        ),
+    ] {
+        let response = ctx
+            .post("/project/collector-keys", Some(&token), &headers, body)
+            .await?;
+        expect_client_error(&response).context(label)?;
+    }
+
+    let keys: i64 = sqlx::query_scalar("SELECT count(*) FROM collector_keys WHERE project_id = $1")
+        .bind(&project_id)
+        .fetch_one(&ctx.pool)
+        .await?;
+    ensure!(keys == 0, "rejected requests still created {keys} keys");
+    Ok(())
+}
+
+/// Outsiders can neither create, list nor revoke a project's keys, and a
+/// project admin cannot revoke another project's key.
+async fn collector_keys_require_project_access(ctx: &Ctx) -> anyhow::Result<()> {
+    let owner = ctx.token(&ctx.user("Key Owner"));
+    let org_id = create_org(ctx, &owner, "Guarded Keys").await?;
+    let project_id = create_pending_project(ctx, &owner, &org_id, "Guarded").await?;
+    let headers = [
+        ("X-Organization-Id", org_id.as_str()),
+        ("X-Project-Id", project_id.as_str()),
+    ];
+    let response = ctx
+        .post(
+            "/project/collector-keys",
+            Some(&owner),
+            &headers,
+            json!({ "key_name": "Owner's" }),
+        )
+        .await?;
+    expect_status(&response, 201)?;
+    let kid = str_field(&response.json()?, "kid")?.to_owned();
+    let revoke_path = format!("/project/collector-keys/{kid}/revoke");
+
+    let outsider = ctx.token(&ctx.user("Key Outsider"));
+    let response = ctx
+        .post(
+            "/project/collector-keys",
+            Some(&outsider),
+            &headers,
+            json!({ "key_name": "Sneaky" }),
+        )
+        .await?;
+    expect_status(&response, 403).context("outsider creates")?;
+    let response = ctx
+        .get("/project/collector-keys", Some(&outsider), &headers)
+        .await?;
+    expect_status(&response, 403).context("outsider lists")?;
+    let response = ctx
+        .post(&revoke_path, Some(&outsider), &headers, json!({}))
+        .await?;
+    expect_status(&response, 403).context("outsider revokes")?;
+
+    // The outsider's own project does not reach the owner's key.
+    let other_org = create_org(ctx, &outsider, "Outsider Org").await?;
+    let other_project = create_pending_project(ctx, &outsider, &other_org, "Elsewhere").await?;
+    let response = ctx
+        .post(
+            &revoke_path,
+            Some(&outsider),
+            &[
+                ("X-Organization-Id", other_org.as_str()),
+                ("X-Project-Id", other_project.as_str()),
+            ],
+            json!({}),
+        )
+        .await?;
+    expect_status(&response, 404).context("revoking through another project")?;
+
+    let revoked: bool =
+        sqlx::query_scalar("SELECT revoked_at IS NOT NULL FROM collector_keys WHERE kid = $1")
+            .bind(&kid)
+            .fetch_one(&ctx.pool)
+            .await?;
+    ensure!(!revoked, "a refused request revoked the key");
+    Ok(())
 }
 
 // ============ Helpers ============

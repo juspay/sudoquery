@@ -1,14 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Box, Typography, TextField, Button, Alert, IconButton, Tooltip, Paper, Divider, Collapse, Link, Autocomplete } from '@mui/material';
-import { Copy, Eye, EyeOff, ChevronDown, ChevronUp, ExternalLink, Loader2 } from 'lucide-react';
-import { Link as RouterLink } from 'react-router-dom';
+import { Box, Typography, TextField, Button, Alert, Autocomplete } from '@mui/material';
 import countriesAndTimezones from 'countries-and-timezones';
 import { useProject } from '../../contexts/ProjectContext';
 import { useOrganization } from '../../contexts/OrganizationContext';
 import { useToast } from '../../contexts/ToastContext';
 import { projectService } from '../../services/projectService';
 import { CopyableId } from '../shared/CopyableId';
-import { colorInk, colorCream2, colorBluePale, fontFamilyMono } from '../../theme/tokens';
+import { colorInk, colorCream2 } from '../../theme/tokens';
 
 interface TimezoneOption {
   value: string;
@@ -43,16 +41,12 @@ const DEFAULT_TIMEZONE = 'Asia/Kolkata';
 export function ProjectSettingsForm() {
   const { currentProject, setCurrentProject, refreshProjects } = useProject();
   const { currentOrganization } = useOrganization();
-  const { showSuccess, showError } = useToast();
+  const { showSuccess } = useToast();
 
   const [name, setName] = useState(currentProject?.name || '');
   const [timezone, setTimezone] = useState<string>(currentProject?.timezone || DEFAULT_TIMEZONE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showToken, setShowToken] = useState(true);
-  const [projectToken, setProjectToken] = useState<string>('');
-  const [loadingToken, setLoadingToken] = useState(false);
-  const [tokenExpanded, setTokenExpanded] = useState(false);
   const [timezoneSearch, setTimezoneSearch] = useState('');
 
   const selectedTimezoneOption = useMemo(() => {
@@ -67,31 +61,6 @@ export function ProjectSettingsForm() {
       opt.country.toLowerCase().includes(search)
     );
   }, [timezoneSearch]);
-
-  // Fetch project token on demand
-  useEffect(() => {
-    if (!currentOrganization?.id || !currentProject?.id) return;
-
-    const fetchToken = async () => {
-      setLoadingToken(true);
-      try {
-        const response = await projectService.getProjectTokens(currentOrganization.id, currentProject.id);
-        // Response is an object with numeric keys, e.g. { "0": { token, name, ... } }
-        const tokens = Object.values(response);
-        if (tokens.length > 0) {
-          setProjectToken(tokens[0].token);
-        }
-      } catch (err) {
-        showError(err instanceof Error ? err.message : 'Failed to fetch project token');
-      } finally {
-        setLoadingToken(false);
-      }
-    };
-
-    fetchToken();
-  }, [currentOrganization?.id, currentProject?.id, showError]);
-
-  if (!currentProject) return null;
 
   // Sync timezone with current project
   useEffect(() => {
@@ -128,13 +97,6 @@ export function ProjectSettingsForm() {
       setError(err instanceof Error ? err.message : 'Failed to update project');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleCopyToken = () => {
-    if (projectToken) {
-      navigator.clipboard.writeText(projectToken);
-      showSuccess('Project token copied to clipboard');
     }
   };
 
@@ -212,95 +174,6 @@ export function ProjectSettingsForm() {
           </Button>
         </Box>
       </Box>
-
-      <Divider sx={{ my: 4 }} />
-
-      {/* Project Token Section - Collapsible */}
-      <Box
-        onClick={() => setTokenExpanded(!tokenExpanded)}
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          cursor: 'pointer',
-          mb: tokenExpanded ? 2 : 0,
-        }}
-      >
-        <Box>
-          <Typography variant="h6" color={colorInk}>
-            API Token
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            Use this token to push events from your backend or SDK.
-          </Typography>
-        </Box>
-        <IconButton size="small" sx={{ color: 'text.secondary' }}>
-          {tokenExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
-        </IconButton>
-      </Box>
-
-      <Collapse in={tokenExpanded}>
-      <Paper elevation={0} sx={{ bgcolor: colorBluePale, p: 3, borderRadius: 2, mb: 3 }}>
-        {currentOrganization?.id ? (
-          <Box sx={{ mb: 2 }}>
-            <CopyableId
-              label="Organization ID"
-              value={currentOrganization.id}
-              helperText="Sent as the X-Organization-Id header in API requests."
-            />
-          </Box>
-        ) : null}
-        <Box sx={{ mb: 2 }}>
-          <CopyableId
-            label="Project ID"
-            value={currentProject.id}
-            helperText="Sent as the X-Project-Id header in API requests."
-          />
-        </Box>
-        <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2 }}>
-          <Typography
-            variant="body2"
-            sx={{
-              fontFamily: fontFamilyMono,
-              fontSize: '0.875rem',
-              wordBreak: 'break-all',
-              flex: 1,
-              color: projectToken ? 'text.primary' : 'text.secondary',
-            }}
-          >
-            {loadingToken ? 'Loading...' : (projectToken ? (showToken ? projectToken : '•'.repeat(projectToken.length)) : 'No token generated yet')}
-          </Typography>
-          {loadingToken && <Loader2 size={16} className="animate-spin" />}
-          <Tooltip title={showToken ? 'Hide Token' : 'Show Token'}>
-            <IconButton
-              onClick={() => setShowToken(!showToken)}
-              disabled={!projectToken || loadingToken}
-              size="small"
-              sx={{ color: 'text.secondary' }}
-            >
-              {showToken ? <EyeOff size={16} /> : <Eye size={16} />}
-            </IconButton>
-          </Tooltip>
-          <Tooltip title="Copy Token">
-            <IconButton
-              onClick={handleCopyToken}
-              disabled={!projectToken || loadingToken}
-              size="small"
-              sx={{ color: 'text.secondary' }}
-            >
-              <Copy size={16} />
-            </IconButton>
-          </Tooltip>
-        </Box>
-
-        <Typography variant="caption" color="text.secondary">
-          <Link component={RouterLink} to="/docs" sx={{ fontWeight: 500, display: 'inline-flex', alignItems: 'center', gap: 0.5 }}>
-            Learn how to integrate SDK
-            <ExternalLink size={12} />
-          </Link>
-        </Typography>
-      </Paper>
-      </Collapse>
     </Box>
   );
 }

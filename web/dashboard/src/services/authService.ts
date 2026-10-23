@@ -36,7 +36,6 @@ interface Project {
   id: string;
   realm_id: string;
   name: string;
-  project_token?: string;
   created_at: string;
 }
 

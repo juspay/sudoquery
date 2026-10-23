@@ -2,8 +2,10 @@ use chrono::SecondsFormat;
 use serde::{Deserialize, Serialize, Serializer};
 use serde_with::skip_serializing_none;
 
+pub mod collector_key;
 pub mod ids;
 
+pub use collector_key::CollectorKey;
 pub use ids::{InvalidSlugError, OrgId, ProjectId, is_valid_slug};
 
 #[derive(Clone, Default, Deserialize, Serialize)]
