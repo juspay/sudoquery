@@ -1,0 +1,89 @@
+# Builds and tests the iOS SDK (clients/ios) when it changes: the unit tests on macOS and on an iOS
+# simulator, two checks that keep the SDK safe to embed, and the sample app, whose Objective-C file
+# compile-checks the SDK's generated header.
+name: iOS client
+
+on:
+  pull_request:
+    paths:
+      - 'clients/ios/**'
+      - '.github/workflows/ios-client.yml'
+  push:
+    branches: [main, sudoquery-monorepo-impl]
+    paths:
+      - 'clients/ios/**'
+      - '.github/workflows/ios-client.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-client-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: macos-15
+    timeout-minutes: 45
+    defaults:
+      run:
+        working-directory: clients/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Toolchain
+        run: xcodebuild -version && swift --version
+
+      - name: Test on macOS
+        run: swift test -Xswiftc -warnings-as-errors
+
+      - name: The SDK never traps
+        run: |
+          if grep -rnE '(^|[^[:alnum:]_])(try!|as!|fatalError\(|precondition(Failure)?\()' Sources; then
+            echo "::error::SDK code must not trap inside the app; handle the failure instead"
+            exit 1
+          fi
+
+      # iOS 13 and 14 apps (Objective-C-only ones in particular) may not ship the Swift
+      # Concurrency back-deployment library, so the SDK uses GCD and locks only.
+      - name: The SDK needs no Swift Concurrency runtime
+        shell: bash
+        run: |
+          symbols=$(find .build/debug/SudoQuery.build -name '*.o' -exec nm -u {} +)
+          if ! grep -q '_swift_retain' <<<"$symbols"; then
+            echo "::error::no SudoQuery object files were read"
+            exit 1
+          fi
+          if grep -E '_swift_task_|_swift_continuation_|_swift_job_' <<<"$symbols"; then
+            echo "::error::SudoQuery references the Swift Concurrency runtime"
+            exit 1
+          fi
+
+      - name: Create a throwaway iPhone simulator
+        id: sim
+        run: |
+          runtimes=$(xcrun simctl list runtimes --json)
+          runtime=$(jq -r '[.runtimes[] | select(.platform == "iOS" and .isAvailable)] | sort_by(.version | split(".") | map(tonumber)) | last | .identifier' <<<"$runtimes")
+          device=$(jq -r --arg runtime "$runtime" '.runtimes[] | select(.identifier == $runtime) | [.supportedDeviceTypes[] | select(.productFamily == "iPhone")] | first | .identifier' <<<"$runtimes")
+          echo "Using $device on $runtime"
+          echo "udid=$(xcrun simctl create sudoquery-ci "$device" "$runtime")" >> "$GITHUB_OUTPUT"
+
+      - name: Test on the iOS simulator
+        run: |
+          xcodebuild test -scheme SudoQuery -destination "id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath .build/xcode -resultBundlePath .build/xcode/ios-tests.xcresult \
+            SWIFT_TREAT_WARNINGS_AS_ERRORS=YES
+          total=$(xcrun xcresulttool get test-results summary --path .build/xcode/ios-tests.xcresult --compact | jq .totalTestCount)
+          echo "iOS tests run: $total"
+          [ "$total" -gt 0 ]
+
+      - name: Build the sample app (Swift and Objective-C)
+        run: |
+          xcodebuild build -project Sample/SudoQuerySample.xcodeproj -scheme SudoQuerySample \
+            -destination 'generic/platform=iOS Simulator' -derivedDataPath .build/sample \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Delete the simulator
+        if: always() && steps.sim.outputs.udid != ''
+        run: xcrun simctl delete "${{ steps.sim.outputs.udid }}"
