@@ -5,7 +5,7 @@ final class SudoQueryConfigTests: XCTestCase {
     private let endpoint = "https://collector.example.com/v1/events/batch"
 
     func testDefaults() throws {
-        let config = try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: endpoint)
+        let config = try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: endpoint)
         XCTAssertEqual(config.source, "ios")
         XCTAssertEqual(config.batchSize, 50)
         XCTAssertEqual(config.flushIntervalMillis, 30_000)
@@ -18,30 +18,30 @@ final class SudoQueryConfigTests: XCTestCase {
     }
 
     func testIntervalsAreSecondsAndZeroTurnsTheTimerOff() throws {
-        let config = try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: endpoint, flushInterval: 0, sessionTimeout: 1.5)
+        let config = try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: endpoint, flushInterval: 0, sessionTimeout: 1.5)
         XCTAssertEqual(config.flushIntervalMillis, 0)
         XCTAssertEqual(config.sessionTimeoutMillis, 1_500)
     }
 
     func testInvalidValuesAreRejected() {
-        assertRejected(.blankOrgId) { try SudoQueryConfig(orgId: " ", projectId: "ios-demo1", endpoint: endpoint) }
-        assertRejected(.blankProjectId) { try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "", endpoint: endpoint) }
-        assertRejected(.invalidEndpoint) { try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: "collector/v1/events/batch") }
-        assertRejected(.invalidEndpoint) { try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: "ftp://c.example.com") }
-        assertRejected(.invalidEndpoint) { try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: "https://") }
-        assertRejected(.invalidEndpoint) { try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: "https://c.example.com/a b") }
-        assertRejected(.batchSizeOutOfRange) { try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: self.endpoint, batchSize: 0) }
-        assertRejected(.batchSizeOutOfRange) { try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: self.endpoint, batchSize: 501) }
-        assertRejected(.invalidFlushInterval) { try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: self.endpoint, flushInterval: -1) }
-        assertRejected(.invalidFlushInterval) { try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: self.endpoint, flushInterval: .nan) }
-        assertRejected(.invalidSessionTimeout) { try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: self.endpoint, sessionTimeout: 0) }
-        assertRejected(.invalidHeader) { try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: self.endpoint, headers: ["X-Bad": "a\r\nInjected: 1"]) }
-        assertRejected(.invalidHeader) { try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: self.endpoint, headers: ["": "x"]) }
+        assertRejected(.blankOrgId) { try SudoQueryConfig(orgId: " ", workspaceId: "ios-demo1", endpoint: endpoint) }
+        assertRejected(.blankWorkspaceId) { try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "", endpoint: endpoint) }
+        assertRejected(.invalidEndpoint) { try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: "collector/v1/events/batch") }
+        assertRejected(.invalidEndpoint) { try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: "ftp://c.example.com") }
+        assertRejected(.invalidEndpoint) { try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: "https://") }
+        assertRejected(.invalidEndpoint) { try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: "https://c.example.com/a b") }
+        assertRejected(.batchSizeOutOfRange) { try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: self.endpoint, batchSize: 0) }
+        assertRejected(.batchSizeOutOfRange) { try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: self.endpoint, batchSize: 501) }
+        assertRejected(.invalidFlushInterval) { try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: self.endpoint, flushInterval: -1) }
+        assertRejected(.invalidFlushInterval) { try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: self.endpoint, flushInterval: .nan) }
+        assertRejected(.invalidSessionTimeout) { try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: self.endpoint, sessionTimeout: 0) }
+        assertRejected(.invalidHeader) { try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: self.endpoint, headers: ["X-Bad": "a\r\nInjected: 1"]) }
+        assertRejected(.invalidHeader) { try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: self.endpoint, headers: ["": "x"]) }
     }
 
     func testErrorsBridgeToNSError() {
         do {
-            _ = try SudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: "ftp://c.example.com")
+            _ = try SudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: "ftp://c.example.com")
             XCTFail("expected an error")
         } catch {
             let nsError = error as NSError

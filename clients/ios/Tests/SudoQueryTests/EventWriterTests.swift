@@ -32,7 +32,7 @@ final class EventWriterTests: XCTestCase {
         store = QueueStore(root: root, maxEventsPerBatch: batchSize, time: time, log: log, maxBytesPerBatch: maxBytes)
         let writer = EventWriter(
             encode: { CanonicalEvent.encode($0) },
-            settings: WriterSettings(orgId: "acme-k3x9qa", projectId: "ios-demo1", source: "ios", fixedSessionId: fixedSessionId, sessionTimeoutMillis: Self.timeout),
+            settings: WriterSettings(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", source: "ios", fixedSessionId: fixedSessionId, sessionTimeoutMillis: Self.timeout),
             store: store,
             identityStore: IdentityStore(url: identityURL, log: log),
             uploads: uploads,

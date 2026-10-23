@@ -5,7 +5,7 @@
 void SQSampleRunObjCSmokeTest(void) {
     // An invalid config is reported as an NSError.
     SQSudoQueryConfig *invalid = [[SQSudoQueryConfig alloc] initWithOrgId:@"acme-k3x9qa"
-                                                                projectId:@"ios-demo1"
+                                                              workspaceId:@"ios-demo1"
                                                                  endpoint:@"ftp://nowhere"];
     NSError *error = nil;
     BOOL started = [SQSudoQuery initializeWithConfig:invalid error:&error];
@@ -14,7 +14,7 @@ void SQSampleRunObjCSmokeTest(void) {
 
     // Every option. The app already initialized the SDK from Swift, so this call is ignored.
     SQSudoQueryConfig *config = [[SQSudoQueryConfig alloc] initWithOrgId:@"acme-k3x9qa"
-                                                               projectId:@"ios-demo1"
+                                                             workspaceId:@"ios-demo1"
                                                                 endpoint:@"http://localhost:3001/v1/events/batch"];
     config.token = nil;
     config.headers = @{};

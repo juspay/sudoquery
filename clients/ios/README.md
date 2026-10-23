@@ -46,7 +46,7 @@ struct MyApp: App {
         do {
             SudoQuery.initialize(try SudoQueryConfig(
                 orgId: "acme-store-k3x9qa",
-                projectId: "acme-store-app-9t2r4m",
+                workspaceId: "acme-store-app-9t2r4m",
                 endpoint: "https://collector.example.com/v1/events/batch"
             ))
         } catch {
@@ -77,7 +77,7 @@ From Objective-C, enable modules (`CLANG_ENABLE_MODULES`, on by default) and use
 
 SQSudoQueryConfig *config =
     [[SQSudoQueryConfig alloc] initWithOrgId:@"acme-store-k3x9qa"
-                                   projectId:@"acme-store-app-9t2r4m"
+                                 workspaceId:@"acme-store-app-9t2r4m"
                                     endpoint:@"https://collector.example.com/v1/events/batch"];
 NSError *error = nil;
 if (![SQSudoQuery initializeWithConfig:config error:&error]) {
@@ -86,12 +86,14 @@ if (![SQSudoQuery initializeWithConfig:config error:&error]) {
 [SQSudoQuery track:@"button_click" properties:@{@"button_id": @"submit"}];
 ```
 
-`orgId` and `projectId` are the server-generated slugs shown in the dashboard's project settings
-(the collector reads them from `x-org-id` / `x-project-id` and from every event).
+`orgId` and `workspaceId` are the server-generated slugs of the organization and the project. The
+dashboard's project settings show them as Organization ID and Project ID, and its switcher copies
+them as the tenant ID and the workspace ID. The collector reads them from `x-org-id` /
+`x-project-id` and from every event's `org_id` / `project_id`.
 
 ## Configuration
 
-`SudoQueryConfig(orgId:projectId:endpoint:…)` takes:
+`SudoQueryConfig(orgId:workspaceId:endpoint:…)` takes:
 
 | Parameter (Swift / Obj-C property) | Default | Description |
 |---|---|---|
@@ -201,6 +203,7 @@ queued by an older app version are sent exactly as they were written. If the new
 ## Differences from the TypeScript and Android clients
 
 - **Like Android:** `endpoint` is required; events are persisted and retried by status code; the user id persists across restarts and `reset()` exists; sessions end after inactivity; calls before `initialize` are dropped with a warning instead of throwing; properties are always a JSON object.
+- **`workspaceId`** is what the TS and Android clients call `projectId`. It goes out the same way, as `x-project-id` and `project_id`.
 - **`source` defaults to `"ios"`.**
 - **Intervals are seconds**, as `TimeInterval`s.
 - **Property keys are sorted** when a Swift or Objective-C dictionary (which has no order) is turned into JSON; super properties keep the order they were set in.
@@ -255,7 +258,7 @@ COLLECTOR_CONFIG=crates/events-collector/cac.toml SERVER_ADDR=0.0.0.0:3001 cargo
   `TEST_RUNNER_SUDOQUERY_LIVE_COLLECTOR_URL=http://localhost:3001/v1/events/batch` and
   `-only-testing:SudoQueryTests/LiveCollectorTests`.
 - **The sample app** (`Sample/SudoQuerySample.xcodeproj`, iOS 16+) talks to
-  `http://localhost:3001/v1/events/batch` as org `acme-k3x9qa`, project `ios-demo1`; change the
+  `http://localhost:3001/v1/events/batch` as org `acme-k3x9qa`, workspace `ios-demo1`; change the
   `SUDOQUERY_*` build settings or set them as environment variables. Its buttons mirror the Android
   sample, and launch arguments drive it from the command line:
   ```sh

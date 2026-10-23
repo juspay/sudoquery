@@ -11,7 +11,7 @@ struct EventInput: Sendable {
     let id: String
     let name: String
     let orgId: String
-    let projectId: String
+    let workspaceId: String
     let sessionId: String?
     let anonId: String
     let actorId: String?
@@ -37,13 +37,14 @@ extension WireEvent {
 
 /// Envelope "1.0". Mirrors `CollectorEvent` in crates/events-collector/src/collector_event.rs and
 /// `Event` in clients/typescript/src/types.ts field for field and in the same order, including the
-/// `envelop_version` and `occured_at` spellings.
+/// `envelop_version` and `occured_at` spellings. The workspace id goes out as `project_id`, the
+/// collector's name for it.
 struct EventV1: WireEvent, Sendable {
     var envelopVersion = "1.0"
     var id: String
     var name: String
     var orgId: String
-    var projectId: String
+    var workspaceId: String
     var sessionId: String?
     var anonId: String
     var actorId: String?
@@ -58,7 +59,7 @@ struct EventV1: WireEvent, Sendable {
         id = input.id
         name = input.name
         orgId = input.orgId
-        projectId = input.projectId
+        workspaceId = input.workspaceId
         sessionId = input.sessionId
         anonId = input.anonId
         actorId = input.actorId
@@ -73,7 +74,7 @@ struct EventV1: WireEvent, Sendable {
             ("id", .string(id)),
             ("name", .string(name)),
             ("org_id", .string(orgId)),
-            ("project_id", .string(projectId)),
+            ("project_id", .string(workspaceId)),
             ("session_id", string(sessionId)),
             ("anon_id", .string(anonId)),
             ("actor_id", string(actorId)),

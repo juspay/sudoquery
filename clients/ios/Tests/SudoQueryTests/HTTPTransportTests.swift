@@ -43,7 +43,7 @@ final class HTTPTransportTests: XCTestCase {
 
     func testPostsTheBodyWithTheGivenHeaders() throws {
         server.enqueue(code: 200, body: #"{"filtered":0,"collected":1,"total":1}"#)
-        let headers = requestHeaders(orgId: "acme-k3x9qa", projectId: "ios-demo1", token: "secret", custom: ["X-Api-Key": "k"], userAgent: defaultUserAgent())
+        let headers = requestHeaders(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", token: "secret", custom: ["X-Api-Key": "k"], userAgent: defaultUserAgent())
 
         let result = try response(transport(headers), Data(#"{"events":[]}"#.utf8))
 
@@ -108,7 +108,7 @@ final class HTTPTransportTests: XCTestCase {
     func testCustomHeadersCantReplaceTheIdsOrTheToken() {
         let headers = requestHeaders(
             orgId: "acme-k3x9qa",
-            projectId: "ios-demo1",
+            workspaceId: "ios-demo1",
             token: "secret",
             custom: [
                 "content-type": "application/x-ndjson",
@@ -123,7 +123,7 @@ final class HTTPTransportTests: XCTestCase {
     }
 
     func testAnEmptyTokenIsNotSent() {
-        let headers = requestHeaders(orgId: "acme-k3x9qa", projectId: "ios-demo1", token: "", custom: [:], userAgent: "ua")
+        let headers = requestHeaders(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", token: "", custom: [:], userAgent: "ua")
         XCTAssertEqual(headers.map(\.name), ["Content-Type", "User-Agent", "x-org-id", "x-project-id"])
     }
 }

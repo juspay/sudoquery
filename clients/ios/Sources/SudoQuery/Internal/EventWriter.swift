@@ -17,7 +17,7 @@ enum Command: Sendable {
 
 struct WriterSettings: Sendable {
     let orgId: String
-    let projectId: String
+    let workspaceId: String
     let source: String?
     let fixedSessionId: String?
     let sessionTimeoutMillis: Int64
@@ -151,7 +151,7 @@ final class EventWriter: @unchecked Sendable {
             id: newId(),
             name: name,
             orgId: settings.orgId,
-            projectId: settings.projectId,
+            workspaceId: settings.workspaceId,
             sessionId: identity.sessionId,
             anonId: identity.anonId,
             actorId: identity.actorId,

@@ -5,7 +5,7 @@ import Foundation
 /// ```swift
 /// let config = try SudoQueryConfig(
 ///     orgId: "acme-store-k3x9qa",
-///     projectId: "acme-store-app-9t2r4m",
+///     workspaceId: "acme-store-app-9t2r4m",
 ///     endpoint: "https://collector.example.com/v1/events/batch"
 /// )
 /// ```
@@ -17,7 +17,7 @@ public struct SudoQueryConfig: Sendable {
     public static let defaultSessionTimeout: TimeInterval = 30 * 60
 
     let orgId: String
-    let projectId: String
+    let workspaceId: String
     let endpoint: String
     let endpointURL: URL
     let token: String?
@@ -32,7 +32,9 @@ public struct SudoQueryConfig: Sendable {
     /// - Parameters:
     ///   - orgId: The organization id (a server-generated slug such as `acme-store-k3x9qa`), sent as
     ///     `x-org-id` and in every event.
-    ///   - projectId: The project id (a server-generated slug), sent as `x-project-id` and in every event.
+    ///   - workspaceId: The project's id (a server-generated slug): the dashboard's Project ID, which
+    ///     its switcher copies as the workspace ID. Sent as `x-project-id` and in every event as
+    ///     `project_id`, the collector's names for it.
     ///   - endpoint: The full URL of the collector's batch route, e.g.
     ///     `https://collector.example.com/v1/events/batch`.
     ///   - token: Sent as `Authorization: Bearer <token>`, for a proxy or gateway in front of the collector.
@@ -50,7 +52,7 @@ public struct SudoQueryConfig: Sendable {
     ///   value is out of range, or a header contains a line break.
     public init(
         orgId: String,
-        projectId: String,
+        workspaceId: String,
         endpoint: String,
         token: String? = nil,
         headers: [String: String] = [:],
@@ -64,8 +66,8 @@ public struct SudoQueryConfig: Sendable {
         guard !orgId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw SudoQueryConfigError(.blankOrgId, "orgId must not be blank")
         }
-        guard !projectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            throw SudoQueryConfigError(.blankProjectId, "projectId must not be blank")
+        guard !workspaceId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw SudoQueryConfigError(.blankWorkspaceId, "workspaceId must not be blank")
         }
         guard let url = Self.parseURL(endpoint) else {
             throw SudoQueryConfigError(.invalidEndpoint, "endpoint is not a valid URL: \(endpoint)")
@@ -90,7 +92,7 @@ public struct SudoQueryConfig: Sendable {
         }
 
         self.orgId = orgId
-        self.projectId = projectId
+        self.workspaceId = workspaceId
         self.endpoint = endpoint
         self.endpointURL = url
         self.token = token
@@ -152,7 +154,7 @@ public struct SudoQueryConfigError: Error, Equatable, CustomStringConvertible, L
 @objc(SQSudoQueryConfigErrorCode)
 public enum SudoQueryConfigErrorCode: Int, Sendable {
     case blankOrgId = 1
-    case blankProjectId = 2
+    case blankWorkspaceId = 2
     case invalidEndpoint = 3
     case batchSizeOutOfRange = 4
     case invalidFlushInterval = 5

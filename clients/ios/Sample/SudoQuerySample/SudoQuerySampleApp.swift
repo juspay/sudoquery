@@ -15,7 +15,7 @@ struct SudoQuerySampleApp: App {
 }
 
 enum SampleSDK {
-    /// The endpoint, org and project come from the SUDOQUERY_* build settings (through Info.plist);
+    /// The endpoint, org and workspace come from the SUDOQUERY_* build settings (through Info.plist);
     /// environment variables of the same names override them, e.g. with
     /// `SIMCTL_CHILD_SUDOQUERY_ENDPOINT=… xcrun simctl launch …`.
     static func start() {
@@ -27,7 +27,7 @@ enum SampleSDK {
         do {
             let config = try SudoQueryConfig(
                 orgId: setting("SUDOQUERY_ORG_ID", "SudoQueryOrgId"),
-                projectId: setting("SUDOQUERY_PROJECT_ID", "SudoQueryProjectId"),
+                workspaceId: setting("SUDOQUERY_WORKSPACE_ID", "SudoQueryWorkspaceId"),
                 endpoint: setting("SUDOQUERY_ENDPOINT", "SudoQueryEndpoint"),
                 batchSize: 20,
                 flushInterval: 10,

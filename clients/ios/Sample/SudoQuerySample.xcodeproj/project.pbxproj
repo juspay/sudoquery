@@ -201,7 +201,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUDOQUERY_ENDPOINT = "http://localhost:3001/v1/events/batch";
 				SUDOQUERY_ORG_ID = "acme-k3x9qa";
-				SUDOQUERY_PROJECT_ID = "ios-demo1";
+				SUDOQUERY_WORKSPACE_ID = "ios-demo1";
 				SWIFT_OBJC_BRIDGING_HEADER = "SudoQuerySample/SudoQuerySample-Bridging-Header.h";
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;
@@ -229,7 +229,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUDOQUERY_ENDPOINT = "http://localhost:3001/v1/events/batch";
 				SUDOQUERY_ORG_ID = "acme-k3x9qa";
-				SUDOQUERY_PROJECT_ID = "ios-demo1";
+				SUDOQUERY_WORKSPACE_ID = "ios-demo1";
 				SWIFT_OBJC_BRIDGING_HEADER = "SudoQuerySample/SudoQuerySample-Bridging-Header.h";
 				SWIFT_VERSION = 6.0;
 				TARGETED_DEVICE_FAMILY = 1;

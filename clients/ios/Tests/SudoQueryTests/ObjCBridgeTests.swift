@@ -28,7 +28,7 @@ final class ObjCBridgeTests: XCTestCase {
     }
 
     private func config(endpoint: String? = nil) -> SQSudoQueryConfig {
-        let config = SQSudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: endpoint ?? server.url().absoluteString)
+        let config = SQSudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: endpoint ?? server.url().absoluteString)
         config.batchSize = 1
         config.flushInterval = 0
         return config
@@ -50,7 +50,7 @@ final class ObjCBridgeTests: XCTestCase {
             XCTAssertNotNil(class_getClassMethod(SQSudoQuery.self, NSSelectorFromString(name)), name)
         }
         let configSelectors = [
-            "initWithOrgId:projectId:endpoint:", "orgId", "projectId", "endpoint", "token", "setToken:", "headers", "setHeaders:",
+            "initWithOrgId:workspaceId:endpoint:", "orgId", "workspaceId", "endpoint", "token", "setToken:", "headers", "setHeaders:",
             "source", "setSource:", "sessionId", "setSessionId:", "batchSize", "setBatchSize:", "flushInterval", "setFlushInterval:",
             "sessionTimeout", "setSessionTimeout:", "debugLogging", "setDebugLogging:",
         ]
@@ -62,7 +62,7 @@ final class ObjCBridgeTests: XCTestCase {
     }
 
     func testObjectiveCDefaultsMatchSwift() {
-        let config = SQSudoQueryConfig(orgId: "acme-k3x9qa", projectId: "ios-demo1", endpoint: "https://c.example.com/v1/events/batch")
+        let config = SQSudoQueryConfig(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", endpoint: "https://c.example.com/v1/events/batch")
         XCTAssertEqual(config.source, SudoQueryConfig.defaultSource)
         XCTAssertEqual(config.batchSize, SudoQueryConfig.defaultBatchSize)
         XCTAssertEqual(config.flushInterval, SudoQueryConfig.defaultFlushInterval)

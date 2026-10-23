@@ -7,7 +7,7 @@ import Foundation
 ///
 /// SQSudoQueryConfig *config =
 ///     [[SQSudoQueryConfig alloc] initWithOrgId:@"acme-store-k3x9qa"
-///                                    projectId:@"acme-store-app-9t2r4m"
+///                                  workspaceId:@"acme-store-app-9t2r4m"
 ///                                     endpoint:@"https://collector.example.com/v1/events/batch"];
 /// NSError *error = nil;
 /// if (![SQSudoQuery initializeWithConfig:config error:&error]) {

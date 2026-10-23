@@ -149,7 +149,7 @@ final class SudoQueryClient: @unchecked Sendable {
         let store = QueueStore(root: root, maxEventsPerBatch: config.batchSize, time: environment.time, log: log)
         let headers = requestHeaders(
             orgId: config.orgId,
-            projectId: config.projectId,
+            workspaceId: config.workspaceId,
             token: config.token,
             custom: config.headers,
             userAgent: defaultUserAgent()
@@ -168,7 +168,7 @@ final class SudoQueryClient: @unchecked Sendable {
             encode: { CanonicalEvent.encode($0) },
             settings: WriterSettings(
                 orgId: config.orgId,
-                projectId: config.projectId,
+                workspaceId: config.workspaceId,
                 source: config.source,
                 fixedSessionId: config.sessionId,
                 sessionTimeoutMillis: config.sessionTimeoutMillis

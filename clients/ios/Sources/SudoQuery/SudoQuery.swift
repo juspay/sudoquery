@@ -28,7 +28,7 @@ public enum SudoQuery {
             }
             let log = state.environment.makeLog(config.debugLogging)
             warnIfNotSlug("orgId", config.orgId, log)
-            warnIfNotSlug("projectId", config.projectId, log)
+            warnIfNotSlug("workspaceId", config.workspaceId, log)
             state.log = log
             state.client = SudoQueryClient.start(config: config, log: log, environment: state.environment)
         }
@@ -132,7 +132,7 @@ public enum SudoQuery {
         return (client, log)
     }
 
-    /// Org and project ids are server-generated slugs (e.g. "acme-store-k3x9qa"). Warn, never
+    /// Org and workspace ids are server-generated slugs (e.g. "acme-store-k3x9qa"). Warn, never
     /// throw, when one deviates, so the misconfiguration is visible without breaking the app.
     private static func warnIfNotSlug(_ field: String, _ value: String, _ log: any SDKLog) {
         guard !isSlug(value) else { return }

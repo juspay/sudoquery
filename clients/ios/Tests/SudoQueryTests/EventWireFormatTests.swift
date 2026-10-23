@@ -6,7 +6,7 @@ final class EventWireFormatTests: XCTestCase {
         id: "3b241101-e2bb-4255-8caf-4136c566a962",
         name: "button_click",
         orgId: "acme-k3x9qa",
-        projectId: "ios-demo1",
+        workspaceId: "ios-demo1",
         sessionId: "9f1c2d3e-4b5a-4c6d-8e7f-0a1b2c3d4e5f",
         anonId: "6e8bc430-9c3a-4d6b-9f3e-2a1b0c9d8e7f",
         actorId: nil,
@@ -62,7 +62,7 @@ final class EventWireFormatTests: XCTestCase {
         let store = QueueStore(root: root, maxEventsPerBatch: 10, time: time, log: log)
         let writer = EventWriter(
             encode: { TestEventV2.encode($0) },
-            settings: WriterSettings(orgId: "acme-k3x9qa", projectId: "ios-demo1", source: "ios", fixedSessionId: nil, sessionTimeoutMillis: 30 * 60 * 1000),
+            settings: WriterSettings(orgId: "acme-k3x9qa", workspaceId: "ios-demo1", source: "ios", fixedSessionId: nil, sessionTimeoutMillis: 30 * 60 * 1000),
             store: store,
             identityStore: IdentityStore(url: root.appendingPathComponent("identity.json"), log: log),
             uploads: FakeUploads(),

@@ -12,7 +12,7 @@ import XCTest
 /// to publish to the `events.acme-k3x9qa.ios-demo1` topic.
 final class LiveCollectorTests: XCTestCase {
     private static let orgId = "acme-k3x9qa"
-    private static let projectId = "ios-demo1"
+    private static let workspaceId = "ios-demo1"
 
     func testEventsAreAcceptedByARealCollector() throws {
         let url = ProcessInfo.processInfo.environment["SUDOQUERY_LIVE_COLLECTOR_URL"] ?? ""
@@ -24,14 +24,14 @@ final class LiveCollectorTests: XCTestCase {
         let time = SystemTime()
         let log = RecordingLog()
         let store = QueueStore(root: root, maxEventsPerBatch: 2, time: time, log: log)
-        let headers = requestHeaders(orgId: Self.orgId, projectId: Self.projectId, token: nil, custom: [:], userAgent: "sudoquery-ios/live-test")
+        let headers = requestHeaders(orgId: Self.orgId, workspaceId: Self.workspaceId, token: nil, custom: [:], userAgent: "sudoquery-ios/live-test")
         let transport = URLSessionTransport(endpoint: endpoint, headers: headers)
         defer { transport.invalidate() }
         let uploader = Uploader(store: store, transport: transport, time: time, scheduler: DispatchWorkScheduler(), log: log)
         defer { uploader.shutdown() }
         let writer = EventWriter(
             encode: { CanonicalEvent.encode($0) },
-            settings: WriterSettings(orgId: Self.orgId, projectId: Self.projectId, source: "ios", fixedSessionId: nil, sessionTimeoutMillis: 30 * 60 * 1000),
+            settings: WriterSettings(orgId: Self.orgId, workspaceId: Self.workspaceId, source: "ios", fixedSessionId: nil, sessionTimeoutMillis: 30 * 60 * 1000),
             store: store,
             identityStore: IdentityStore(url: root.appendingPathComponent("identity.json"), log: log),
             uploads: uploader,

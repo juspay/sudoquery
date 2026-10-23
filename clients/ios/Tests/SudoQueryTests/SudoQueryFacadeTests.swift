@@ -22,7 +22,7 @@ final class SudoQueryFacadeTests: XCTestCase {
     }
 
     private func config(batchSize: Int = 2, endpoint: String? = nil, orgId: String = "acme-k3x9qa") throws -> SudoQueryConfig {
-        try SudoQueryConfig(orgId: orgId, projectId: "ios-demo1", endpoint: endpoint ?? server.url().absoluteString, batchSize: batchSize, flushInterval: 0)
+        try SudoQueryConfig(orgId: orgId, workspaceId: "ios-demo1", endpoint: endpoint ?? server.url().absoluteString, batchSize: batchSize, flushInterval: 0)
     }
 
     private func events(_ request: LocalHTTPServer.Request) -> [[String: Any]] {

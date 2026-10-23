@@ -20,7 +20,7 @@ protocol Transport: Sendable {
 /// duplicates won depended on the dictionary's order.)
 func requestHeaders(
     orgId: String,
-    projectId: String,
+    workspaceId: String,
     token: String?,
     custom: [String: String],
     userAgent: String
@@ -36,7 +36,7 @@ func requestHeaders(
         put(name, value)
     }
     put("x-org-id", orgId)
-    put("x-project-id", projectId)
+    put("x-project-id", workspaceId)
     if let token, !token.isEmpty {
         put("Authorization", "Bearer \(token)")
     }

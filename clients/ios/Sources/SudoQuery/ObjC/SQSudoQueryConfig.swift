@@ -11,7 +11,7 @@ public final class SQSudoQueryConfig: NSObject {
     @objc public static let errorDomain = SudoQueryConfigError.errorDomain
 
     @objc public let orgId: String
-    @objc public let projectId: String
+    @objc public let workspaceId: String
     @objc public let endpoint: String
     @objc public var token: String?
     /// Header names and values, both strings. Typed loosely because Objective-C can't rule out
@@ -26,10 +26,10 @@ public final class SQSudoQueryConfig: NSObject {
     @objc public var sessionTimeout: TimeInterval = SudoQueryConfig.defaultSessionTimeout
     @objc public var debugLogging = false
 
-    @objc(initWithOrgId:projectId:endpoint:)
-    public init(orgId: String, projectId: String, endpoint: String) {
+    @objc(initWithOrgId:workspaceId:endpoint:)
+    public init(orgId: String, workspaceId: String, endpoint: String) {
         self.orgId = orgId
-        self.projectId = projectId
+        self.workspaceId = workspaceId
         self.endpoint = endpoint
         super.init()
     }
@@ -37,7 +37,7 @@ public final class SQSudoQueryConfig: NSObject {
     @available(*, unavailable)
     override public init() {
         orgId = ""
-        projectId = ""
+        workspaceId = ""
         endpoint = ""
         super.init()
     }
@@ -52,7 +52,7 @@ public final class SQSudoQueryConfig: NSObject {
         }
         return try SudoQueryConfig(
             orgId: orgId,
-            projectId: projectId,
+            workspaceId: workspaceId,
             endpoint: endpoint,
             token: token,
             headers: stringHeaders,
