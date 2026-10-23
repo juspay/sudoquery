@@ -30,7 +30,7 @@ export function SchemaProvider({ children }: { children: ReactNode }) {
     try {
       // Fetch all data in parallel
       const [eventNamesResult, schemaCatalogResult, eventDescs, propDescs] = await Promise.all([
-        executeQuery('SELECT DISTINCT event_name FROM events_v1'),
+        executeQuery('SELECT DISTINCT event_name FROM events_v2'),
         executeQuery('SELECT event_name, property FROM event_schema_catalog'),
         eventService.getEventDescriptions(currentProject.id),
         eventService.getPropertyDescriptions(currentProject.id),

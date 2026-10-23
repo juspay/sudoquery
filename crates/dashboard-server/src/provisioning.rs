@@ -1,5 +1,6 @@
 //! Per-project infrastructure: the project's Kafka topic, its ClickHouse
-//! database (`ckh/project.sql`) and user, and its OpenSearch data stream.
+//! database (`ckh/project.sql`) and user, its OpenSearch data stream, and —
+//! when the CDP is configured — its CDP workspace (see `cdp.rs`).
 //! The admin API provisions them after the project is created (see
 //! `routes/admin.rs`); deleting the project drops them all.
 //!
@@ -23,9 +24,10 @@ use rdkafka::error::RDKafkaErrorCode;
 use reqwest::Client;
 use serde::Serialize;
 
-use crate::AppState;
+use crate::cdp::CdpError;
 use crate::clickhouse::{self, ClickHouseError};
 use crate::opensearch::{self, OpenSearchError};
+use crate::{AppState, db};
 
 /// Per-project ClickHouse objects; see the file header for placeholders.
 const PROJECT_SQL: &str = include_str!("../../../ckh/project.sql");
@@ -62,6 +64,8 @@ pub enum ProvisionError {
     ClickHouse(#[from] ClickHouseError),
     #[error(transparent)]
     OpenSearch(#[from] OpenSearchError),
+    #[error(transparent)]
+    Cdp(#[from] CdpError),
     #[error("timed out after {0:?}")]
     TimedOut(Duration),
     #[error("panicked: {0}")]
@@ -72,6 +76,9 @@ pub enum ProvisionError {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum Step {
+    /// The project's CDP workspace (and its organization's tenant). A no-op
+    /// when the CDP isn't configured.
+    CdpWorkspace,
     KafkaTopic,
     ClickhouseDatabase,
     ClickhouseUser,
@@ -79,10 +86,13 @@ pub enum Step {
 }
 
 impl Step {
-    /// The order steps run in: the topic before the database whose Kafka
-    /// table reads it, and the database before the user, so the user never
-    /// sees a half-built database.
-    pub const ALL: [Self; 4] = [
+    /// The order steps run in: the CDP workspace before the topic, so no
+    /// event can reach the topic before the CDP is ready to take it (the CDP
+    /// skips events of projects it doesn't have); the topic before the
+    /// database whose Kafka table reads it, and the database before the
+    /// user, so the user never sees a half-built database.
+    pub const ALL: [Self; 5] = [
+        Self::CdpWorkspace,
         Self::KafkaTopic,
         Self::ClickhouseDatabase,
         Self::ClickhouseUser,
@@ -299,6 +309,26 @@ async fn run_step(
             .opensearch
             .create_data_stream(org.as_ref(), project.as_ref())
             .await?),
+        Step::CdpWorkspace => {
+            let Some(cdp) = &state.cdp else {
+                return Ok(());
+            };
+            // Display names only; the ids are what matter, so a lookup
+            // failure falls back to them.
+            let org_name = db::get_organization_by_id(&state.db_pool, org)
+                .await
+                .ok()
+                .flatten()
+                .map_or_else(|| org.as_ref().to_owned(), |o| o.name);
+            let project_name = db::get_project_by_id(&state.db_pool, project)
+                .await
+                .ok()
+                .flatten()
+                .map_or_else(|| project.as_ref().to_owned(), |p| p.name);
+            Ok(cdp
+                .provision(org, &org_name, project, &project_name)
+                .await?)
+        }
     }
 }
 
@@ -343,7 +373,11 @@ pub async fn deprovision_project(
             .delete_data_stream(org.as_ref(), project.as_ref()),
     )
     .await;
-    database.and(user).and(topic).and(data_stream)
+    let cdp = match &state.cdp {
+        Some(cdp) => bounded(cdp.deprovision(org, project)).await,
+        None => Ok(()),
+    };
+    database.and(user).and(topic).and(data_stream).and(cdp)
 }
 
 fn kafka_admin(
@@ -632,7 +666,14 @@ mod tests {
         let (ran, outcome) = run_failing_at(Some(Step::ClickhouseDatabase)).await;
         let failure = outcome.unwrap_err();
 
-        assert_eq!(ran, [Step::KafkaTopic, Step::ClickhouseDatabase]);
+        assert_eq!(
+            ran,
+            [
+                Step::CdpWorkspace,
+                Step::KafkaTopic,
+                Step::ClickhouseDatabase
+            ]
+        );
         let mut json = serde_json::to_value(&failure).unwrap();
         assert!(json["failed_at"].as_str().is_some());
         json.as_object_mut().unwrap().remove("failed_at");
@@ -641,7 +682,7 @@ mod tests {
             serde_json::json!({
                 "failed_step": "clickhouse_database",
                 "error": "failed to create Kafka topic events.acme: broker down",
-                "completed_steps": ["kafka_topic"],
+                "completed_steps": ["cdp_workspace", "kafka_topic"],
                 "skipped_steps": ["clickhouse_user", "opensearch_index"],
             })
         );
@@ -649,7 +690,10 @@ mod tests {
 
     #[tokio::test]
     async fn a_failure_at_the_first_or_last_step() {
-        let first = run_failing_at(Some(Step::KafkaTopic)).await.1.unwrap_err();
+        let first = run_failing_at(Some(Step::CdpWorkspace))
+            .await
+            .1
+            .unwrap_err();
         assert!(first.completed_steps.is_empty());
         assert_eq!(first.skipped_steps, &Step::ALL[1..]);
 
@@ -657,7 +701,7 @@ mod tests {
             .await
             .1
             .unwrap_err();
-        assert_eq!(last.completed_steps, &Step::ALL[..3]);
+        assert_eq!(last.completed_steps, &Step::ALL[..4]);
         assert!(last.skipped_steps.is_empty());
     }
 
@@ -690,7 +734,10 @@ mod tests {
         assert_eq!(failure.failed_step, Step::ClickhouseDatabase);
         assert!(failure.error.starts_with("panicked: "), "{}", failure.error);
         assert!(failure.error.contains("broken step"), "{}", failure.error);
-        assert_eq!(failure.completed_steps, [Step::KafkaTopic]);
+        assert_eq!(
+            failure.completed_steps,
+            [Step::CdpWorkspace, Step::KafkaTopic]
+        );
     }
 
     #[test]

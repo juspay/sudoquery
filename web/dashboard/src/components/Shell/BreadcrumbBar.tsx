@@ -14,6 +14,10 @@ const ROUTE_LABELS: Record<string, string> = {
   account: 'Account',
   discover: 'Discover',
   sessions: 'Sessions',
+  customers: 'Customers',
+  segments: 'Segments',
+  profiles: 'Profiles',
+  setup: 'Setup',
 };
 
 export function BreadcrumbBar() {

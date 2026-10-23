@@ -422,6 +422,20 @@ impl OpenSearch {
         Ok(facets(total, other, buckets))
     }
 
+    /// Cluster health, as a connectivity probe: `Ok` for any 2xx answer.
+    pub async fn ping(&self) -> Result<(), OpenSearchError> {
+        let (status, text) = self
+            .send(Method::GET, "_cluster/health", self.credentials.as_ref(), None)
+            .await?;
+        match status {
+            200..=299 => Ok(()),
+            _ => Err(OpenSearchError::Upstream {
+                status,
+                body: excerpt(&text).to_owned(),
+            }),
+        }
+    }
+
     /// Creates the data stream the project's events are written to,
     /// treating "already exists" as success. OpenSearch refuses unless an
     /// index template with `data_stream` matches the name

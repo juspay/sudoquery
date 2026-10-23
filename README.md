@@ -27,9 +27,11 @@ directory. The first invocation compiles the binary; later runs are fast.
 | `db status` | Check the database is up and all migrations are applied |
 | `db migration` | Apply pending migrations |
 | `db migration add <name>` | Create a new migration file |
+| `db reset [--yes]` | Drop all data and re-run every migration from scratch |
 | `e2e dashboard [filter]` | End-to-end org/project tests against dashboard-server |
 | `e2e collector [filter]` | End-to-end ingestion tests through events-collector into Kafka |
 | `e2e kafka-to-s3 [filter]` | End-to-end archiving tests through kafka-to-s3 into S3 |
+| `e2e cdp [filter]` | End-to-end Customers (CDP) tests: events → profiles, metrics and segments via `/api/cdp` |
 
 ## Docker compose tasks
 
@@ -109,6 +111,29 @@ The data stream is created and deleted with `OPENSEARCH_ADMIN_USERNAME` and
 `OPENSEARCH_ADMIN_PASSWORD` when set (both or neither), since
 `OPENSEARCH_USERNAME`/`OPENSEARCH_PASSWORD` may only be allowed to read.
 
+### Customers (CDP)
+
+The dashboard's **Customers** page — profiles resolved from a project's
+events, their metrics, and segments — is served by the CDP (the
+`breeze/cdp` repo) through dashboard-server's `/api/cdp/*` routes. An
+organization is a CDP tenant and a project one of its workspaces, under the
+same slugs. With both of these set, provisioning starts with a step
+`cdp_workspace` (the organization's tenant if absent, then the project's
+workspace) — first, so the CDP is ready before any event can reach the
+project's topic — and deleting a project deletes its workspace and CDP data:
+
+```
+CDP_CONTROL_PLANE_URL=http://localhost:8082/cdp/control-plane
+CDP_PLATFORM_TOKEN=local-sudoquery-platform-token   # = the CDP's CDP_PLATFORM_TOKEN
+```
+
+Unset, the step is skipped and `/api/cdp/*` answers 503. dashboard-server
+checks project membership itself and is the only holder of the platform
+token; reads act as the project's workspace (read-only on the CDP side
+too), and segment writes need project or organization admin. The CDP
+consumes the per-project topics directly; see the CDP's
+`deploy/compose/sudoquery.env` for running it next to this stack.
+
 ## Database tasks
 
 Migration tooling for the Postgres dev database, built on the sqlx library —
@@ -161,6 +186,13 @@ migrations: 4 applied, 0 pending
 Creates an empty `migrations/<timestamp>_<name>.sql` scaffold. The name must
 match `^[a-z0-9_]+$`. Write your SQL into it, then apply with
 `cargo xtask db migration`.
+
+### `db reset [--yes]`
+
+Drops and recreates the `public` schema (all tables, data and the
+`_sqlx_migrations` history), then applies every migration from scratch,
+baseline included. Asks for confirmation first unless `--yes`/`-y` is passed.
+Only Postgres is reset — ClickHouse project databases are left alone.
 
 ### Workflow
 
@@ -232,6 +264,26 @@ brokers in `KAFKA_BOOTSTRAP_SERVERS` and any KMS at `LOCALSTACK_URL`:
   KMS cannot decrypt is reported by `/v1/health` and refused with 500.
 - **Server:** reads the real `crates/events-collector/cac.toml` (via
   `COLLECTOR_CONFIG`).
+
+### `e2e cdp`
+
+The Customers integration through dashboard-server, events-collector and a
+CDP running next to this stack (the CDP repo's `deploy/compose/sudoquery.env`;
+`CDP_CONTROL_PLANE_URL` and `CDP_PLATFORM_TOKEN` override its local
+defaults). Needs the compose postgres and redpanda only: ClickHouse and
+OpenSearch are replaced by a stub answering 200, so provisioning and deletion
+run every step but only the CDP workspace and the topic are real.
+
+- **Checks:** provisioning creates the project's CDP workspace; events sent
+  through the collector and straight to the project's topic become one
+  customer profile (a redelivered order counted once) with its metrics, found
+  by email and by device id; a segment fills with that customer; non-members
+  get 403 and anonymous callers 401; a segment write can't target another
+  project; deleting the project deletes its workspace.
+- **Timing:** the shop case waits 65s after declaring its metrics, the
+  CDP's metric-definition refresh, before sending events.
+- **Cleanup:** the run's topics and CDP workspaces. The CDP has no tenant
+  delete, so each run leaves its (empty) organizations' tenants behind.
 
 ### `e2e kafka-to-s3`
 

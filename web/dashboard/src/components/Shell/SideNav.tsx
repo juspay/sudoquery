@@ -7,6 +7,7 @@ import { MessageCircleIcon } from '../icons/animated/MessageCircleIcon';
 import { SearchIcon } from '../icons/animated/SearchIcon';
 import { SettingsIcon } from '../icons/animated/SettingsIcon';
 import { TerminalIcon } from '../icons/animated/TerminalIcon';
+import { UsersIcon } from '../icons/animated/UsersIcon';
 import type { AnimatedIconHandle } from '../icons/animated/types';
 import { useOrganization } from '../../contexts/OrganizationContext';
 import { useSchemaStatus } from '../../contexts/SchemaContext';
@@ -166,6 +167,13 @@ export function SideNav() {
         label="Discover"
         isAdmin={isAdmin}
         isActive={location.pathname.startsWith('/app/discover')}
+      />
+      <NavItem
+        to="/app/customers"
+        icon={UsersIcon}
+        label="Customers"
+        isAdmin={isAdmin}
+        isActive={location.pathname.startsWith('/app/customers')}
       />
       <NavItem
         to="/app/sql-console"

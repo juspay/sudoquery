@@ -1,5 +1,6 @@
 pub mod admin;
 pub mod aggregations;
+pub mod cdp;
 pub mod chats;
 pub mod event_descriptions;
 pub mod invitations;

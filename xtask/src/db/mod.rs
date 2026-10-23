@@ -1,6 +1,7 @@
 //! `cargo xtask db` — database migration management for the dev database.
 
 mod migrate;
+mod reset;
 mod status;
 
 use std::env;
@@ -28,6 +29,9 @@ pub fn main(args: Vec<String>) {
 async fn dispatch(args: &[String]) -> anyhow::Result<()> {
     match args.first().map(String::as_str) {
         Some("status") => status::run().await,
+        Some("reset") => {
+            reset::run(args[1..].iter().any(|arg| arg == "--yes" || arg == "-y")).await
+        }
         Some("migration") => match args.get(1).map(String::as_str) {
             None => migrate::run().await,
             Some("add") => match args.get(2).map(String::as_str) {
@@ -47,7 +51,8 @@ fn usage() -> ! {
 Commands:
   status                Check the database is up and all migrations are applied
   migration             Apply pending migrations (auto-baselines the pg_schema.sql base)
-  migration add <name>  Create a new migration file"
+  migration add <name>  Create a new migration file
+  reset [--yes]         Drop all data and re-run every migration from scratch"
     );
     std::process::exit(2);
 }

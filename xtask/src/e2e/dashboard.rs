@@ -634,7 +634,7 @@ async fn project_provisioning_records_the_failed_step(ctx: &Ctx) -> anyhow::Resu
     let error = &outcome["provisioning_error"];
     ensure!(
         error["failed_step"] == "clickhouse_database"
-            && error["completed_steps"] == json!(["kafka_topic"])
+            && error["completed_steps"] == json!(["cdp_workspace", "kafka_topic"])
             && error["skipped_steps"] == json!(["clickhouse_user", "opensearch_index"])
             && error["error"].as_str().is_some_and(|e| !e.is_empty())
             && error["failed_at"].is_string(),
