@@ -3,8 +3,8 @@ import { apiClient } from './apiClient';
 type AccessLevel =
   | 'org_admin'
   | 'org_user'
-  | 'project_project_admin'
-  | 'project_project_user';
+  | 'workspace_workspace_admin'
+  | 'workspace_workspace_user';
 
 export interface Organization {
   id: string;

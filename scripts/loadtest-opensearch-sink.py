@@ -47,7 +47,7 @@ ORG_BASES = [
     "pied-piper", "duff-beer", "bluth-company", "dunder-paper",
     "paper-street-soap", "pawnee-parks", "los-pollos", "bubba-gump",
 ]
-PROJECT_BASES = [
+WORKSPACE_BASES = [
     "web-checkout", "mobile-app", "payments-api", "admin-console",
     "marketing-site", "data-pipeline", "ios-sdk", "android-sdk",
     "growth-experiments", "loyalty-program",
@@ -128,7 +128,7 @@ def dead_letter_sources(topic, count):
         sources.append((headers.get("dlq.source.partition"), headers.get("dlq.source.offset")))
 
 
-def make_events(count, bad_ratio, orgs, projects, rng):
+def make_events(count, bad_ratio, orgs, workspaces, rng):
     start = datetime.now(timezone.utc) - timedelta(hours=1)
     events = []
     for i in range(count):
@@ -139,7 +139,7 @@ def make_events(count, bad_ratio, orgs, projects, rng):
             "id": str(uuid.UUID(int=rng.getrandbits(128), version=4)),
             "name": rng.choice(["page_viewed", "checkout_viewed", "payment_initiated"]),
             "org_id": BAD_ORG if bad else rng.choice(orgs),
-            "project_id": rng.choice(projects),
+            "workspace_id": rng.choice(workspaces),
             "anon_id": anon,
             "occured_at": (start + timedelta(milliseconds=i)).isoformat().replace("+00:00", "Z"),
             # Properties change shape between events on purpose.
@@ -177,7 +177,7 @@ def write_cac(path, names, port):
 
 [dimensions]
 org_id = {{ position = 1, schema = {{ type = "string" }} }}
-project_id = {{ position = 2, schema = {{ type = "string" }} }}
+workspace_id = {{ position = 2, schema = {{ type = "string" }} }}
 """
     )
 
@@ -268,7 +268,7 @@ def main():
     run = uuid.uuid4().hex[:8]
     rng = random.Random(args.seed)
     orgs = [slug(base, rng) for base in ORG_BASES]
-    projects = [slug(base, rng) for base in PROJECT_BASES]
+    workspaces = [slug(base, rng) for base in WORKSPACE_BASES]
     names = {
         "topic": f"lt-{run}",
         "dlq": f"lt-{run}.dlq",
@@ -282,7 +282,7 @@ def main():
     rpk("topic", "create", names["topic"], "-p", str(args.partitions))
     rpk("topic", "create", names["dlq"], "-p", "1")
 
-    events = make_events(args.events, args.bad, orgs, projects, rng)
+    events = make_events(args.events, args.bad, orgs, workspaces, rng)
     chunks, resent = plan_chunks(events, args.duplicates, 60, rng)
     bad_count = sum(1 for _, _, bad in events if bad)
     sent = sum(len(chunk) for chunk in chunks)

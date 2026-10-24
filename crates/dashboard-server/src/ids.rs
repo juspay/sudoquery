@@ -1,13 +1,13 @@
-//! Server-side generation of org and project slug identifiers.
+//! Server-side generation of org and workspace slug identifiers.
 //!
-//! [`OrgId`] and [`ProjectId`] (in `canonical-event`) validate slugs but
+//! [`OrgId`] and [`WorkspaceId`] (in `canonical-event`) validate slugs but
 //! cannot mint them, so this module is the single place that creates new
 //! ones. A generated slug is `{base}-{suffix}`: `base` is the slugified
 //! name (at most [`MAX_BASE_LEN`] chars), `suffix` is [`SUFFIX_LEN`]
 //! random `[a-z0-9]` chars, keeping the total within the 30-char limit
 //! enforced by `canonical_event::is_valid_slug`.
 
-use canonical_event::{InvalidSlugError, OrgId, ProjectId};
+use canonical_event::{InvalidSlugError, OrgId, WorkspaceId};
 use rand::{Rng, rng};
 
 /// Longest base derived from a name; leaves room for `-` + suffix.
@@ -19,7 +19,7 @@ const SUFFIX_CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
 /// Base used when a name yields no usable characters.
 const ORG_FALLBACK_BASE: &str = "org";
 /// Base used when a name yields no usable characters.
-const PROJECT_FALLBACK_BASE: &str = "proj";
+const WORKSPACE_FALLBACK_BASE: &str = "workspace";
 
 /// Generates a new organization id from `name`.
 pub fn generate_org_id(name: &str) -> OrgId {
@@ -30,12 +30,12 @@ pub fn generate_org_id(name: &str) -> OrgId {
     )
 }
 
-/// Generates a new project id from `name`.
-pub fn generate_project_id(name: &str) -> ProjectId {
+/// Generates a new workspace id from `name`.
+pub fn generate_workspace_id(name: &str) -> WorkspaceId {
     generate(
         name,
-        PROJECT_FALLBACK_BASE,
-        <ProjectId as TryFrom<String>>::try_from,
+        WORKSPACE_FALLBACK_BASE,
+        <WorkspaceId as TryFrom<String>>::try_from,
     )
 }
 

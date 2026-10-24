@@ -8,7 +8,7 @@ use serde_json::Value;
 
 use crate::{
     AppState, db,
-    middleware::ProjectAccess,
+    middleware::WorkspaceAccess,
     opensearch::{CursorPage, Event, OpenSearchError, QueryRequest, Scope, SortOrder},
 };
 
@@ -29,10 +29,10 @@ pub struct CountResponse {
 
 pub async fn search(
     State(state): State<AppState>,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
     Json(req): Json<QueryRequest>,
 ) -> Result<Json<CursorPage<Event>>, SearchError> {
-    let scope = project_scope(&project)?;
+    let scope = workspace_scope(&workspace)?;
 
     let page = state
         .opensearch
@@ -46,10 +46,10 @@ pub async fn search(
 
 pub async fn count(
     State(state): State<AppState>,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
     Json(req): Json<CountRequest>,
 ) -> Result<Json<CountResponse>, SearchError> {
-    let scope = project_scope(&project)?;
+    let scope = workspace_scope(&workspace)?;
 
     let count = state.opensearch.count(&scope, req.query.as_ref()).await?;
 
@@ -60,10 +60,10 @@ pub async fn count(
 
 pub async fn get_doc(
     State(state): State<AppState>,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
     Path(doc_id): Path<String>,
 ) -> Result<Json<Event>, SearchError> {
-    let scope = project_scope(&project)?;
+    let scope = workspace_scope(&workspace)?;
 
     let event = state
         .opensearch
@@ -76,10 +76,10 @@ pub async fn get_doc(
 
 // ============ Helper ============
 
-/// The events a project may read. Events are stored per organization, so a
-/// project outside any organization has none.
-pub fn project_scope(project: &db::Project) -> Result<Scope, SearchError> {
-    Scope::for_project(project).ok_or(SearchError::NoOrganization)
+/// The events a workspace may read. Events are stored per organization, so a
+/// workspace outside any organization has none.
+pub fn workspace_scope(workspace: &db::Workspace) -> Result<Scope, SearchError> {
+    Scope::for_workspace(workspace).ok_or(SearchError::NoOrganization)
 }
 
 // ============ Errors ============
@@ -102,7 +102,7 @@ impl axum::response::IntoResponse for SearchError {
         let (status, message) = match self {
             SearchError::NoOrganization => (
                 StatusCode::BAD_REQUEST,
-                "Project does not belong to an organization".to_string(),
+                "Workspace does not belong to an organization".to_string(),
             ),
             SearchError::NotFound => (StatusCode::NOT_FOUND, "Document not found".to_string()),
             SearchError::OpenSearch(OpenSearchError::Request(error)) => {

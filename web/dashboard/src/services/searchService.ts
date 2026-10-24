@@ -38,16 +38,16 @@ interface PageRequest {
   order?: SortOrder;
 }
 
-/** Identifies the project a request is for, and lets a stale request be cancelled. */
+/** Identifies the workspace a request is for, and lets a stale request be cancelled. */
 export interface SearchContext {
   organizationId: string;
-  projectId: string;
+  workspaceId: string;
   signal?: AbortSignal;
 }
 
-function options({ organizationId, projectId, signal }: SearchContext) {
+function options({ organizationId, workspaceId, signal }: SearchContext) {
   return {
-    headers: { 'X-Organization-Id': organizationId, 'X-Project-Id': projectId },
+    headers: { 'X-Organization-Id': organizationId, 'X-Workspace-Id': workspaceId },
     signal,
   };
 }

@@ -9,8 +9,8 @@ export interface Invitation {
   expires_at?: string;
   organization_id?: string;
   organization_name?: string;
-  project_id?: string | null;
-  project_name?: string | null;
+  workspace_id?: string | null;
+  workspace_name?: string | null;
   invited_by?: {
     id: string;
     username: string;
@@ -35,10 +35,10 @@ export const invitationService = {
     });
   },
 
-  // Invite to project (ProjectAccess required)
-  async inviteToProject(organizationId: string, projectId: string, data: CreateInvitationRequest): Promise<Invitation> {
-    return apiClient.post('/project/invitations', data, {
-      headers: { ...orgHeader(organizationId), 'X-Project-Id': projectId },
+  // Invite to workspace (WorkspaceAccess required)
+  async inviteToWorkspace(organizationId: string, workspaceId: string, data: CreateInvitationRequest): Promise<Invitation> {
+    return apiClient.post('/workspace/invitations', data, {
+      headers: { ...orgHeader(organizationId), 'X-Workspace-Id': workspaceId },
     });
   },
 
@@ -59,10 +59,10 @@ export const invitationService = {
     });
   },
 
-  // List pending project invitations (ProjectAccess required)
-  async listProjectInvitations(organizationId: string, projectId: string): Promise<Invitation[]> {
-    return apiClient.get('/project/invitations', {}, {
-      headers: { ...orgHeader(organizationId), 'X-Project-Id': projectId },
+  // List pending workspace invitations (WorkspaceAccess required)
+  async listWorkspaceInvitations(organizationId: string, workspaceId: string): Promise<Invitation[]> {
+    return apiClient.get('/workspace/invitations', {}, {
+      headers: { ...orgHeader(organizationId), 'X-Workspace-Id': workspaceId },
     });
   },
 

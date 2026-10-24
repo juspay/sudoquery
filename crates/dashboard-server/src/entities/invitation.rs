@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 pub enum InvitationType {
     #[sea_orm(string_value = "organization")]
     Organization,
-    #[sea_orm(string_value = "project")]
-    Project,
+    #[sea_orm(string_value = "workspace")]
+    Workspace,
 }
 
 #[derive(EnumIter, DeriveActiveEnum, Debug, Clone, PartialEq, Serialize, Deserialize)]

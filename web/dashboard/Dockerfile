@@ -39,7 +39,7 @@ ARG VITE_MAINTENANCE_MODE
 ARG VITE_DEMO_ENABLED
 ARG VITE_DEMO_COLLECTOR_URL
 ARG VITE_DEMO_ORG_ID
-ARG VITE_DEMO_PROJECT_ID
+ARG VITE_DEMO_WORKSPACE_ID
 
 # An empty VITE_* would be baked in as "" and win over the app's `??`
 # defaults, so drop the empty ones before building.

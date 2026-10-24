@@ -1,22 +1,22 @@
 import { useCallback, useEffect, useEffectEvent, useMemo, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useOrganization } from '../contexts/OrganizationContext';
-import { useProject } from '../contexts/ProjectContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { isAbort, searchErrorMessage, type SearchContext } from '../services/searchService';
 import { buildQuery, type BuiltQuery } from './buildQuery';
 import { resolveRange } from './timeRange';
 import { parseState, serializeState } from './urlState';
 import type { DiscoverState, FieldDef, ResolvedRange } from './types';
 
-/** The organization and project searches run against, once both are chosen. */
+/** The organization and workspace searches run against, once both are chosen. */
 export function useSearchScope(): SearchContext | null {
   const { currentOrganization } = useOrganization();
-  const { currentProject } = useProject();
+  const { currentWorkspace } = useWorkspace();
   const organizationId = currentOrganization?.id;
-  const projectId = currentProject?.id;
+  const workspaceId = currentWorkspace?.id;
   return useMemo(
-    () => (organizationId && projectId ? { organizationId, projectId } : null),
-    [organizationId, projectId],
+    () => (organizationId && workspaceId ? { organizationId, workspaceId } : null),
+    [organizationId, workspaceId],
   );
 }
 

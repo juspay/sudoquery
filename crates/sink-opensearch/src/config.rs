@@ -153,10 +153,10 @@ pub struct KafkaConfig {
 #[serde(deny_unknown_fields)]
 pub struct OpenSearchConfig {
     pub url: String,
-    /// Where documents are written. `{org_id}` and `{project_id}` are
-    /// replaced with each event's org and project, giving every project its
+    /// Where documents are written. `{org_id}` and `{workspace_id}` are
+    /// replaced with each event's org and workspace, giving every workspace its
     /// own data stream. This is the default; CAC overrides can change it per
-    /// org or project.
+    /// org or workspace.
     pub index: IndexTemplate,
     #[serde(default = "default_request_timeout_ms")]
     pub request_timeout_ms: u64,
@@ -197,10 +197,10 @@ impl fmt::Debug for Secret {
 }
 
 const ORG_PLACEHOLDER: &str = "{org_id}";
-const PROJECT_PLACEHOLDER: &str = "{project_id}";
+const WORKSPACE_PLACEHOLDER: &str = "{workspace_id}";
 
 /// An index, alias or data stream name, optionally containing `{org_id}`
-/// and `{project_id}`, e.g. `events-{org_id}-{project_id}`.
+/// and `{workspace_id}`, e.g. `events-{org_id}-{workspace_id}`.
 #[derive(Clone, Debug, PartialEq, Eq, Deserialize)]
 #[serde(try_from = "String")]
 pub struct IndexTemplate(String);
@@ -209,7 +209,7 @@ pub struct IndexTemplate(String);
 #[derive(Debug, PartialEq, Eq)]
 pub enum InvalidId {
     Org(String),
-    Project(String),
+    Workspace(String),
 }
 
 impl IndexTemplate {
@@ -218,29 +218,29 @@ impl IndexTemplate {
     pub fn parse(template: &str) -> Result<Self, String> {
         let fixed = template
             .replace(ORG_PLACEHOLDER, "")
-            .replace(PROJECT_PLACEHOLDER, "");
+            .replace(WORKSPACE_PLACEHOLDER, "");
         if fixed.contains(['{', '}']) {
             return Err(format!(
-                "`opensearch.index` `{template}`: the only placeholders are `{ORG_PLACEHOLDER}` and `{PROJECT_PLACEHOLDER}`"
+                "`opensearch.index` `{template}`: the only placeholders are `{ORG_PLACEHOLDER}` and `{WORKSPACE_PLACEHOLDER}`"
             ));
         }
         let sample = template
             .replace(ORG_PLACEHOLDER, "org")
-            .replace(PROJECT_PLACEHOLDER, "project");
+            .replace(WORKSPACE_PLACEHOLDER, "workspace");
         validate_index_name(&sample)
             .map_err(|reason| format!("`opensearch.index` `{template}` {reason}"))?;
         Ok(Self(template.to_owned()))
     }
 
-    /// The index for one event. Fails if its org or project can't be part of
+    /// The index for one event. Fails if its org or workspace can't be part of
     /// an index name, e.g. it is empty or has uppercase letters or a comma.
-    /// The org is checked first, so a bad project is never blamed on it. IDs
-    /// are never rewritten, because two orgs or projects could then share an
+    /// The org is checked first, so a bad workspace is never blamed on it. IDs
+    /// are never rewritten, because two orgs or workspaces could then share an
     /// index.
-    pub fn render(&self, org_id: &str, project_id: &str) -> Result<Cow<'_, str>, InvalidId> {
+    pub fn render(&self, org_id: &str, workspace_id: &str) -> Result<Cow<'_, str>, InvalidId> {
         let has_org = self.0.contains(ORG_PLACEHOLDER);
-        let has_project = self.0.contains(PROJECT_PLACEHOLDER);
-        if !has_org && !has_project {
+        let has_workspace = self.0.contains(WORKSPACE_PLACEHOLDER);
+        if !has_org && !has_workspace {
             return Ok(Cow::Borrowed(&self.0));
         }
 
@@ -256,14 +256,14 @@ impl IndexTemplate {
                 ))
             })?;
         }
-        if has_project {
-            if project_id.is_empty() {
-                return Err(InvalidId::Project("project_id is empty".to_owned()));
+        if has_workspace {
+            if workspace_id.is_empty() {
+                return Err(InvalidId::Workspace("workspace_id is empty".to_owned()));
             }
-            index = index.replace(PROJECT_PLACEHOLDER, project_id);
+            index = index.replace(WORKSPACE_PLACEHOLDER, workspace_id);
             validate_index_name(&index).map_err(|reason| {
-                InvalidId::Project(format!(
-                    "project_id `{project_id}` gives index `{index}`, which {reason}"
+                InvalidId::Workspace(format!(
+                    "workspace_id `{workspace_id}` gives index `{index}`, which {reason}"
                 ))
             })?;
         }

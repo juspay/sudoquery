@@ -42,7 +42,7 @@ describe('Type Tests', () => {
         id: '018f6a31-6f27-7c9c-8e21-cfc10f5ee879',
         name: 'page_view',
         org_id: 'acme-org-1',
-        project_id: 'acme-project-1',
+        workspace_id: 'acme-workspace-1',
         session_id: 'session-1',
         anon_id: 'anon-1',
         actor_id: 'user-1',
@@ -75,7 +75,7 @@ describe('Type Tests', () => {
         id: '018f6a31-6f27-7c9c-8e21-cfc10f5ee879',
         name: 'anonymous_event',
         org_id: 'acme-org-1',
-        project_id: null,
+        workspace_id: null,
         session_id: null,
         anon_id: 'anon-1',
         actor_id: null,
@@ -87,7 +87,7 @@ describe('Type Tests', () => {
         system_properties: null,
       };
 
-      expect(event.project_id).toBeNull();
+      expect(event.workspace_id).toBeNull();
       expect(event.actor_id).toBeNull();
     });
   });
@@ -99,7 +99,7 @@ describe('Type Tests', () => {
         id: '018f6a31-6f27-7c9c-8e21-cfc10f5ee879',
         name: 'purchase',
         org_id: 'acme-org-1',
-        project_id: null,
+        workspace_id: null,
         session_id: 'session-1',
         anon_id: 'anon-1',
         actor_id: 'user-1',

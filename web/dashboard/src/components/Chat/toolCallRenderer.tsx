@@ -6,7 +6,7 @@ import { InlineMetric } from './InlineMetric';
 import ShinyText from './ShinyText';
 import { dashboardService } from '../../services/dashboardService';
 import { useToast } from '../../contexts/ToastContext';
-import { useProject } from '../../contexts/ProjectContext';
+import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { ApiError } from '../../services/apiClient';
 
 interface ToolCall {
@@ -189,7 +189,7 @@ function TestRunLiveDashboard({
   const [isSaving, setIsSaving] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const { showSuccess, showError } = useToast();
-  const project = useProject();
+  const workspace = useWorkspace();
 
   const args = JsonParse(tool_call.function.arguments);
 

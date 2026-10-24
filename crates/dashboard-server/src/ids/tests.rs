@@ -36,7 +36,7 @@ fn slugify_drops_unusable_characters() {
 #[test]
 fn slugify_drops_leading_digits() {
     assert_eq!(slugify("42prod"), "prod");
-    assert_eq!(slugify("123-Project X"), "project-x");
+    assert_eq!(slugify("123-Workspace X"), "workspace-x");
 }
 
 #[test]
@@ -64,8 +64,11 @@ fn generated_ids_pass_validation() {
         let org = generate_org_id(name).to_string();
         assert!(is_valid_slug(&org), "invalid org id: {org}");
 
-        let project = generate_project_id(name).to_string();
-        assert!(is_valid_slug(&project), "invalid project id: {project}");
+        let workspace = generate_workspace_id(name).to_string();
+        assert!(
+            is_valid_slug(&workspace),
+            "invalid workspace id: {workspace}"
+        );
     }
 }
 
@@ -86,5 +89,9 @@ fn generated_ids_combine_base_and_suffix() {
 #[test]
 fn unusable_names_get_the_fallback_base() {
     assert!(generate_org_id("!!!").to_string().starts_with("org-"));
-    assert!(generate_project_id("!!!").to_string().starts_with("proj-"));
+    assert!(
+        generate_workspace_id("!!!")
+            .to_string()
+            .starts_with("workspace-")
+    );
 }

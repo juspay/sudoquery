@@ -27,7 +27,7 @@ export default function OnboardingOrgPage() {
     setError(null);
     try {
       await createOrganization(name.trim());
-      navigate('/onboarding/project', { replace: true });
+      navigate('/onboarding/workspace', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create organization. Please try again.');
     } finally {
@@ -48,7 +48,7 @@ export default function OnboardingOrgPage() {
           Create your organization
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3.5 }}>
-          An organization groups your projects and team members. You can change the name later.
+          An organization groups your workspaces and team members. You can change the name later.
         </Typography>
 
         {error && (

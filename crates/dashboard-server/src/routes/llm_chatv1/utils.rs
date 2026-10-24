@@ -1,7 +1,7 @@
 use crate::{
     AppState,
     db::{ChatType, chat, message},
-    middleware::{ProjectAccess, auth::AuthUser},
+    middleware::{WorkspaceAccess, auth::AuthUser},
     routes::llm_chatv1::constants::get_system_prompt,
 };
 use axum::{
@@ -10,7 +10,7 @@ use axum::{
     http::StatusCode,
     response::sse::{Event, KeepAlive, Sse},
 };
-use canonical_event::ProjectId;
+use canonical_event::WorkspaceId;
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -57,16 +57,16 @@ impl axum::response::IntoResponse for ChatHandlerError {
 pub async fn chat_handler_v1(
     State(state): State<AppState>,
     _auth_user: AuthUser,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
     Json(req): Json<ChatRequest>,
 ) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, ChatHandlerError> {
     let chat_id: Uuid = match req.chat_id {
         Some(existing_chat_id) => {
             match chat::get_chat_by_id(&state.db_pool, existing_chat_id).await {
                 Ok(Some(chat)) => {
-                    if chat.project_id != project.id {
+                    if chat.workspace_id != workspace.id {
                         return Err(ChatHandlerError::Forbidden(
-                            "Chat not found in this project".to_string(),
+                            "Chat not found in this workspace".to_string(),
                         ));
                     }
                     if chat.chat_type != req.chat_type {
@@ -85,7 +85,7 @@ pub async fn chat_handler_v1(
         None => {
             match chat::create_chat(
                 &state.db_pool,
-                &project.id,
+                &workspace.id,
                 _auth_user.user.id,
                 "New Chat",
                 &req.chat_type,
@@ -188,7 +188,7 @@ pub async fn chat_handler_v1(
     };
 
     let state = state.clone();
-    let project_id = project.id;
+    let workspace_id = workspace.id;
 
     let mut messages: Vec<ChatMessage> = messages_so_far
         .iter()
@@ -229,7 +229,7 @@ pub async fn chat_handler_v1(
             0,
             ChatMessage::new_system(get_system_prompt(&req.chat_type)),
         );
-        talk_to_llm(messages, &state, tx, chat_id, project_id, &req.chat_type).await;
+        talk_to_llm(messages, &state, tx, chat_id, workspace_id, &req.chat_type).await;
     });
 
     Ok(Sse::new(ReceiverStream::new(rx)).keep_alive(KeepAlive::default()))
@@ -251,7 +251,7 @@ pub struct ClientToolCallRequest {
 pub async fn client_tool_call_response_v1(
     State(state): State<AppState>,
     _auth_user: AuthUser,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
     Json(req): Json<ClientToolCallRequest>,
 ) -> Result<Sse<impl futures_util::Stream<Item = Result<Event, Infallible>>>, ChatHandlerError> {
     let chat_id = req.chat_id;
@@ -266,9 +266,9 @@ pub async fn client_tool_call_response_v1(
         }
     };
 
-    if chat.project_id != project.id {
+    if chat.workspace_id != workspace.id {
         return Err(ChatHandlerError::Forbidden(
-            "Chat not found in this project".to_string(),
+            "Chat not found in this workspace".to_string(),
         ));
     }
 
@@ -282,7 +282,7 @@ pub async fn client_tool_call_response_v1(
     let (tx, rx) = tokio::sync::mpsc::channel::<Result<Event, Infallible>>(32);
 
     let state = state.clone();
-    let project_id = project.id;
+    let workspace_id = workspace.id;
     let tool_call_id = req.tool_call_id;
     let value = req.value;
 
@@ -362,7 +362,7 @@ pub async fn client_tool_call_response_v1(
                 &state,
                 tx.clone(),
                 chat_id,
-                project_id,
+                workspace_id,
                 &chat.chat_type,
             )
             .await;
@@ -394,7 +394,7 @@ pub struct MessageItem {
 pub async fn get_chat_messages(
     State(state): State<AppState>,
     Path(chat_id): Path<String>,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
 ) -> Result<Json<MessagesResponse>, StatusCode> {
     let chat_id = Uuid::parse_str(&chat_id).map_err(|_| StatusCode::BAD_REQUEST)?;
 
@@ -403,7 +403,7 @@ pub async fn get_chat_messages(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    if chat.project_id != project.id {
+    if chat.workspace_id != workspace.id {
         return Err(StatusCode::FORBIDDEN);
     }
 
@@ -431,7 +431,7 @@ async fn talk_to_llm(
     state: &AppState,
     tx: tokio::sync::mpsc::Sender<Result<Event, Infallible>>,
     chat_id: Uuid,
-    project_id: ProjectId,
+    workspace_id: WorkspaceId,
     chat_type: &ChatType,
 ) {
     let model = "private-large".to_string();
@@ -491,7 +491,7 @@ async fn talk_to_llm(
                         tool_name,
                         &tc.function.arguments,
                         state,
-                        &project_id,
+                        &workspace_id,
                         &tx,
                         tool_call_id,
                     )

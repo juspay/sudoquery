@@ -5,7 +5,7 @@ use uuid::Uuid;
 use crate::{
     AppState,
     db::{chat, message},
-    middleware::{AuthUser, ProjectAccess},
+    middleware::{AuthUser, WorkspaceAccess},
 };
 
 #[derive(serde::Deserialize)]
@@ -23,7 +23,7 @@ pub struct MetricResponse {
 pub async fn get_metric_data_handler(
     State(state): State<AppState>,
     _auth_user: AuthUser,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
     Json(req): Json<MetricRequest>,
 ) -> Result<Json<MetricResponse>, StatusCode> {
     let chat = chat::get_chat_by_id(&state.db_pool, req.chat_id)
@@ -31,7 +31,7 @@ pub async fn get_metric_data_handler(
         .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
         .ok_or(StatusCode::NOT_FOUND)?;
 
-    if chat.project_id != project.id {
+    if chat.workspace_id != workspace.id {
         return Err(StatusCode::FORBIDDEN);
     }
 

@@ -73,7 +73,7 @@ export default function SessionsPage() {
   const [loadingMore, setLoadingMore] = useState(false);
   const [moreError, setMoreError] = useState<string | null>(null);
 
-  const key = scope && searchKey ? `${scope.projectId}:${searchKey}` : null;
+  const key = scope && searchKey ? `${scope.workspaceId}:${searchKey}` : null;
   const first = useAsyncResult(key, (signal) =>
     searchService.listSessions({ ...scope!, signal }, { query: query!, page_size: PAGE_SIZE }),
   );
@@ -133,8 +133,8 @@ export default function SessionsPage() {
   if (!scope) {
     return (
       <EmptyStateCard
-        heading="No project selected"
-        subtext="Choose an organization and a project to see its sessions."
+        heading="No workspace selected"
+        subtext="Choose an organization and a workspace to see its sessions."
       />
     );
   }

@@ -16,7 +16,7 @@ import {
 } from '@mui/material';
 import { Search as SearchIcon, Pencil as EditIcon } from 'lucide-react';
 import { useOrganization } from '../contexts/OrganizationContext';
-import { useProject } from '../contexts/ProjectContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { useToast } from '../contexts/ToastContext';
 import { useSchemaStatus } from '../contexts/SchemaContext';
 import {
@@ -52,7 +52,7 @@ interface EventWithProperties {
 
 export default function EventSchemaPage() {
   const { currentOrganization } = useOrganization();
-  const { currentProject } = useProject();
+  const { currentWorkspace } = useWorkspace();
   const { showSuccess, showError } = useToast();
   const { refresh: refreshSchemaStatus } = useSchemaStatus();
 
@@ -71,16 +71,16 @@ export default function EventSchemaPage() {
   const [editingProperty, setEditingProperty] = useState<MergedProperty | null>(null);
   const [editLoading, setEditLoading] = useState(false);
 
-  // Permission check - org admin can always edit, project admin can edit their project
+  // Permission check - org admin can always edit, workspace admin can edit their workspace
   const isOrgAdmin = currentOrganization?.access_level?.includes('admin') ?? false;
-  const isProjectAdmin = (currentProject as { access_level?: string })?.access_level?.includes('admin') ?? false;
-  const canEdit = isOrgAdmin || isProjectAdmin;
+  const isWorkspaceAdmin = (currentWorkspace as { access_level?: string })?.access_level?.includes('admin') ?? false;
+  const canEdit = isOrgAdmin || isWorkspaceAdmin;
 
   useEffect(() => {
-    if (currentOrganization?.id && currentProject?.id) {
+    if (currentOrganization?.id && currentWorkspace?.id) {
       loadData();
     }
-  }, [currentOrganization?.id, currentProject?.id]);
+  }, [currentOrganization?.id, currentWorkspace?.id]);
 
   const loadData = async () => {
     setLoading(true);
@@ -89,8 +89,8 @@ export default function EventSchemaPage() {
       const [names, catalog, eventDescs, propDescs] = await Promise.all([
         eventService.getEventNamesFromClickHouse(),
         eventService.getEventSchemaCatalog(),
-        eventService.getEventDescriptions(currentProject!.id),
-        eventService.getPropertyDescriptions(currentProject!.id),
+        eventService.getEventDescriptions(currentWorkspace!.id),
+        eventService.getPropertyDescriptions(currentWorkspace!.id),
       ]);
       setEventNames(names);
       setSchemaCatalog(catalog);
@@ -181,13 +181,13 @@ export default function EventSchemaPage() {
 
   const handleSaveDescription = useCallback(
     async (description: string) => {
-      if (!currentProject?.id) return;
+      if (!currentWorkspace?.id) return;
 
       setEditLoading(true);
       try {
         if (editingType === 'event' && selectedEvent) {
           await eventService.upsertEventDescription(
-            currentProject.id,
+            currentWorkspace.id,
             selectedEvent.eventName,
             description
           );
@@ -197,7 +197,7 @@ export default function EventSchemaPage() {
             const next = new Map(prev);
             next.set(selectedEvent.eventName, {
               id: '',
-              project_id: currentProject.id,
+              workspace_id: currentWorkspace.id,
               event_name: selectedEvent.eventName,
               description,
               created_at: new Date().toISOString(),
@@ -210,7 +210,7 @@ export default function EventSchemaPage() {
           refreshSchemaStatus();
         } else if (editingType === 'property' && editingProperty) {
           await eventService.upsertPropertyDescription(
-            currentProject.id,
+            currentWorkspace.id,
             selectedEvent!.eventName,
             editingProperty.property,
             editingProperty.type,
@@ -223,7 +223,7 @@ export default function EventSchemaPage() {
             const key = `${selectedEvent!.eventName}|${editingProperty.property}`;
             next.set(key, {
               id: '',
-              project_id: currentProject.id,
+              workspace_id: currentWorkspace.id,
               event_name: selectedEvent!.eventName,
               property_name: editingProperty.property,
               property_type: editingProperty.type,
@@ -245,7 +245,7 @@ export default function EventSchemaPage() {
         setEditLoading(false);
       }
     },
-    [currentProject?.id, editingType, selectedEvent, editingProperty, showSuccess, showError, refreshSchemaStatus]
+    [currentWorkspace?.id, editingType, selectedEvent, editingProperty, showSuccess, showError, refreshSchemaStatus]
   );
 
   const getEditDialogData = useMemo(() => {

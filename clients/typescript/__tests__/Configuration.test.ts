@@ -104,17 +104,17 @@ describe('Configuration', () => {
   });
 
   describe('collector identity config', () => {
-    it('should default org and project to null', () => {
+    it('should default org and workspace to null', () => {
       expect(Configuration.orgId).toBeNull();
-      expect(Configuration.projectId).toBeNull();
+      expect(Configuration.workspaceId).toBeNull();
     });
 
-    it('should allow setting org and project IDs', () => {
+    it('should allow setting org and workspace IDs', () => {
       Configuration.setOrgId('acme-org-1');
-      Configuration.setProjectId('acme-project-1');
+      Configuration.setWorkspaceId('acme-workspace-1');
 
       expect(Configuration.orgId).toBe('acme-org-1');
-      expect(Configuration.projectId).toBe('acme-project-1');
+      expect(Configuration.workspaceId).toBe('acme-workspace-1');
     });
 
     it('should default source to typescript', () => {

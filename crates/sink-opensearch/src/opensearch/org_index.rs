@@ -16,7 +16,7 @@ const CACHE_TTL: Duration = Duration::from_secs(30);
 #[derive(Clone, PartialEq, Eq, Hash)]
 struct Org {
     org_id: String,
-    project_id: Option<String>,
+    workspace_id: Option<String>,
 }
 
 struct Cached {
@@ -41,19 +41,19 @@ impl OrgIndexes {
     }
 
     /// The org's `opensearch.index`, with CAC overrides for its
-    /// `org_id` and `project_id` applied, unless the index is pinned. Fails
+    /// `org_id` and `workspace_id` applied, unless the index is pinned. Fails
     /// when the configured value isn't a valid index template.
     pub async fn index_for(
         &self,
         org_id: &str,
-        project_id: Option<&str>,
+        workspace_id: Option<&str>,
     ) -> Result<IndexTemplate, String> {
         if let Some(pinned) = &self.pinned {
             return Ok(pinned.clone());
         }
         let org = Org {
             org_id: org_id.to_owned(),
-            project_id: project_id.map(str::to_owned),
+            workspace_id: workspace_id.map(str::to_owned),
         };
         if let Some(cached) = self.lock().get(&org)
             && cached.resolved_at.elapsed() < CACHE_TTL
@@ -61,7 +61,7 @@ impl OrgIndexes {
             return cached.index.clone();
         }
 
-        let index = self.resolve(org_id, project_id).await;
+        let index = self.resolve(org_id, workspace_id).await;
         self.lock().insert(
             org,
             Cached {
@@ -75,11 +75,11 @@ impl OrgIndexes {
     async fn resolve(
         &self,
         org_id: &str,
-        project_id: Option<&str>,
+        workspace_id: Option<&str>,
     ) -> Result<IndexTemplate, String> {
         let value = self
             .cac
-            .resolve_for_org(INDEX_KEY, org_id, project_id)
+            .resolve_for_org(INDEX_KEY, org_id, workspace_id)
             .await
             .map_err(|error| error.to_string())?
             .ok_or_else(|| format!("CAC has no `{INDEX_KEY}`"))?;

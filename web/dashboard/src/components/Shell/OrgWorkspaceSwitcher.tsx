@@ -19,7 +19,7 @@ import {
   Check as CheckIcon,
 } from 'lucide-react';
 import { useOrganization } from '../../contexts/OrganizationContext';
-import { useProject } from '../../contexts/ProjectContext';
+import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { useToast } from '../../contexts/ToastContext';
 import {
   colorInk,
@@ -34,9 +34,9 @@ import {
 } from '../../theme/tokens';
 import { useNavigate } from 'react-router-dom';
 import { CreateOrganizationDialog } from '../Organization/CreateOrganizationDialog';
-import { CreateProjectDialog } from '../Organization/CreateProjectDialog';
-import { ProjectStatusChip } from './ProjectStatus';
-import type { ProjectStatus } from '../../services/projectService';
+import { CreateWorkspaceDialog } from '../Organization/CreateWorkspaceDialog';
+import { WorkspaceStatusChip } from './WorkspaceStatus';
+import type { WorkspaceStatus } from '../../services/workspaceService';
 
 // Get initials from name (max 2 characters)
 function getInitials(name: string): string {
@@ -172,15 +172,15 @@ function OrgItem({ id, name, selected, onClick }: OrgItemProps) {
   );
 }
 
-interface ProjectItemProps {
+interface WorkspaceItemProps {
   id: string;
   name: string;
-  status: ProjectStatus;
+  status: WorkspaceStatus;
   selected: boolean;
   onClick: () => void;
 }
 
-function ProjectItem({ id, name, status, selected, onClick }: ProjectItemProps) {
+function WorkspaceItem({ id, name, status, selected, onClick }: WorkspaceItemProps) {
   return (
     <Box
       onClick={onClick}
@@ -225,7 +225,7 @@ function ProjectItem({ id, name, status, selected, onClick }: ProjectItemProps) 
           {name}
         </Typography>
       </Box>
-      <ProjectStatusChip status={status} />
+      <WorkspaceStatusChip status={status} />
       <CopyIdButton id={id} label="workspace ID" />
       {selected && (
         <CheckCircleIcon size={20} style={{ color: '#2AA99E', flexShrink: 0 }} />
@@ -234,23 +234,23 @@ function ProjectItem({ id, name, status, selected, onClick }: ProjectItemProps) 
   );
 }
 
-export function OrgProjectSwitcher() {
+export function OrgWorkspaceSwitcher() {
   const {
     organizations,
     currentOrganization,
     setCurrentOrganization,
   } = useOrganization();
-  const { projects, currentProject, setCurrentProject } = useProject();
+  const { workspaces, currentWorkspace, setCurrentWorkspace } = useWorkspace();
   const navigate = useNavigate();
 
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
   const open = Boolean(anchorEl);
 
   const [orgSearch, setOrgSearch] = useState('');
-  const [projectSearch, setProjectSearch] = useState('');
+  const [workspaceSearch, setWorkspaceSearch] = useState('');
 
   const [createOrgDialogOpen, setCreateOrgDialogOpen] = useState(false);
-  const [createProjectDialogOpen, setCreateProjectDialogOpen] = useState(false);
+  const [createWorkspaceDialogOpen, setCreateWorkspaceDialogOpen] = useState(false);
 
   const handleClick = (e: React.MouseEvent<HTMLElement>) => setAnchorEl(e.currentTarget);
   const handleClose = () => setAnchorEl(null);
@@ -262,17 +262,17 @@ export function OrgProjectSwitcher() {
     }
   };
 
-  const handleSelectProject = (projectId: string) => {
-    const proj = projects.find((p) => p.id === projectId) || null;
-    setCurrentProject(proj);
+  const handleSelectWorkspace = (workspaceId: string) => {
+    const workspace = workspaces.find((p) => p.id === workspaceId) || null;
+    setCurrentWorkspace(workspace);
     handleClose();
   };
 
   const filteredOrgs = organizations.filter((org) =>
     org.name.toLowerCase().includes(orgSearch.toLowerCase())
   );
-  const filteredProjects = projects.filter((proj) =>
-    proj.name.toLowerCase().includes(projectSearch.toLowerCase())
+  const filteredWorkspaces = workspaces.filter((workspace) =>
+    workspace.name.toLowerCase().includes(workspaceSearch.toLowerCase())
   );
 
   if (!currentOrganization) return null;
@@ -330,7 +330,7 @@ export function OrgProjectSwitcher() {
         <ChevronRightIcon size={18} style={{ color: colorInk40 }} sx={{ display: { xs: 'none', md: 'block' }, mx: 0.25 }} />
         <FolderIcon size={20} style={{ color: colorInk60 }} sx={{ display: { xs: 'none', md: 'block' } }} />
         <Box sx={{ display: { xs: 'none', md: 'block' }, maxWidth: 140, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {currentProject?.name || 'Select Project'}
+          {currentWorkspace?.name || 'Select Workspace'}
         </Box>
       </Box>
 
@@ -422,19 +422,19 @@ export function OrgProjectSwitcher() {
             </Box>
           </Box>
 
-          {/* Project Column */}
+          {/* Workspace Column */}
           <Box sx={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
             <Box sx={{ px: 2, py: 1.5 }}>
               <Typography sx={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.08em', color: colorInk60, textTransform: 'uppercase' }}>
-                Project
+                Workspace
               </Typography>
             </Box>
             <Box sx={{ px: 2, pb: 1.5 }}>
               <TextField
                 fullWidth
-                placeholder="Search project..."
-                value={projectSearch}
-                onChange={(e) => setProjectSearch(e.target.value)}
+                placeholder="Search workspace..."
+                value={workspaceSearch}
+                onChange={(e) => setWorkspaceSearch(e.target.value)}
                 size="small"
                 InputProps={{
                   startAdornment: (
@@ -455,19 +455,19 @@ export function OrgProjectSwitcher() {
               />
             </Box>
             <Box sx={{ flex: 1, overflow: 'auto', px: 1 }}>
-              {filteredProjects.length === 0 ? (
+              {filteredWorkspaces.length === 0 ? (
                 <Box sx={{ p: 2, textAlign: 'center' }}>
-                  <Typography sx={{ fontSize: '14px', color: colorInk40 }}>No projects found</Typography>
+                  <Typography sx={{ fontSize: '14px', color: colorInk40 }}>No workspaces found</Typography>
                 </Box>
               ) : (
-                filteredProjects.map((proj) => (
-                  <ProjectItem
-                    key={proj.id}
-                    id={proj.id}
-                    name={proj.name}
-                    status={proj.status}
-                    selected={proj.id === currentProject?.id}
-                    onClick={() => handleSelectProject(proj.id)}
+                filteredWorkspaces.map((workspace) => (
+                  <WorkspaceItem
+                    key={workspace.id}
+                    id={workspace.id}
+                    name={workspace.name}
+                    status={workspace.status}
+                    selected={workspace.id === currentWorkspace?.id}
+                    onClick={() => handleSelectWorkspace(workspace.id)}
                   />
                 ))
               )}
@@ -477,7 +477,7 @@ export function OrgProjectSwitcher() {
                 fullWidth
                 onClick={() => {
                   handleClose();
-                  setCreateProjectDialogOpen(true);
+                  setCreateWorkspaceDialogOpen(true);
                 }}
                 startIcon={<AddIcon />}
                 sx={{
@@ -491,7 +491,7 @@ export function OrgProjectSwitcher() {
                   '&:hover': { bgcolor: colorCream2 },
                 }}
               >
-                New project
+                New workspace
               </Button>
             </Box>
           </Box>
@@ -507,12 +507,12 @@ export function OrgProjectSwitcher() {
           setCurrentOrganization(org);
         }}
       />
-      <CreateProjectDialog
-        open={createProjectDialogOpen}
-        onClose={() => setCreateProjectDialogOpen(false)}
-        onSuccess={(project) => {
-          setCreateProjectDialogOpen(false);
-          setCurrentProject(project);
+      <CreateWorkspaceDialog
+        open={createWorkspaceDialogOpen}
+        onClose={() => setCreateWorkspaceDialogOpen(false)}
+        onSuccess={(workspace) => {
+          setCreateWorkspaceDialogOpen(false);
+          setCurrentWorkspace(workspace);
         }}
       />
     </>

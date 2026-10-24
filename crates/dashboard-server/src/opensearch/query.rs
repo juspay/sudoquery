@@ -164,12 +164,12 @@ fn range_is_bounded(range: &Value) -> bool {
         })
 }
 
-/// Wraps the client's query in the project's scope. `narrowing` holds the
+/// Wraps the client's query in the workspace's scope. `narrowing` holds the
 /// filters an endpoint adds on top, such as one session or a time range.
 pub fn scoped_query(client: Option<&Value>, scope: &Scope, narrowing: Vec<Value>) -> Value {
     let mut filter = vec![
         json!({ "term": { "org_id": scope.org_id } }),
-        json!({ "term": { "project_id": scope.project_id } }),
+        json!({ "term": { "workspace_id": scope.workspace_id } }),
     ];
     filter.extend(narrowing);
     let must = client
@@ -336,12 +336,12 @@ mod tests {
     use super::*;
 
     const ORG: &str = "0198c0de-0000-7000-8000-000000000001";
-    const PROJ: &str = "0198c0de-0000-7000-8000-000000000002";
+    const WORKSPACE: &str = "0198c0de-0000-7000-8000-000000000002";
 
     fn scope() -> Scope {
         Scope {
             org_id: ORG.into(),
-            project_id: PROJ.into(),
+            workspace_id: WORKSPACE.into(),
         }
     }
 
@@ -385,7 +385,7 @@ mod tests {
     }
 
     #[test]
-    fn the_projects_own_org_id_is_accepted() {
+    fn the_workspaces_own_org_id_is_accepted() {
         for query in [
             json!({ "term": { "org_id": ORG } }),
             json!({ "term": { "org_id": { "value": ORG, "boost": 2.0 } } }),
@@ -519,7 +519,7 @@ mod tests {
                 "must": [{ "term": { "name": "checkout_viewed" } }],
                 "filter": [
                     { "term": { "org_id": ORG } },
-                    { "term": { "project_id": PROJ } },
+                    { "term": { "workspace_id": WORKSPACE } },
                 ],
             }})
         );
@@ -700,7 +700,7 @@ mod tests {
 
         for field in [
             "org_id",
-            "project_id",
+            "workspace_id",
             "id",
             "properties.plan",
             "occured_at",

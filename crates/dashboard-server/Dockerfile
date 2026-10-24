@@ -13,8 +13,8 @@ COPY Cargo.toml Cargo.lock ./
 # Copy Rust source
 COPY crates ./crates
 COPY xtask ./xtask
-# Per-project ClickHouse DDL, embedded with include_str! (src/provisioning.rs)
-COPY ckh/project.sql ./ckh/project.sql
+# Per-workspace ClickHouse DDL, embedded with include_str! (src/provisioning.rs)
+COPY ckh/workspace.sql ./ckh/workspace.sql
 
 RUN apt-get update && apt-get install -y \
     build-essential \

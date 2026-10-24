@@ -3,9 +3,9 @@ use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "projects")]
+#[sea_orm(table_name = "workspaces")]
 pub struct Model {
-    // `String` rather than `ProjectId`: sea-orm's `PrimaryKeyTrait` requires
+    // `String` rather than `WorkspaceId`: sea-orm's `PrimaryKeyTrait` requires
     // `TryFromU64`/`FromValueTuple`, which the canonical-event newtypes do
     // not (and cannot, per orphan rules) implement. The sqlx `db` layer is
     // the authoritative typed boundary for slugs.
@@ -27,10 +27,10 @@ pub enum Relation {
         to = "super::organization::Column::Id"
     )]
     Organization,
-    #[sea_orm(has_many = "super::project_membership::Entity")]
-    ProjectMembership,
-    #[sea_orm(has_many = "super::project_token::Entity")]
-    ProjectToken,
+    #[sea_orm(has_many = "super::workspace_membership::Entity")]
+    WorkspaceMembership,
+    #[sea_orm(has_many = "super::workspace_token::Entity")]
+    WorkspaceToken,
 }
 
 impl Related<super::organization::Entity> for Entity {
@@ -39,31 +39,31 @@ impl Related<super::organization::Entity> for Entity {
     }
 }
 
-impl Related<super::project_membership::Entity> for Entity {
+impl Related<super::workspace_membership::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::ProjectMembership.def()
+        Relation::WorkspaceMembership.def()
     }
 }
 
-impl Related<super::project_token::Entity> for Entity {
+impl Related<super::workspace_token::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::ProjectToken.def()
+        Relation::WorkspaceToken.def()
     }
 }
 
 impl Related<super::user::Entity> for Entity {
     fn to() -> RelationDef {
-        super::project_membership::Relation::User.def()
+        super::workspace_membership::Relation::User.def()
     }
     fn via() -> Option<RelationDef> {
-        Some(super::project_membership::Relation::Project.def().rev())
+        Some(super::workspace_membership::Relation::Workspace.def().rev())
     }
 }
 
 impl ActiveModelBehavior for ActiveModel {}
 
 impl Entity {
-    /// Find only active (non-deleted) projects
+    /// Find only active (non-deleted) workspaces
     pub fn find_active() -> Select<Self> {
         Self::find().filter(Column::DeletedAt.is_null())
     }

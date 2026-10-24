@@ -4,7 +4,7 @@ use axum::{
     http::{StatusCode, request::Parts},
     response::{IntoResponse, Response},
 };
-use canonical_event::{OrgId, ProjectId};
+use canonical_event::{OrgId, WorkspaceId};
 use jsonwebtoken::{Algorithm, DecodingKey, Validation, decode, decode_header};
 use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
@@ -231,14 +231,14 @@ impl FromRequestParts<AppState> for OrgContext {
     }
 }
 
-/// ProjectAccess requires project role (via X-Project-Id header)
-pub struct ProjectAccess {
+/// WorkspaceAccess requires workspace role (via X-Workspace-Id header)
+pub struct WorkspaceAccess {
     pub auth_user: AuthUser,
-    pub project: db::Project,
-    pub role: db::ProjectRole,
+    pub workspace: db::Workspace,
+    pub role: db::WorkspaceRole,
 }
 
-impl FromRequestParts<AppState> for ProjectAccess {
+impl FromRequestParts<AppState> for WorkspaceAccess {
     type Rejection = AuthError;
 
     async fn from_request_parts(
@@ -247,41 +247,41 @@ impl FromRequestParts<AppState> for ProjectAccess {
     ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
 
-        let project_id_str = parts
+        let workspace_id_str = parts
             .headers
-            .get("X-Project-Id")
+            .get("X-Workspace-Id")
             .and_then(|v| v.to_str().ok())
-            .ok_or(AuthError::MissingProjectId)?;
+            .ok_or(AuthError::MissingWorkspaceId)?;
 
-        let project_id =
-            ProjectId::from_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
+        let workspace_id =
+            WorkspaceId::from_str(workspace_id_str).map_err(|_| AuthError::InvalidWorkspaceId)?;
 
-        let project = db::get_project_by_id(&state.db_pool, &project_id)
+        let workspace = db::get_workspace_by_id(&state.db_pool, &workspace_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
-            .ok_or(AuthError::ProjectNotFound)?;
+            .ok_or(AuthError::WorkspaceNotFound)?;
 
-        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, &project_id)
+        let role = db::get_user_workspace_role(&state.db_pool, auth_user.user.id, &workspace_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
             .ok_or(AuthError::Forbidden)?;
 
-        Ok(ProjectAccess {
+        Ok(WorkspaceAccess {
             auth_user,
-            project,
+            workspace,
             role,
         })
     }
 }
 
-/// ProjectContext extracts project from X-Project-Id header, provides project + role (if member)
-pub struct ProjectContext {
+/// WorkspaceContext extracts workspace from X-Workspace-Id header, provides workspace + role (if member)
+pub struct WorkspaceContext {
     pub auth_user: AuthUser,
-    pub project: db::Project,
-    pub role: Option<db::ProjectRole>,
+    pub workspace: db::Workspace,
+    pub role: Option<db::WorkspaceRole>,
 }
 
-impl FromRequestParts<AppState> for ProjectContext {
+impl FromRequestParts<AppState> for WorkspaceContext {
     type Rejection = AuthError;
 
     async fn from_request_parts(
@@ -290,39 +290,39 @@ impl FromRequestParts<AppState> for ProjectContext {
     ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
 
-        let project_id_str = parts
+        let workspace_id_str = parts
             .headers
-            .get("X-Project-Id")
+            .get("X-Workspace-Id")
             .and_then(|v| v.to_str().ok())
-            .ok_or(AuthError::MissingProjectId)?;
+            .ok_or(AuthError::MissingWorkspaceId)?;
 
-        let project_id =
-            ProjectId::from_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
+        let workspace_id =
+            WorkspaceId::from_str(workspace_id_str).map_err(|_| AuthError::InvalidWorkspaceId)?;
 
-        let project = db::get_project_by_id(&state.db_pool, &project_id)
+        let workspace = db::get_workspace_by_id(&state.db_pool, &workspace_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
-            .ok_or(AuthError::ProjectNotFound)?;
+            .ok_or(AuthError::WorkspaceNotFound)?;
 
-        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, &project_id)
+        let role = db::get_user_workspace_role(&state.db_pool, auth_user.user.id, &workspace_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
-        Ok(ProjectContext {
+        Ok(WorkspaceContext {
             auth_user,
-            project,
+            workspace,
             role,
         })
     }
 }
 
-/// ProjectAdmin requires project admin role (via X-Project-Id header)
-pub struct ProjectAdmin {
+/// WorkspaceAdmin requires workspace admin role (via X-Workspace-Id header)
+pub struct WorkspaceAdmin {
     pub auth_user: AuthUser,
-    pub project: db::Project,
+    pub workspace: db::Workspace,
 }
 
-impl FromRequestParts<AppState> for ProjectAdmin {
+impl FromRequestParts<AppState> for WorkspaceAdmin {
     type Rejection = AuthError;
 
     async fn from_request_parts(
@@ -331,38 +331,41 @@ impl FromRequestParts<AppState> for ProjectAdmin {
     ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
 
-        let project_id_str = parts
+        let workspace_id_str = parts
             .headers
-            .get("X-Project-Id")
+            .get("X-Workspace-Id")
             .and_then(|v| v.to_str().ok())
-            .ok_or(AuthError::MissingProjectId)?;
+            .ok_or(AuthError::MissingWorkspaceId)?;
 
-        let project_id =
-            ProjectId::from_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
+        let workspace_id =
+            WorkspaceId::from_str(workspace_id_str).map_err(|_| AuthError::InvalidWorkspaceId)?;
 
-        let project = db::get_project_by_id(&state.db_pool, &project_id)
+        let workspace = db::get_workspace_by_id(&state.db_pool, &workspace_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
-            .ok_or(AuthError::ProjectNotFound)?;
+            .ok_or(AuthError::WorkspaceNotFound)?;
 
-        let role = db::get_user_project_role(&state.db_pool, auth_user.user.id, &project_id)
+        let role = db::get_user_workspace_role(&state.db_pool, auth_user.user.id, &workspace_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
         match role {
-            Some(db::ProjectRole::ProjectAdmin) => Ok(ProjectAdmin { auth_user, project }),
+            Some(db::WorkspaceRole::WorkspaceAdmin) => Ok(WorkspaceAdmin {
+                auth_user,
+                workspace,
+            }),
             _ => Err(AuthError::Forbidden),
         }
     }
 }
 
-/// ProjectAdminOrOrgAdmin allows project admins OR org admins (for rename operations)
-pub struct ProjectAdminOrOrgAdmin {
+/// WorkspaceAdminOrOrgAdmin allows workspace admins OR org admins (for rename operations)
+pub struct WorkspaceAdminOrOrgAdmin {
     pub auth_user: AuthUser,
-    pub project: db::Project,
+    pub workspace: db::Workspace,
 }
 
-impl FromRequestParts<AppState> for ProjectAdminOrOrgAdmin {
+impl FromRequestParts<AppState> for WorkspaceAdminOrOrgAdmin {
     type Rejection = AuthError;
 
     async fn from_request_parts(
@@ -371,39 +374,45 @@ impl FromRequestParts<AppState> for ProjectAdminOrOrgAdmin {
     ) -> Result<Self, Self::Rejection> {
         let auth_user = AuthUser::from_request_parts(parts, state).await?;
 
-        let project_id_str = parts
+        let workspace_id_str = parts
             .headers
-            .get("X-Project-Id")
+            .get("X-Workspace-Id")
             .and_then(|v| v.to_str().ok())
-            .ok_or(AuthError::MissingProjectId)?;
+            .ok_or(AuthError::MissingWorkspaceId)?;
 
-        let project_id =
-            ProjectId::from_str(project_id_str).map_err(|_| AuthError::InvalidProjectId)?;
+        let workspace_id =
+            WorkspaceId::from_str(workspace_id_str).map_err(|_| AuthError::InvalidWorkspaceId)?;
 
-        let project = db::get_project_by_id(&state.db_pool, &project_id)
+        let workspace = db::get_workspace_by_id(&state.db_pool, &workspace_id)
             .await
             .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?
-            .ok_or(AuthError::ProjectNotFound)?;
+            .ok_or(AuthError::WorkspaceNotFound)?;
 
-        // Check if user has project admin role
-        let project_role =
-            db::get_user_project_role(&state.db_pool, auth_user.user.id, &project_id)
+        // Check if user has workspace admin role
+        let workspace_role =
+            db::get_user_workspace_role(&state.db_pool, auth_user.user.id, &workspace_id)
                 .await
                 .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
-        if matches!(project_role, Some(db::ProjectRole::ProjectAdmin)) {
-            return Ok(ProjectAdminOrOrgAdmin { auth_user, project });
+        if matches!(workspace_role, Some(db::WorkspaceRole::WorkspaceAdmin)) {
+            return Ok(WorkspaceAdminOrOrgAdmin {
+                auth_user,
+                workspace,
+            });
         }
 
-        // Or check if user is org admin of the project's organization
-        if let Some(org_id) = project.organization_id.as_ref() {
+        // Or check if user is org admin of the workspace's organization
+        if let Some(org_id) = workspace.organization_id.as_ref() {
             let org_role =
                 db::get_user_organization_role(&state.db_pool, auth_user.user.id, org_id)
                     .await
                     .map_err(|e| AuthError::InternalWithMessage(e.to_string()))?;
 
             if matches!(org_role, Some(db::OrgRole::OrgAdmin)) {
-                return Ok(ProjectAdminOrOrgAdmin { auth_user, project });
+                return Ok(WorkspaceAdminOrOrgAdmin {
+                    auth_user,
+                    workspace,
+                });
             }
         }
 
@@ -425,12 +434,12 @@ pub enum AuthError {
     InvalidOrganizationId,
     #[error("Organization not found")]
     OrganizationNotFound,
-    #[error("Missing Project ID header")]
-    MissingProjectId,
-    #[error("Invalid Project ID")]
-    InvalidProjectId,
-    #[error("Project not found")]
-    ProjectNotFound,
+    #[error("Missing Workspace ID header")]
+    MissingWorkspaceId,
+    #[error("Invalid Workspace ID")]
+    InvalidWorkspaceId,
+    #[error("Workspace not found")]
+    WorkspaceNotFound,
     #[error("Internal server error")]
     Internal,
     #[error("Internal server error: {0}")]
@@ -450,9 +459,11 @@ impl IntoResponse for AuthError {
                 (StatusCode::BAD_REQUEST, "Invalid Organization ID")
             }
             AuthError::OrganizationNotFound => (StatusCode::NOT_FOUND, "Organization not found"),
-            AuthError::MissingProjectId => (StatusCode::BAD_REQUEST, "Missing X-Project-Id header"),
-            AuthError::InvalidProjectId => (StatusCode::BAD_REQUEST, "Invalid Project ID"),
-            AuthError::ProjectNotFound => (StatusCode::NOT_FOUND, "Project not found"),
+            AuthError::MissingWorkspaceId => {
+                (StatusCode::BAD_REQUEST, "Missing X-Workspace-Id header")
+            }
+            AuthError::InvalidWorkspaceId => (StatusCode::BAD_REQUEST, "Invalid Workspace ID"),
+            AuthError::WorkspaceNotFound => (StatusCode::NOT_FOUND, "Workspace not found"),
             AuthError::Internal => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
             AuthError::InternalWithMessage(_) => {
                 (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error")

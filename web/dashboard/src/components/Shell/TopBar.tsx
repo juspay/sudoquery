@@ -1,22 +1,22 @@
 import { Box, AppBar, Toolbar, Divider, IconButton } from '@mui/material';
 import { Menu as MenuIcon } from 'lucide-react';
 import { Logo } from './Logo';
-import { OrgProjectSwitcher } from './OrgProjectSwitcher';
+import { OrgWorkspaceSwitcher } from './OrgWorkspaceSwitcher';
 import { useOrganization } from '../../contexts/OrganizationContext';
-import { useProject } from '../../contexts/ProjectContext';
+import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { useHistoryDrawer } from '../../contexts/HistoryDrawerContext';
-import { projectService } from '../../services/projectService';
+import { workspaceService } from '../../services/workspaceService';
 import { colorInk60, topbarHeight, fontFamilyBody } from '../../theme/tokens';
 import { useEffect, useState } from 'react';
 
 function EventsTodayBadge() {
   const { currentOrganization } = useOrganization();
-  const { currentProject } = useProject();
+  const { currentWorkspace } = useWorkspace();
   const [count, setCount] = useState<number | null>(null);
 
   useEffect(() => {
-    // Only an ACTIVE project has events to count.
-    if (!currentOrganization || !currentProject || currentProject.status !== 'ACTIVE') {
+    // Only an ACTIVE workspace has events to count.
+    if (!currentOrganization || !currentWorkspace || currentWorkspace.status !== 'ACTIVE') {
       setCount(null);
       return;
     }
@@ -25,7 +25,7 @@ function EventsTodayBadge() {
 
     const loadCount = async () => {
       try {
-        const nextCount = await projectService.getEventsTodayCount(currentOrganization.id, currentProject.id);
+        const nextCount = await workspaceService.getEventsTodayCount(currentOrganization.id, currentWorkspace.id);
         if (isActive) {
           setCount(nextCount);
         }
@@ -43,7 +43,7 @@ function EventsTodayBadge() {
       isActive = false;
       window.clearInterval(intervalId);
     };
-  }, [currentOrganization?.id, currentProject?.id, currentProject?.status]);
+  }, [currentOrganization?.id, currentWorkspace?.id, currentWorkspace?.status]);
 
   if (count === null) return null;
 
@@ -106,7 +106,7 @@ export function TopBar() {
 
         {/* Center: Switcher */}
         <Box sx={{ flex: 1, display: 'flex', justifyContent: { xs: 'flex-start', md: 'center' } }}>
-          <OrgProjectSwitcher />
+          <OrgWorkspaceSwitcher />
         </Box>
 
         {/* Right: Actions & User */}

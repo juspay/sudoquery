@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useRef, type ReactNode } from 'react';
 import { Box } from '@mui/material';
 import { apiClient } from '../services/apiClient';
-import { useProject } from '../contexts/ProjectContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { ChatSidebar } from '../components/Chat/ChatSidebar';
 import { ChatInterface, type ChatInterfaceMessage } from '../components/Chat/ChatInterface';
 import { DateTimePicker } from '../components/Chat/DateTimePicker';
@@ -22,14 +22,14 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 
 // chatId can be null or undefined, if it's null or undefined, it means this is a new chat, and we need to create a new chat when user send the first message. otherwise, we can just load the chat with the given chatId.
 export default function ChatPageV1() {
-  const project = useProject();
-  if (project == null) {
-    return <p>Loading project...</p>;
+  const workspace = useWorkspace();
+  if (workspace == null) {
+    return <p>Loading workspace...</p>;
   }
-  return <Page project={project.currentProject} />;
+  return <Page workspace={workspace.currentWorkspace} />;
 }
 
-function Page({project}: {project : string}){
+function Page({workspace}: {workspace : string}){
   const url = new URL(window.location.href);
   const pathSegments = url.pathname.split('/');
   const chatIdFromUrl = pathSegments.length > 3 ? pathSegments[3] : null;
@@ -57,14 +57,14 @@ function Page({project}: {project : string}){
   };
 
   useEffect(() => {
-    apiClient.request<{ chats: Chat[] }>('/project/chats')
+    apiClient.request<{ chats: Chat[] }>('/workspace/chats')
       .then((data) => {
         setChats(data ?? []);
       })
       .catch((error) => {
         console.error('Failed to fetch chats from server:', error);
       });
-  }, [project]);
+  }, [workspace]);
 
   const handleSelectChat = (id: string) => {
     setActiveChatId(id);
@@ -93,7 +93,7 @@ function Page({project}: {project : string}){
 
   const handleDeleteChat = async (chatId: string) => {
     try {
-      await apiClient.delete(`/project/chat/${chatId}`);
+      await apiClient.delete(`/workspace/chat/${chatId}`);
 
       // Remove chat from local state
       setChats((prevChats) => prevChats.filter((c) => c.id !== chatId));
@@ -243,7 +243,7 @@ function useChatMessages({
   // get initial messages if chatId is not null, otherwise start with empty messages for new chat
   useEffect(() => {
     if (chatId) {
-      apiClient.request<{ messages: ChatMessageRecord[] }>(`/project/chat/${chatId}/messages`)
+      apiClient.request<{ messages: ChatMessageRecord[] }>(`/workspace/chat/${chatId}/messages`)
         .then((data) => {
           if(!data.messages) return;
           setRawMessages(data.messages.map((msg)=>{return {...msg, isComplete: true}}) ?? []);
@@ -263,7 +263,7 @@ function useChatMessages({
 
   function generateTitle(chatId: string | null){
     if(chatId !== null){
-        apiClient.post<{ title: string }>('/project/chat/gen_titlev1', { chat_id: chatId })
+        apiClient.post<{ title: string }>('/workspace/chat/gen_titlev1', { chat_id: chatId })
           .then((response) => {
             if (onTitleGenerated) {
               onTitleGenerated(chatId, response.title);
@@ -308,7 +308,7 @@ function useChatMessages({
     // stop listening when there is connection close
     // Use the type from the message if provided (for new chats), otherwise use the chat's stored type
     const effectiveChatType = messageType ?? chatType;
-    const response = await apiClient.stream('/project/chat/llm_chatv1', { prompt: content, role: 'user', chat_id: chatId, message_id: message_id, chat_type: effectiveChatType });
+    const response = await apiClient.stream('/workspace/chat/llm_chatv1', { prompt: content, role: 'user', chat_id: chatId, message_id: message_id, chat_type: effectiveChatType });
 
     if (!response.body) {
       throw new Error('Streaming response body is missing');
@@ -481,7 +481,7 @@ function useChatMessages({
     setIsStreaming(true);
 
     // Call the tool response endpoint
-    const response = await apiClient.stream('/project/chat/client_tool_response_v1', {
+    const response = await apiClient.stream('/workspace/chat/client_tool_response_v1', {
       chat_id: chatId,
       tool_call_id: toolCallId,
       value,

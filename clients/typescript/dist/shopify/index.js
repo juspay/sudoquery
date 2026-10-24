@@ -19,8 +19,8 @@ var ShopifySudoQueryPixel = (() => {
     static get orgId() {
       return _Configuration._orgId;
     }
-    static get projectId() {
-      return _Configuration._projectId;
+    static get workspaceId() {
+      return _Configuration._workspaceId;
     }
     static get source() {
       return _Configuration._source;
@@ -46,8 +46,8 @@ var ShopifySudoQueryPixel = (() => {
     static setOrgId(value) {
       _Configuration._orgId = value;
     }
-    static setProjectId(value) {
-      _Configuration._projectId = value;
+    static setWorkspaceId(value) {
+      _Configuration._workspaceId = value;
     }
     static setSource(value) {
       _Configuration._source = value;
@@ -62,7 +62,7 @@ var ShopifySudoQueryPixel = (() => {
       _Configuration._token = null;
       _Configuration._headers = {};
       _Configuration._orgId = null;
-      _Configuration._projectId = null;
+      _Configuration._workspaceId = null;
       _Configuration._source = _Configuration.DEFAULT_SOURCE;
       _Configuration._sessionId = null;
     }
@@ -75,7 +75,7 @@ var ShopifySudoQueryPixel = (() => {
   _Configuration._token = null;
   _Configuration._headers = {};
   _Configuration._orgId = null;
-  _Configuration._projectId = null;
+  _Configuration._workspaceId = null;
   _Configuration._source = _Configuration.DEFAULT_SOURCE;
   _Configuration._sessionId = null;
   var Configuration = _Configuration;
@@ -208,16 +208,16 @@ var ShopifySudoQueryPixel = (() => {
         console.error("Cannot send analytics batch: orgId is required by the collector.");
         return null;
       }
-      const projectId = Configuration.projectId ?? payload.events[0]?.project_id ?? null;
-      if (!projectId) {
-        console.error("Cannot send analytics batch: projectId is required by the collector.");
+      const workspaceId = Configuration.workspaceId ?? payload.events[0]?.workspace_id ?? null;
+      if (!workspaceId) {
+        console.error("Cannot send analytics batch: workspaceId is required by the collector.");
         return null;
       }
       const headers = {
         "Content-Type": "application/json",
         ...Configuration.headers,
         "x-org-id": orgId,
-        "x-project-id": projectId
+        "x-workspace-id": workspaceId
       };
       if (Configuration.token) {
         headers.Authorization = `Bearer ${Configuration.token}`;
@@ -404,9 +404,9 @@ var ShopifySudoQueryPixel = (() => {
         warnIfNotSlug("orgId", config.orgId);
         Configuration.setOrgId(config.orgId);
       }
-      if (config?.projectId !== void 0) {
-        warnIfNotSlug("projectId", config.projectId);
-        Configuration.setProjectId(config.projectId);
+      if (config?.workspaceId !== void 0) {
+        warnIfNotSlug("workspaceId", config.workspaceId);
+        Configuration.setWorkspaceId(config.workspaceId);
       }
       if (config?.source !== void 0) {
         Configuration.setSource(config.source);
@@ -501,9 +501,9 @@ var ShopifySudoQueryPixel = (() => {
       if (!orgId || orgId.trim().length === 0) {
         throw new Error("orgId is required before tracking events");
       }
-      const projectId = Configuration.projectId;
-      if (!projectId || projectId.trim().length === 0) {
-        throw new Error("projectId is required before tracking events");
+      const workspaceId = Configuration.workspaceId;
+      if (!workspaceId || workspaceId.trim().length === 0) {
+        throw new Error("workspaceId is required before tracking events");
       }
       const superProperties = SuperProperties.getSuperProperties();
       const mergedProperties = mergeProperties(props, superProperties);
@@ -512,7 +512,7 @@ var ShopifySudoQueryPixel = (() => {
         id: generateUuid(),
         name: eventName.toString(),
         org_id: orgId,
-        project_id: projectId,
+        workspace_id: workspaceId,
         session_id: Configuration.sessionId ?? getSessionId(),
         anon_id: AnonymousId.getOrCreate(),
         actor_id: this.currentUser,
@@ -645,11 +645,11 @@ var ShopifySudoQueryPixel = (() => {
     const pixelSettings = typeof settings !== "undefined" ? settings : {};
     const COLLECTOR_ENDPOINT = pixelSettings.collectorEndpoint || "https://73g8lnmf-3000.inc1.devtunnels.ms/batch";
     const ORG_ID = pixelSettings.orgId || "breeze";
-    const PROJECT_ID = pixelSettings.projectId || "d2cmerino";
+    const WORKSPACE_ID = pixelSettings.workspaceId || "d2cmerino";
     SudoQuery.init({
       endpoint: COLLECTOR_ENDPOINT,
       orgId: ORG_ID,
-      projectId: PROJECT_ID,
+      workspaceId: WORKSPACE_ID,
       source: "shopify",
       batchSize: 1
     });

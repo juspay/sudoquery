@@ -22,36 +22,36 @@ import {
 import { Plus as AddIcon, X as CloseIcon } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../../components/shared/PageHeader';
-import { ProjectSettingsForm } from '../../components/Settings/ProjectSettingsForm';
+import { WorkspaceSettingsForm } from '../../components/Settings/WorkspaceSettingsForm';
 import { DangerZone } from '../../components/Settings/DangerZone';
 import { MembersTable } from '../../components/Settings/MembersTable';
 import type { MemberRow } from '../../components/Settings/MembersTable';
 import { useOrganization } from '../../contexts/OrganizationContext';
-import { useProject } from '../../contexts/ProjectContext';
+import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { useToast } from '../../contexts/ToastContext';
-import { projectService } from '../../services/projectService';
+import { workspaceService } from '../../services/workspaceService';
 import { apiErrorMessage } from '../../services/apiClient';
 import { invitationService, type Invitation } from '../../services/invitationService';
 import type { RoleType } from '../../components/Settings/RoleBadge';
 import { trackEvent } from '../../utils/analytics';
 
-export default function ProjectSettingsPage() {
+export default function WorkspaceSettingsPage() {
   const { currentOrganization } = useOrganization();
-  const { currentProject, setCurrentProject, projects, setProjects, refreshProjects } = useProject();
+  const { currentWorkspace, setCurrentWorkspace, workspaces, setWorkspaces, refreshWorkspaces } = useWorkspace();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
 
   // Members state
-  const [projectMembers, setProjectMembers] = useState<MemberRow[]>([]);
-  const [projectInvitations, setProjectInvitations] = useState<Invitation[]>([]);
+  const [workspaceMembers, setWorkspaceMembers] = useState<MemberRow[]>([]);
+  const [workspaceInvitations, setWorkspaceInvitations] = useState<Invitation[]>([]);
   const [membersLoading, setMembersLoading] = useState(true);
   const [membersError, setMembersError] = useState<string | null>(null);
 
   // Invite dialog state
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteRole, setInviteRole] = useState('project_user');
+  const [inviteRole, setInviteRole] = useState('workspace_user');
   const [sendingInvite, setSendingInvite] = useState(false);
 
   // Delete confirmation dialog state
@@ -61,11 +61,11 @@ export default function ProjectSettingsPage() {
 
   // Track page view
   useEffect(() => {
-    trackEvent('page_view', { page: 'settings', tab: 'project' });
+    trackEvent('page_view', { page: 'settings', tab: 'workspace' });
   }, []);
 
   useEffect(() => {
-    if (!currentOrganization || !currentProject) {
+    if (!currentOrganization || !currentWorkspace) {
       setMembersLoading(false);
       return;
     }
@@ -75,19 +75,19 @@ export default function ProjectSettingsPage() {
       setMembersError(null);
 
       try {
-        const [projectMembersRes, projectInvitesRes] = await Promise.all([
-          projectService.listMembers(currentOrganization.id, currentProject.id),
-          invitationService.listProjectInvitations(currentOrganization.id, currentProject.id),
+        const [workspaceMembersRes, workspaceInvitesRes] = await Promise.all([
+          workspaceService.listMembers(currentOrganization.id, currentWorkspace.id),
+          invitationService.listWorkspaceInvitations(currentOrganization.id, currentWorkspace.id),
         ]);
-        const projectRows: MemberRow[] = projectMembersRes.map((m) => ({
+        const workspaceRows: MemberRow[] = workspaceMembersRes.map((m) => ({
           id: m.user_id,
           name: m.username,
           email: m.email,
           role: m.role,
           joinedAt: new Date(),
         }));
-        setProjectMembers(projectRows);
-        setProjectInvitations(projectInvitesRes);
+        setWorkspaceMembers(workspaceRows);
+        setWorkspaceInvitations(workspaceInvitesRes);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to load members';
         setMembersError(message);
@@ -98,28 +98,28 @@ export default function ProjectSettingsPage() {
     };
 
     fetchMembers();
-  }, [currentOrganization, currentProject, showError]);
+  }, [currentOrganization, currentWorkspace, showError]);
 
-  const handleRemoveProjectMember = async (id: string) => {
-    if (!currentOrganization || !currentProject) return;
+  const handleRemoveWorkspaceMember = async (id: string) => {
+    if (!currentOrganization || !currentWorkspace) return;
 
     try {
-      await projectService.removeMember(currentOrganization.id, currentProject.id, id);
-      setProjectMembers((prev) => prev.filter((m) => m.id !== id));
-      showSuccess('Member removed from project.');
+      await workspaceService.removeMember(currentOrganization.id, currentWorkspace.id, id);
+      setWorkspaceMembers((prev) => prev.filter((m) => m.id !== id));
+      showSuccess('Member removed from workspace.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to remove member';
       showError(message);
     }
   };
 
-  const handleUpdateProjectRole = async (id: string, newRole: RoleType) => {
-    if (!currentOrganization || !currentProject) return;
+  const handleUpdateWorkspaceRole = async (id: string, newRole: RoleType) => {
+    if (!currentOrganization || !currentWorkspace) return;
 
     try {
-      await projectService.updateMemberRole(currentOrganization.id, currentProject.id, id, newRole as 'project_admin' | 'project_user');
-      setProjectMembers((prev) => prev.map((m) => (m.id === id ? { ...m, role: newRole } : m)));
-      showSuccess('Project role updated successfully.');
+      await workspaceService.updateMemberRole(currentOrganization.id, currentWorkspace.id, id, newRole as 'workspace_admin' | 'workspace_user');
+      setWorkspaceMembers((prev) => prev.map((m) => (m.id === id ? { ...m, role: newRole } : m)));
+      showSuccess('Workspace role updated successfully.');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update role';
       showError(message);
@@ -127,22 +127,22 @@ export default function ProjectSettingsPage() {
   };
 
   const handleSendInvite = async () => {
-    if (!currentOrganization || !currentProject || !inviteEmail.trim()) return;
+    if (!currentOrganization || !currentWorkspace || !inviteEmail.trim()) return;
 
     setSendingInvite(true);
     try {
-      await invitationService.inviteToProject(currentOrganization.id, currentProject.id, {
+      await invitationService.inviteToWorkspace(currentOrganization.id, currentWorkspace.id, {
         email: inviteEmail.trim(),
         role: inviteRole,
       });
       showSuccess('Invitation sent successfully.');
 
-      const invites = await invitationService.listProjectInvitations(currentOrganization.id, currentProject.id);
-      setProjectInvitations(invites);
+      const invites = await invitationService.listWorkspaceInvitations(currentOrganization.id, currentWorkspace.id);
+      setWorkspaceInvitations(invites);
 
       setInviteDialogOpen(false);
       setInviteEmail('');
-      setInviteRole('project_user');
+      setInviteRole('workspace_user');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to send invitation';
       showError(message);
@@ -152,12 +152,12 @@ export default function ProjectSettingsPage() {
   };
 
   const handleRevokeInvitation = async (invitationId: string) => {
-    if (!currentOrganization || !currentProject) return;
+    if (!currentOrganization || !currentWorkspace) return;
     try {
       await invitationService.revokeInvitation(invitationId);
       showSuccess('Invitation revoked.');
-      const invites = await invitationService.listProjectInvitations(currentOrganization.id, currentProject.id);
-      setProjectInvitations(invites);
+      const invites = await invitationService.listWorkspaceInvitations(currentOrganization.id, currentWorkspace.id);
+      setWorkspaceInvitations(invites);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to revoke invitation';
       showError(message);
@@ -168,8 +168,8 @@ export default function ProjectSettingsPage() {
     const roleMap: Record<string, string> = {
       org_admin: 'Organization Admin',
       org_user: 'Organization Member',
-      project_admin: 'Project Admin',
-      project_user: 'Project Member',
+      workspace_admin: 'Workspace Admin',
+      workspace_user: 'Workspace Member',
     };
     return roleMap[role] || role;
   };
@@ -178,41 +178,41 @@ export default function ProjectSettingsPage() {
     setDeleteDialogOpen(false);
   };
 
-  const handleDeleteProject = () => {
+  const handleDeleteWorkspace = () => {
     setDeleteDialogOpen(true);
   };
 
   const confirmDelete = async () => {
-    if (!currentOrganization || !currentProject) {
+    if (!currentOrganization || !currentWorkspace) {
       closeDeleteDialog();
       return;
     }
 
     setIsDeleting(true);
     try {
-      await projectService.delete(currentOrganization.id, currentProject.id);
-      showSuccess(`Project ${currentProject.name} deleted successfully.`);
-      setProjects(projects.filter(p => p.id !== currentProject.id));
-      setCurrentProject(null);
+      await workspaceService.delete(currentOrganization.id, currentWorkspace.id);
+      showSuccess(`Workspace ${currentWorkspace.name} deleted successfully.`);
+      setWorkspaces(workspaces.filter(p => p.id !== currentWorkspace.id));
+      setCurrentWorkspace(null);
       closeDeleteDialog();
       navigate('/app/dashboard');
     } catch (err) {
-      showError(apiErrorMessage(err, 'Failed to delete project'));
-      // A deletion that failed half-way leaves the project DELETING.
-      await refreshProjects();
+      showError(apiErrorMessage(err, 'Failed to delete workspace'));
+      // A deletion that failed half-way leaves the workspace DELETING.
+      await refreshWorkspaces();
     } finally {
       setIsDeleting(false);
     }
   };
 
-  if (!currentProject) {
+  if (!currentWorkspace) {
     return (
       <Box sx={{ p: { xs: 2, sm: 4, md: 6 }, maxWidth: 860, mx: 'auto' }}>
         <PageHeader
-          title="Project Settings"
-          description="Manage project settings and members."
+          title="Workspace Settings"
+          description="Manage workspace settings and members."
         />
-        <Alert severity="info">Select a project to view project settings.</Alert>
+        <Alert severity="info">Select a workspace to view workspace settings.</Alert>
       </Box>
     );
   }
@@ -220,25 +220,25 @@ export default function ProjectSettingsPage() {
   return (
     <Box sx={{ p: { xs: 2, sm: 4, md: 6 }, maxWidth: 860, mx: 'auto' }}>
       <PageHeader
-        title="Project Settings"
-        description={`Manage settings for ${currentProject.name}.`}
+        title="Workspace Settings"
+        description={`Manage settings for ${currentWorkspace.name}.`}
       />
 
-      {currentProject.status !== 'ACTIVE' && (
+      {currentWorkspace.status !== 'ACTIVE' && (
         <Alert severity="info" sx={{ mb: 3 }}>
-          {currentProject.status === 'DELETING'
-            ? 'This project is being deleted. If deleting it failed, you can retry below.'
-            : 'This project is not set up yet, so it cannot receive events or be queried. Events sent with its token before then are lost.'}
+          {currentWorkspace.status === 'DELETING'
+            ? 'This workspace is being deleted. If deleting it failed, you can retry below.'
+            : 'This workspace is not set up yet, so it cannot receive events or be queried. Events sent with its token before then are lost.'}
         </Alert>
       )}
 
-      <ProjectSettingsForm />
+      <WorkspaceSettingsForm />
 
       {/* Members Section */}
       <Box sx={{ mt: 4 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
           <Typography variant="h6" fontWeight={600}>
-            Members ({projectMembers.length})
+            Members ({workspaceMembers.length})
           </Typography>
           <Button
             variant="contained"
@@ -265,26 +265,26 @@ export default function ProjectSettingsPage() {
         {!membersLoading && !membersError && (
           <>
             <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-              Project members have access only to this specific project.
+              Workspace members have access only to this specific workspace.
             </Typography>
             <MembersTable
-              members={projectMembers}
+              members={workspaceMembers}
               isAdmin={isOrgAdmin}
-              onUpdateRole={handleUpdateProjectRole}
-              onRemoveMember={handleRemoveProjectMember}
+              onUpdateRole={handleUpdateWorkspaceRole}
+              onRemoveMember={handleRemoveWorkspaceMember}
               roleOptions={[
-                { value: 'project_admin', label: 'Project Admin' },
-                { value: 'project_user', label: 'Project Member' },
+                { value: 'workspace_admin', label: 'Workspace Admin' },
+                { value: 'workspace_user', label: 'Workspace Member' },
               ]}
-              removeLabel="Remove from Project"
+              removeLabel="Remove from Workspace"
             />
-            {projectInvitations.length > 0 && (
+            {workspaceInvitations.length > 0 && (
               <Box sx={{ mt: 4 }}>
                 <Typography variant="subtitle2" sx={{ mb: 2, color: 'text.secondary' }}>
-                  Pending Invitations ({projectInvitations.length})
+                  Pending Invitations ({workspaceInvitations.length})
                 </Typography>
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  {projectInvitations.map((inv) => (
+                  {workspaceInvitations.map((inv) => (
                     <Box
                       key={inv.id}
                       sx={{
@@ -338,11 +338,11 @@ export default function ProjectSettingsPage() {
       </Box>
 
       <DangerZone
-        title="Delete Project"
-        description="Permanently delete this project and all of its associated analytics metrics. This action cannot be reversed."
+        title="Delete Workspace"
+        description="Permanently delete this workspace and all of its associated analytics metrics. This action cannot be reversed."
         action={
-          <Button variant="contained" color="error" onClick={handleDeleteProject} disabled={isDeleting}>
-            Delete Project
+          <Button variant="contained" color="error" onClick={handleDeleteWorkspace} disabled={isDeleting}>
+            Delete Workspace
           </Button>
         }
       />
@@ -359,11 +359,11 @@ export default function ProjectSettingsPage() {
         }}
       >
         <DialogTitle sx={{ color: 'error.main', fontWeight: 600, pb: 1 }}>
-          Delete Project
+          Delete Workspace
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ color: 'text.secondary', lineHeight: 1.6 }}>
-            Are you sure you want to delete "{currentProject?.name}"? This will permanently delete this project and all of its associated analytics metrics. This action cannot be undone.
+            Are you sure you want to delete "{currentWorkspace?.name}"? This will permanently delete this workspace and all of its associated analytics metrics. This action cannot be undone.
           </DialogContentText>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
@@ -387,7 +387,7 @@ export default function ProjectSettingsPage() {
         <DialogTitle>
           Invite Member
           <Typography variant="caption" display="block" color="text.secondary" sx={{ mt: 0.5 }}>
-            To Project: {currentProject?.name}
+            To Workspace: {currentWorkspace?.name}
           </Typography>
         </DialogTitle>
         <DialogContent>
@@ -409,12 +409,12 @@ export default function ProjectSettingsPage() {
                 label="Role"
                 onChange={(e) => setInviteRole(e.target.value)}
               >
-                <MenuItem value="project_admin">Project Admin</MenuItem>
-                <MenuItem value="project_user">Project User</MenuItem>
+                <MenuItem value="workspace_admin">Workspace Admin</MenuItem>
+                <MenuItem value="workspace_user">Workspace User</MenuItem>
               </Select>
             </FormControl>
             <Typography variant="caption" color="text.secondary">
-              Project members can only access this specific project.
+              Workspace members can only access this specific workspace.
             </Typography>
           </Box>
         </DialogContent>

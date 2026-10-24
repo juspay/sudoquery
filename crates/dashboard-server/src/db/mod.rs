@@ -5,10 +5,10 @@ pub mod live_dashboard;
 pub mod membership;
 pub mod message;
 pub mod organization;
-pub mod project;
 pub mod property_description;
 pub mod user;
-pub mod user_project_console;
+pub mod user_workspace_console;
+pub mod workspace;
 
 /// How many times a slug insert is retried with a freshly generated id
 /// after a unique-constraint violation before giving up.
@@ -28,7 +28,7 @@ pub use live_dashboard::*;
 pub use membership::*;
 pub use message::*;
 pub use organization::*;
-pub use project::*;
 pub use property_description::*;
 pub use user::*;
-pub use user_project_console::*;
+pub use user_workspace_console::*;
+pub use workspace::*;

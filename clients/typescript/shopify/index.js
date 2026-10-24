@@ -12,12 +12,12 @@ try {
   const COLLECTOR_ENDPOINT =
     pixelSettings.collectorEndpoint || "https://73g8lnmf-3000.inc1.devtunnels.ms/batch";
   const ORG_ID = pixelSettings.orgId || "breeze";
-  const PROJECT_ID = pixelSettings.projectId || "d2cmerino";
+  const WORKSPACE_ID = pixelSettings.workspaceId || "d2cmerino";
 
   SudoQuery.init({
     endpoint: COLLECTOR_ENDPOINT,
     orgId: ORG_ID,
-    projectId: PROJECT_ID,
+    workspaceId: WORKSPACE_ID,
     source: "shopify",
     batchSize: 1,
   });

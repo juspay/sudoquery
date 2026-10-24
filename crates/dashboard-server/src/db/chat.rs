@@ -1,4 +1,4 @@
-use canonical_event::ProjectId;
+use canonical_event::WorkspaceId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -7,7 +7,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct Chat {
     pub id: Uuid,
-    pub project_id: ProjectId,
+    pub workspace_id: WorkspaceId,
     pub user_id: Uuid,
     pub title: String,
     pub created_at: DateTime<Utc>,
@@ -25,7 +25,7 @@ pub enum ChatType {
 
 pub async fn create_chat(
     pool: &PgPool,
-    project_id: &ProjectId,
+    workspace_id: &WorkspaceId,
     user_id: Uuid,
     title: &str,
     chat_type: &ChatType,
@@ -34,13 +34,13 @@ pub async fn create_chat(
 
     sqlx::query_as::<_, Chat>(
         r#"
-        INSERT INTO chats (id, project_id, user_id, title, version, chat_type)
+        INSERT INTO chats (id, workspace_id, user_id, title, version, chat_type)
         VALUES ($1, $2, $3, $4, 1, $5)
-        RETURNING id, project_id, user_id, title, created_at, version, chat_type
+        RETURNING id, workspace_id, user_id, title, created_at, version, chat_type
         "#,
     )
     .bind(id)
-    .bind(project_id)
+    .bind(workspace_id)
     .bind(user_id)
     .bind(title)
     .bind(chat_type)
@@ -51,7 +51,7 @@ pub async fn create_chat(
 pub async fn get_chat_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Chat>, sqlx::Error> {
     sqlx::query_as::<_, Chat>(
         r#"
-        SELECT id, project_id, user_id, title, created_at, version, chat_type
+        SELECT id, workspace_id, user_id, title, created_at, version, chat_type
         FROM chats
         WHERE id = $1
         "#,
@@ -61,19 +61,19 @@ pub async fn get_chat_by_id(pool: &PgPool, id: Uuid) -> Result<Option<Chat>, sql
     .await
 }
 
-pub async fn list_chats_by_project(
+pub async fn list_chats_by_workspace(
     pool: &PgPool,
-    project_id: &ProjectId,
+    workspace_id: &WorkspaceId,
 ) -> Result<Vec<Chat>, sqlx::Error> {
     sqlx::query_as::<_, Chat>(
         r#"
-        SELECT id, project_id, user_id, title, created_at, version, chat_type
+        SELECT id, workspace_id, user_id, title, created_at, version, chat_type
         FROM chats
-        WHERE project_id = $1
+        WHERE workspace_id = $1
         ORDER BY created_at DESC
         "#,
     )
-    .bind(project_id)
+    .bind(workspace_id)
     .fetch_all(pool)
     .await
 }
@@ -81,7 +81,7 @@ pub async fn list_chats_by_project(
 pub async fn list_chats_by_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<Chat>, sqlx::Error> {
     sqlx::query_as::<_, Chat>(
         r#"
-        SELECT id, project_id, user_id, title, created_at, version, chat_type
+        SELECT id, workspace_id, user_id, title, created_at, version, chat_type
         FROM chats
         WHERE user_id = $1
         ORDER BY created_at DESC
@@ -92,20 +92,20 @@ pub async fn list_chats_by_user(pool: &PgPool, user_id: Uuid) -> Result<Vec<Chat
     .await
 }
 
-pub async fn list_chats_by_project_and_user(
+pub async fn list_chats_by_workspace_and_user(
     pool: &PgPool,
-    project_id: &ProjectId,
+    workspace_id: &WorkspaceId,
     user_id: Uuid,
 ) -> Result<Vec<Chat>, sqlx::Error> {
     sqlx::query_as::<_, Chat>(
         r#"
-        SELECT id, project_id, user_id, title, created_at, version, chat_type
+        SELECT id, workspace_id, user_id, title, created_at, version, chat_type
         FROM chats
-        WHERE project_id = $1 AND user_id = $2 AND version = 1
+        WHERE workspace_id = $1 AND user_id = $2 AND version = 1
         ORDER BY created_at DESC
         "#,
     )
-    .bind(project_id)
+    .bind(workspace_id)
     .bind(user_id)
     .fetch_all(pool)
     .await
@@ -131,7 +131,7 @@ pub async fn update_chat_title(pool: &PgPool, id: Uuid, title: &str) -> Result<C
         UPDATE chats
         SET title = $2
         WHERE id = $1
-        RETURNING id, project_id, user_id, title, created_at, version, chat_type
+        RETURNING id, workspace_id, user_id, title, created_at, version, chat_type
         "#,
     )
     .bind(id)

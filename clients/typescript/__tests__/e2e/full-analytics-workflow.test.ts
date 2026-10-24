@@ -19,7 +19,7 @@ describe('Full Analytics Workflow - End-to-End', () => {
     Configuration.reset();
     Configuration.setBatchSize(3);
     Configuration.setOrgId('acme-org-1');
-    Configuration.setProjectId('acme-project-1');
+    Configuration.setWorkspaceId('acme-workspace-1');
     SudoQuery['didInit'] = false;
     Batcher.reset();
     jest.clearAllMocks();

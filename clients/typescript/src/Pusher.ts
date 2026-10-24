@@ -101,10 +101,10 @@ export class Pusher {
       return null;
     }
 
-    const projectId = Configuration.projectId ?? payload.events[0]?.project_id ?? null;
+    const workspaceId = Configuration.workspaceId ?? payload.events[0]?.workspace_id ?? null;
 
-    if (!projectId) {
-      console.error("Cannot send analytics batch: projectId is required by the collector.");
+    if (!workspaceId) {
+      console.error("Cannot send analytics batch: workspaceId is required by the collector.");
       return null;
     }
 
@@ -112,7 +112,7 @@ export class Pusher {
       "Content-Type": "application/json",
       ...Configuration.headers,
       "x-org-id": orgId,
-      "x-project-id": projectId,
+      "x-workspace-id": workspaceId,
     };
 
     if (Configuration.token) {

@@ -104,7 +104,7 @@ export default function SessionDetailPage() {
     [filter],
   );
   const query = built.ok ? built.query : null;
-  const key = scope && query ? `${scope.projectId}:${sessionId}:${JSON.stringify(query)}` : null;
+  const key = scope && query ? `${scope.workspaceId}:${sessionId}:${JSON.stringify(query)}` : null;
 
   const first = useAsyncResult(key, (signal) =>
     loadSession({ ...scope!, signal }, sessionId, query!, null, AUTOLOAD_LIMIT),
@@ -197,8 +197,8 @@ export default function SessionDetailPage() {
   if (!scope) {
     return (
       <EmptyStateCard
-        heading="No project selected"
-        subtext="Choose an organization and a project to view a session."
+        heading="No workspace selected"
+        subtext="Choose an organization and a workspace to view a session."
       />
     );
   }
@@ -296,7 +296,7 @@ export default function SessionDetailPage() {
               subtext={
                 filtered
                   ? 'Clear or change the filter to see the session again.'
-                  : 'The session id may be wrong, or it belongs to another project.'
+                  : 'The session id may be wrong, or it belongs to another workspace.'
               }
               ctaLabel={filtered ? 'Clear filter' : undefined}
               onCta={filtered ? () => applyFilter('') : undefined}

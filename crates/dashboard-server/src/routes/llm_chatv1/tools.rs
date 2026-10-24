@@ -242,7 +242,7 @@ pub fn get_tools(chat_type: &ChatType) -> serde_json::Value {
         "type": "function",
         "function": {
             "name": "list_live_dashboards",
-            "description": "List all available live dashboards for the project. Returns dashboard IDs and their descriptions. Use this to discover what dashboards are available before fetching specific ones.",
+            "description": "List all available live dashboards for the workspace. Returns dashboard IDs and their descriptions. Use this to discover what dashboards are available before fetching specific ones.",
             "parameters": {
                 "type": "object",
                 "properties": {},
@@ -365,7 +365,7 @@ pub fn get_database_schema_value(table_name: Option<&str>) -> serde_json::Value 
                 "name": "user_events_v2",
                 "description": "Optimised table for user behavior analytics and run time session creations, cohorts creation",
                 "columns": [
-                    { "name": "project_id", "type": "LowCardinality(String)" },
+                    { "name": "workspace_id", "type": "LowCardinality(String)" },
                     { "name": "org_id", "type": "LowCardinality(String)" },
                     { "name": "actor_id", "type": "String" },
                     { "name": "anon_id", "type": "String" },
@@ -386,7 +386,7 @@ pub fn get_database_schema_value(table_name: Option<&str>) -> serde_json::Value 
                     { "name": "updated_at", "type": "DateTime" },
                     { "name": "is_deleted", "type": "UInt8" }
                 ],
-                "orderBy": ["project_id", "actor_id", "event_timestamp", "event_id"],
+                "orderBy": ["workspace_id", "actor_id", "event_timestamp", "event_id"],
                 "partitionBy": "toYYYYMM(event_timestamp)",
                 "notes": "The acting user is actor_id. Property values are read from the JSON column, e.g. toString(properties.foo) or properties.foo.:String for strings and properties.foo::Float64 for numerics. Legacy v1 columns (user_id, event_date, event_hour, device_type, platform, browser, city, user_agent, version) no longer exist."
             },
@@ -394,7 +394,7 @@ pub fn get_database_schema_value(table_name: Option<&str>) -> serde_json::Value 
                 "name": "events_v2",
                 "description": "Optimised for event analytics. Use this table for event-related queries (event names, event properties, event counts) as event_name is in the sort key.",
                 "columns": [
-                    { "name": "project_id", "type": "LowCardinality(String)" },
+                    { "name": "workspace_id", "type": "LowCardinality(String)" },
                     { "name": "org_id", "type": "LowCardinality(String)" },
                     { "name": "actor_id", "type": "String" },
                     { "name": "anon_id", "type": "String" },
@@ -415,7 +415,7 @@ pub fn get_database_schema_value(table_name: Option<&str>) -> serde_json::Value 
                     { "name": "updated_at", "type": "DateTime" },
                     { "name": "is_deleted", "type": "UInt8" }
                 ],
-                "orderBy": ["project_id", "event_name", "event_timestamp", "event_id"],
+                "orderBy": ["workspace_id", "event_name", "event_timestamp", "event_id"],
                 "partitionBy": "toYYYYMM(event_timestamp)",
                 "notes": "Property values are read from the JSON column, e.g. toString(properties.foo) or properties.foo.:String for strings and properties.foo::Float64 for numerics. Legacy v1 columns (user_id, event_date, event_hour, device_type, platform, browser, city, user_agent, version) no longer exist."
             },
@@ -423,12 +423,12 @@ pub fn get_database_schema_value(table_name: Option<&str>) -> serde_json::Value 
                 "name": "event_schema_catalog",
                 "description": "Optimised to get glossary of events",
                 "columns": [
-                    { "name": "project_id", "type": "LowCardinality(String)" },
+                    { "name": "workspace_id", "type": "LowCardinality(String)" },
                     { "name": "event_name", "type": "String" },
                     { "name": "property", "type": "String" },
                     { "name": "type", "type": "String" }
                 ],
-                "orderBy": ["project_id", "event_name", "property", "type"]
+                "orderBy": ["workspace_id", "event_name", "property", "type"]
             }
         ]
     });

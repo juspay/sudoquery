@@ -1,7 +1,7 @@
 //! Event ingestion through a running events-collector into Kafka.
 //!
 //! The collector runs with `KAFKA_TOPIC` set to a per-run pattern
-//! (`e2e-collector-<run>.{org_id}.{project_id}`), so every test scope
+//! (`e2e-collector-<run>.{org_id}.{workspace_id}`), so every test scope
 //! publishes to its own topic. Cases create those topics up front, send
 //! events over HTTP and read what landed in Kafka.
 //!
@@ -31,10 +31,10 @@ pub(crate) struct Ctx {
     topic_prefix: String,
 }
 
-/// An org/project pair with its own, already created, topic.
+/// An org/workspace pair with its own, already created, topic.
 struct Scope {
     org_id: String,
-    project_id: String,
+    workspace_id: String,
     topic: String,
 }
 
@@ -43,33 +43,33 @@ impl Scope {
     fn headers(&self) -> Vec<(&str, &str)> {
         vec![
             ("x-org-id", self.org_id.as_str()),
-            ("x-project-id", self.project_id.as_str()),
+            ("x-workspace-id", self.workspace_id.as_str()),
             ("x-forwarded-for", CLIENT_IP),
         ]
     }
 
     /// A collector event for this scope; returns its id and JSON.
     fn event(&self, name: &str) -> (String, Value) {
-        event_for(&self.org_id, &self.project_id, name)
+        event_for(&self.org_id, &self.workspace_id, name)
     }
 }
 
 impl Ctx {
-    /// A fresh org/project pair (valid slugs) whose topic exists.
+    /// A fresh org/workspace pair (valid slugs) whose topic exists.
     async fn scope(&self) -> anyhow::Result<Scope> {
         let suffix = &uuid::Uuid::new_v4().simple().to_string()[..6];
         self.scope_in(&format!("e2e-org-{suffix}")).await
     }
 
-    /// A fresh project in `org_id` whose topic exists.
+    /// A fresh workspace in `org_id` whose topic exists.
     async fn scope_in(&self, org_id: &str) -> anyhow::Result<Scope> {
         let suffix = &uuid::Uuid::new_v4().simple().to_string()[..6];
-        let project_id = format!("e2e-proj-{suffix}");
-        let topic = format!("{}.{org_id}.{project_id}", self.topic_prefix);
+        let workspace_id = format!("e2e-workspace-{suffix}");
+        let topic = format!("{}.{org_id}.{workspace_id}", self.topic_prefix);
         self.kafka.create_topic(&topic).await?;
         Ok(Scope {
             org_id: org_id.to_owned(),
-            project_id,
+            workspace_id,
             topic,
         })
     }
@@ -118,7 +118,7 @@ fn collector_env(kafka: &Kafka, topic_prefix: &str) -> Vec<(&'static str, String
         ),
         (
             "KAFKA_TOPIC",
-            format!("{topic_prefix}.{{org_id}}.{{project_id}}"),
+            format!("{topic_prefix}.{{org_id}}.{{workspace_id}}"),
         ),
         ("RUST_LOG", "warn".to_owned()),
     ]
@@ -169,10 +169,10 @@ async fn run_with_infra(mut ctx: Ctx, cases: &[&Case<Ctx>]) -> anyhow::Result<bo
 }
 
 cases![Ctx:
-    events_are_published_to_the_project_topic,
+    events_are_published_to_the_workspace_topic,
     batch_events_carry_batch_system_properties,
-    each_project_gets_its_own_topic,
-    events_for_another_project_are_rejected,
+    each_workspace_gets_its_own_topic,
+    events_for_another_workspace_are_rejected,
     requests_without_valid_ids_are_rejected,
     authenticated_endpoint_requires_a_bearer_token,
     health_check_passes_with_a_templated_topic,
@@ -180,7 +180,7 @@ cases![Ctx:
     undecryptable_kms_token_is_reported_and_refuses_requests,
 ];
 
-async fn events_are_published_to_the_project_topic(ctx: &Ctx) -> anyhow::Result<()> {
+async fn events_are_published_to_the_workspace_topic(ctx: &Ctx) -> anyhow::Result<()> {
     let scope = ctx.scope().await?;
     let (first_id, first) = scope.event("page_view");
     let (second_id, second) = scope.event("checkout_started");
@@ -202,8 +202,8 @@ async fn events_are_published_to_the_project_topic(ctx: &Ctx) -> anyhow::Result<
             "wrong org in {event}"
         );
         ensure!(
-            event["project_id"] == scope.project_id.as_str(),
-            "wrong project in {event}"
+            event["workspace_id"] == scope.workspace_id.as_str(),
+            "wrong workspace in {event}"
         );
         ensure!(
             event["arrived_at"].is_string(),
@@ -262,7 +262,7 @@ async fn batch_events_carry_batch_system_properties(ctx: &Ctx) -> anyhow::Result
     Ok(())
 }
 
-async fn each_project_gets_its_own_topic(ctx: &Ctx) -> anyhow::Result<()> {
+async fn each_workspace_gets_its_own_topic(ctx: &Ctx) -> anyhow::Result<()> {
     let shop = ctx.scope().await?;
     let blog = ctx.scope_in(&shop.org_id).await?;
     let (shop_id, shop_event) = shop.event("purchase");
@@ -276,7 +276,7 @@ async fn each_project_gets_its_own_topic(ctx: &Ctx) -> anyhow::Result<()> {
     Ok(())
 }
 
-async fn events_for_another_project_are_rejected(ctx: &Ctx) -> anyhow::Result<()> {
+async fn events_for_another_workspace_are_rejected(ctx: &Ctx) -> anyhow::Result<()> {
     let shop = ctx.scope().await?;
     let blog = ctx.scope_in(&shop.org_id).await?;
     let (_, own) = shop.event("purchase");
@@ -298,15 +298,15 @@ async fn events_for_another_project_are_rejected(ctx: &Ctx) -> anyhow::Result<()
 async fn requests_without_valid_ids_are_rejected(ctx: &Ctx) -> anyhow::Result<()> {
     let scope = ctx.scope().await?;
     let (_, event) = scope.event("page_view");
-    let mut without_project = event.clone();
-    without_project
+    let mut without_workspace = event.clone();
+    without_workspace
         .as_object_mut()
         .unwrap()
-        .remove("project_id");
+        .remove("workspace_id");
 
     for (label, headers, body) in [
         (
-            "missing x-project-id",
+            "missing x-workspace-id",
             vec![("x-org-id", scope.org_id.as_str())],
             event.clone(),
         ),
@@ -314,11 +314,15 @@ async fn requests_without_valid_ids_are_rejected(ctx: &Ctx) -> anyhow::Result<()
             "invalid x-org-id slug",
             vec![
                 ("x-org-id", "Not_A_Slug"),
-                ("x-project-id", scope.project_id.as_str()),
+                ("x-workspace-id", scope.workspace_id.as_str()),
             ],
             event.clone(),
         ),
-        ("event without project_id", scope.headers(), without_project),
+        (
+            "event without workspace_id",
+            scope.headers(),
+            without_workspace,
+        ),
     ] {
         let response = ctx.post_events(&headers, &[body]).await?;
         expect_status(&response, 400).context(label)?;
@@ -468,14 +472,14 @@ fn tamper(ciphertext: &str) -> anyhow::Result<String> {
     Ok(STANDARD.encode(bytes))
 }
 
-fn event_for(org_id: &str, project_id: &str, name: &str) -> (String, Value) {
+fn event_for(org_id: &str, workspace_id: &str, name: &str) -> (String, Value) {
     let id = uuid::Uuid::new_v4().to_string();
     let event = json!({
         "envelop_version": "1.0",
         "id": id,
         "name": name,
         "org_id": org_id,
-        "project_id": project_id,
+        "workspace_id": workspace_id,
         "anon_id": format!("anon-{}", &id[..8]),
         "occured_at": chrono::Utc::now().to_rfc3339(),
         "properties": { "source": "xtask-e2e" },

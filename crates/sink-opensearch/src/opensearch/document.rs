@@ -68,7 +68,7 @@ pub fn decode(payload: Option<&[u8]>) -> Result<Decoded<'_>, Rejection> {
     Ok(Decoded { event, source })
 }
 
-/// Builds the event's `create` operation into its project's index, with the
+/// Builds the event's `create` operation into its workspace's index, with the
 /// event's `id` as the document ID so a replay can't create a duplicate.
 pub fn build(
     decoded: &Decoded<'_>,
@@ -78,10 +78,10 @@ pub fn build(
     let event = &decoded.event;
     let index =
         index
-            .render(&event.org_id, &event.project_id)
+            .render(&event.org_id, &event.workspace_id)
             .map_err(|invalid| match invalid {
                 InvalidId::Org(reason) => Rejection::new("invalid_org", reason),
-                InvalidId::Project(reason) => Rejection::new("invalid_proj", reason),
+                InvalidId::Workspace(reason) => Rejection::new("invalid_workspace", reason),
             })?;
     let id = decoded.event.id().to_string();
     let action = serde_json::to_vec(&Action {

@@ -1,5 +1,5 @@
 //! OpenSearch access for the dashboard suite: checks the data streams
-//! dashboard-server created for projects, and deletes them afterwards.
+//! dashboard-server created for workspaces, and deletes them afterwards.
 
 use anyhow::{Context, bail, ensure};
 

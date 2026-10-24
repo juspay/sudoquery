@@ -18,8 +18,8 @@ var _Configuration = class _Configuration {
   static get orgId() {
     return _Configuration._orgId;
   }
-  static get projectId() {
-    return _Configuration._projectId;
+  static get workspaceId() {
+    return _Configuration._workspaceId;
   }
   static get source() {
     return _Configuration._source;
@@ -45,8 +45,8 @@ var _Configuration = class _Configuration {
   static setOrgId(value) {
     _Configuration._orgId = value;
   }
-  static setProjectId(value) {
-    _Configuration._projectId = value;
+  static setWorkspaceId(value) {
+    _Configuration._workspaceId = value;
   }
   static setSource(value) {
     _Configuration._source = value;
@@ -61,7 +61,7 @@ var _Configuration = class _Configuration {
     _Configuration._token = null;
     _Configuration._headers = {};
     _Configuration._orgId = null;
-    _Configuration._projectId = null;
+    _Configuration._workspaceId = null;
     _Configuration._source = _Configuration.DEFAULT_SOURCE;
     _Configuration._sessionId = null;
   }
@@ -74,7 +74,7 @@ _Configuration._endpoint = _Configuration.DEFAULT_ENDPOINT;
 _Configuration._token = null;
 _Configuration._headers = {};
 _Configuration._orgId = null;
-_Configuration._projectId = null;
+_Configuration._workspaceId = null;
 _Configuration._source = _Configuration.DEFAULT_SOURCE;
 _Configuration._sessionId = null;
 var Configuration = _Configuration;
@@ -207,16 +207,16 @@ var Pusher = class {
       console.error("Cannot send analytics batch: orgId is required by the collector.");
       return null;
     }
-    const projectId = Configuration.projectId ?? payload.events[0]?.project_id ?? null;
-    if (!projectId) {
-      console.error("Cannot send analytics batch: projectId is required by the collector.");
+    const workspaceId = Configuration.workspaceId ?? payload.events[0]?.workspace_id ?? null;
+    if (!workspaceId) {
+      console.error("Cannot send analytics batch: workspaceId is required by the collector.");
       return null;
     }
     const headers = {
       "Content-Type": "application/json",
       ...Configuration.headers,
       "x-org-id": orgId,
-      "x-project-id": projectId
+      "x-workspace-id": workspaceId
     };
     if (Configuration.token) {
       headers.Authorization = `Bearer ${Configuration.token}`;
@@ -403,9 +403,9 @@ var SudoQuery = class {
       warnIfNotSlug("orgId", config.orgId);
       Configuration.setOrgId(config.orgId);
     }
-    if (config?.projectId !== void 0) {
-      warnIfNotSlug("projectId", config.projectId);
-      Configuration.setProjectId(config.projectId);
+    if (config?.workspaceId !== void 0) {
+      warnIfNotSlug("workspaceId", config.workspaceId);
+      Configuration.setWorkspaceId(config.workspaceId);
     }
     if (config?.source !== void 0) {
       Configuration.setSource(config.source);
@@ -500,9 +500,9 @@ var SudoQuery = class {
     if (!orgId || orgId.trim().length === 0) {
       throw new Error("orgId is required before tracking events");
     }
-    const projectId = Configuration.projectId;
-    if (!projectId || projectId.trim().length === 0) {
-      throw new Error("projectId is required before tracking events");
+    const workspaceId = Configuration.workspaceId;
+    if (!workspaceId || workspaceId.trim().length === 0) {
+      throw new Error("workspaceId is required before tracking events");
     }
     const superProperties = SuperProperties.getSuperProperties();
     const mergedProperties = mergeProperties(props, superProperties);
@@ -511,7 +511,7 @@ var SudoQuery = class {
       id: generateUuid(),
       name: eventName.toString(),
       org_id: orgId,
-      project_id: projectId,
+      workspace_id: workspaceId,
       session_id: Configuration.sessionId ?? getSessionId(),
       anon_id: AnonymousId.getOrCreate(),
       actor_id: this.currentUser,

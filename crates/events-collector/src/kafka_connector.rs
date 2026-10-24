@@ -14,33 +14,33 @@ use crate::config::Config;
 use crate::result;
 
 /// Placeholders allowed in `kafka_connector.topic`, replaced with the
-/// request's ids so each org or project can publish to its own topic
-/// (e.g. `events.{org_id}.{project_id}`).
+/// request's ids so each org or workspace can publish to its own topic
+/// (e.g. `events.{org_id}.{workspace_id}`).
 const ORG_ID_PLACEHOLDER: &str = "{org_id}";
-const PROJECT_ID_PLACEHOLDER: &str = "{project_id}";
+const WORKSPACE_ID_PLACEHOLDER: &str = "{workspace_id}";
 
 /// Kafka's limit on topic name length.
 const MAX_TOPIC_LEN: usize = 249;
 
 #[derive(Deserialize)]
 pub struct KafkaConnectorConfig {
-    /// Topic name, or a template using `{org_id}` / `{project_id}`.
+    /// Topic name, or a template using `{org_id}` / `{workspace_id}`.
     pub topic: String,
     pub client_config: HashMap<String, String>,
 }
 
-/// `template` with `{org_id}` and `{project_id}` replaced. Fails when the
+/// `template` with `{org_id}` and `{workspace_id}` replaced. Fails when the
 /// template uses any other `{...}` placeholder or the result is not a legal
 /// Kafka topic name.
-pub fn render_topic(template: &str, org_id: &str, project_id: &str) -> result::Result<String> {
+pub fn render_topic(template: &str, org_id: &str, workspace_id: &str) -> result::Result<String> {
     let topic = template
         .replace(ORG_ID_PLACEHOLDER, org_id)
-        .replace(PROJECT_ID_PLACEHOLDER, project_id);
+        .replace(WORKSPACE_ID_PLACEHOLDER, workspace_id);
 
     if topic.contains(['{', '}']) {
         return Err(result::AppError::Config(format!(
             "`kafka_connector.topic` template {template:?} may only use {ORG_ID_PLACEHOLDER} and \
-             {PROJECT_ID_PLACEHOLDER}"
+             {WORKSPACE_ID_PLACEHOLDER}"
         )));
     }
     let legal = !topic.is_empty()
@@ -62,7 +62,7 @@ pub fn render_topic(template: &str, org_id: &str, project_id: &str) -> result::R
 /// Whether `topic` still holds placeholders, i.e. it was resolved without a
 /// request's ids (the health check) and names no single topic.
 fn is_template(topic: &str) -> bool {
-    topic.contains(ORG_ID_PLACEHOLDER) || topic.contains(PROJECT_ID_PLACEHOLDER)
+    topic.contains(ORG_ID_PLACEHOLDER) || topic.contains(WORKSPACE_ID_PLACEHOLDER)
 }
 
 // test the connection and return Ok or Err
@@ -163,7 +163,7 @@ mod tests {
     fn placeholders_are_replaced_with_request_ids() {
         assert_eq!(
             render_topic(
-                "events.{org_id}.{project_id}",
+                "events.{org_id}.{workspace_id}",
                 "acme-k3x9qa",
                 "web-shop-9x2k1a"
             )
@@ -171,7 +171,7 @@ mod tests {
             "events.acme-k3x9qa.web-shop-9x2k1a"
         );
         assert_eq!(
-            render_topic("events.{project_id}", "acme-k3x9qa", "web-shop-9x2k1a").unwrap(),
+            render_topic("events.{workspace_id}", "acme-k3x9qa", "web-shop-9x2k1a").unwrap(),
             "events.web-shop-9x2k1a"
         );
         assert_eq!(
@@ -234,7 +234,7 @@ mod tests {
     #[test]
     fn templates_are_detected() {
         assert!(is_template("events.{org_id}"));
-        assert!(is_template("events.{project_id}"));
+        assert!(is_template("events.{workspace_id}"));
         assert!(!is_template("events.generic"));
     }
 }

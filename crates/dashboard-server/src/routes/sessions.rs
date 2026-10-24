@@ -5,9 +5,9 @@ use axum::{
 
 use crate::{
     AppState,
-    middleware::ProjectAccess,
+    middleware::WorkspaceAccess,
     opensearch::{CursorPage, Event, QueryRequest, SessionSummary, SortOrder},
-    routes::search::{SearchError, project_scope},
+    routes::search::{SearchError, workspace_scope},
 };
 
 // ============ List Sessions ============
@@ -16,10 +16,10 @@ use crate::{
 /// aggregates all the events it matches.
 pub async fn list_sessions(
     State(state): State<AppState>,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
     Json(req): Json<QueryRequest>,
 ) -> Result<Json<CursorPage<SessionSummary>>, SearchError> {
-    let scope = project_scope(&project)?;
+    let scope = workspace_scope(&workspace)?;
 
     let page = state.opensearch.list_sessions(&scope, &req).await?;
 
@@ -30,11 +30,11 @@ pub async fn list_sessions(
 
 pub async fn get_session(
     State(state): State<AppState>,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
     Path(session_id): Path<String>,
     Json(req): Json<QueryRequest>,
 ) -> Result<Json<CursorPage<Event>>, SearchError> {
-    let scope = project_scope(&project)?;
+    let scope = workspace_scope(&workspace)?;
 
     let page = state
         .opensearch

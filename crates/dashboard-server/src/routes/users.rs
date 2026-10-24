@@ -1,5 +1,5 @@
 use axum::{extract::State, http::StatusCode, response::Json};
-use canonical_event::ProjectId;
+use canonical_event::WorkspaceId;
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use uuid::Uuid;
@@ -129,23 +129,23 @@ pub async fn me(AuthUser { user, .. }: AuthUser) -> Json<MeResponse> {
     })
 }
 
-// ============ Add User to Project ============
+// ============ Add User to Workspace ============
 
 #[derive(Deserialize)]
-pub struct AddProjectMemberRequest {
+pub struct AddWorkspaceMemberRequest {
     pub user_id: Option<String>,
     pub email: Option<String>,
     pub role: String,
 }
 
 #[derive(Serialize)]
-pub struct ProjectMemberResponse {
+pub struct WorkspaceMemberResponse {
     pub user_id: String,
-    pub project_id: String,
+    pub workspace_id: String,
     pub role: String,
 }
 
-pub async fn add_project_member(
+pub async fn add_workspace_member(
     State(state): State<AppState>,
     OrgContext {
         auth_user,
@@ -153,14 +153,15 @@ pub async fn add_project_member(
         role: org_role,
     }: OrgContext,
     headers: axum::http::HeaderMap,
-    Json(req): Json<AddProjectMemberRequest>,
-) -> Result<(StatusCode, Json<ProjectMemberResponse>), ApiError> {
-    let project_id_str = headers
-        .get("X-Project-Id")
+    Json(req): Json<AddWorkspaceMemberRequest>,
+) -> Result<(StatusCode, Json<WorkspaceMemberResponse>), ApiError> {
+    let workspace_id_str = headers
+        .get("X-Workspace-Id")
         .and_then(|v| v.to_str().ok())
-        .ok_or(ApiError::InvalidProjectId)?;
+        .ok_or(ApiError::InvalidWorkspaceId)?;
 
-    let project_id = ProjectId::from_str(project_id_str).map_err(|_| ApiError::InvalidProjectId)?;
+    let workspace_id =
+        WorkspaceId::from_str(workspace_id_str).map_err(|_| ApiError::InvalidWorkspaceId)?;
 
     // Resolve user by ID or email
     let user_uuid = if let Some(user_id) = req.user_id {
@@ -175,51 +176,51 @@ pub async fn add_project_member(
         return Err(ApiError::InvalidUserId);
     };
 
-    // Verify project exists and belongs to the organization context
-    let _project = db::get_project_by_id(&state.db_pool, &project_id)
+    // Verify workspace exists and belongs to the organization context
+    let _workspace = db::get_workspace_by_id(&state.db_pool, &workspace_id)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?
-        .ok_or(ApiError::ProjectNotFound)?;
+        .ok_or(ApiError::WorkspaceNotFound)?;
 
-    // Check if the requesting user is project admin or org admin
+    // Check if the requesting user is workspace admin or org admin
     match org_role {
         Some(db::OrgRole::OrgAdmin) => {} // Org admin can add anyone
         Some(db::OrgRole::OrgUser) | None => {
-            // Check if requesting user is project admin
-            let pm = db::get_project_membership(&state.db_pool, auth_user.user.id, &project_id)
+            // Check if requesting user is workspace admin
+            let pm = db::get_workspace_membership(&state.db_pool, auth_user.user.id, &workspace_id)
                 .await
                 .map_err(|e| ApiError::Database(e.to_string()))?;
 
             match pm {
-                Some(m) if m.role == db::ProjectRole::ProjectAdmin => {}
+                Some(m) if m.role == db::WorkspaceRole::WorkspaceAdmin => {}
                 _ => return Err(ApiError::Forbidden),
             }
         }
     };
 
     let role = match req.role.as_str() {
-        "project_admin" => db::ProjectRole::ProjectAdmin,
-        "project_user" => db::ProjectRole::ProjectUser,
+        "workspace_admin" => db::WorkspaceRole::WorkspaceAdmin,
+        "workspace_user" => db::WorkspaceRole::WorkspaceUser,
         _ => return Err(ApiError::InvalidRole),
     };
 
-    let membership = db::add_user_to_project(&state.db_pool, user_uuid, &project_id, &role)
+    let membership = db::add_user_to_workspace(&state.db_pool, user_uuid, &workspace_id, &role)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?;
 
     Ok((
         StatusCode::CREATED,
-        Json(ProjectMemberResponse {
+        Json(WorkspaceMemberResponse {
             user_id: membership.user_id.to_string(),
-            project_id: membership.project_id.to_string(),
+            workspace_id: membership.workspace_id.to_string(),
             role: membership.role.as_str().to_string(),
         }),
     ))
 }
 
-// ============ Remove User from Project ============
+// ============ Remove User from Workspace ============
 
-pub async fn remove_project_member(
+pub async fn remove_workspace_member(
     State(state): State<AppState>,
     OrgContext {
         auth_user,
@@ -229,12 +230,13 @@ pub async fn remove_project_member(
     headers: axum::http::HeaderMap,
     axum::extract::Path(user_id): axum::extract::Path<String>,
 ) -> Result<StatusCode, ApiError> {
-    let project_id_str = headers
-        .get("X-Project-Id")
+    let workspace_id_str = headers
+        .get("X-Workspace-Id")
         .and_then(|v| v.to_str().ok())
-        .ok_or(ApiError::InvalidProjectId)?;
+        .ok_or(ApiError::InvalidWorkspaceId)?;
 
-    let project_id = ProjectId::from_str(project_id_str).map_err(|_| ApiError::InvalidProjectId)?;
+    let workspace_id =
+        WorkspaceId::from_str(workspace_id_str).map_err(|_| ApiError::InvalidWorkspaceId)?;
 
     let user_uuid = Uuid::parse_str(&user_id).map_err(|_| ApiError::InvalidUserId)?;
 
@@ -243,13 +245,13 @@ pub async fn remove_project_member(
         return Err(ApiError::CannotRemoveSelf);
     }
 
-    // Verify project exists
-    let _project = db::get_project_by_id(&state.db_pool, &project_id)
+    // Verify workspace exists
+    let _workspace = db::get_workspace_by_id(&state.db_pool, &workspace_id)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?
-        .ok_or(ApiError::ProjectNotFound)?;
+        .ok_or(ApiError::WorkspaceNotFound)?;
 
-    // Check if user is project admin or org admin
+    // Check if user is workspace admin or org admin
     match org_role {
         Some(db::OrgRole::OrgAdmin) => {} // Org admin can remove anyone
         Some(db::OrgRole::OrgUser) | None => {
@@ -257,41 +259,42 @@ pub async fn remove_project_member(
         }
     };
 
-    db::remove_user_from_project(&state.db_pool, user_uuid, &project_id)
+    db::remove_user_from_workspace(&state.db_pool, user_uuid, &workspace_id)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
 }
 
-// ============ List Project Members ============
+// ============ List Workspace Members ============
 
 #[derive(Serialize)]
-pub struct ProjectMemberListResponse {
+pub struct WorkspaceMemberListResponse {
     pub user_id: String,
     pub email: String,
     pub username: String,
     pub role: String,
 }
 
-pub async fn list_project_members(
+pub async fn list_workspace_members(
     State(state): State<AppState>,
     headers: axum::http::HeaderMap,
-) -> Result<Json<Vec<ProjectMemberListResponse>>, ApiError> {
-    let project_id_str = headers
-        .get("X-Project-Id")
+) -> Result<Json<Vec<WorkspaceMemberListResponse>>, ApiError> {
+    let workspace_id_str = headers
+        .get("X-Workspace-Id")
         .and_then(|v| v.to_str().ok())
-        .ok_or(ApiError::InvalidProjectId)?;
+        .ok_or(ApiError::InvalidWorkspaceId)?;
 
-    let project_id = ProjectId::from_str(project_id_str).map_err(|_| ApiError::InvalidProjectId)?;
+    let workspace_id =
+        WorkspaceId::from_str(workspace_id_str).map_err(|_| ApiError::InvalidWorkspaceId)?;
 
-    let members = db::list_project_members(&state.db_pool, &project_id)
+    let members = db::list_workspace_members(&state.db_pool, &workspace_id)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?;
 
-    let response: Vec<ProjectMemberListResponse> = members
+    let response: Vec<WorkspaceMemberListResponse> = members
         .into_iter()
-        .map(|(id, email, username, role)| ProjectMemberListResponse {
+        .map(|(id, email, username, role)| WorkspaceMemberListResponse {
             user_id: id.to_string(),
             email,
             username,
@@ -312,14 +315,14 @@ pub enum ApiError {
     Keycloak(#[from] KeycloakError),
     #[error("Invalid user ID")]
     InvalidUserId,
-    #[error("Invalid project ID")]
-    InvalidProjectId,
+    #[error("Invalid workspace ID")]
+    InvalidWorkspaceId,
     #[error("Invalid role")]
     InvalidRole,
     #[error("User not found")]
     UserNotFound,
-    #[error("Project not found")]
-    ProjectNotFound,
+    #[error("Workspace not found")]
+    WorkspaceNotFound,
     #[error("Forbidden")]
     Forbidden,
     #[error("Cannot remove yourself")]
@@ -336,12 +339,14 @@ impl axum::response::IntoResponse for ApiError {
             ApiError::Auth(e) => return e.into_response(),
             ApiError::Keycloak(e) => return e.into_response(),
             ApiError::InvalidUserId => (StatusCode::BAD_REQUEST, "Invalid user ID".to_string()),
-            ApiError::InvalidProjectId => {
-                (StatusCode::BAD_REQUEST, "Invalid project ID".to_string())
+            ApiError::InvalidWorkspaceId => {
+                (StatusCode::BAD_REQUEST, "Invalid workspace ID".to_string())
             }
             ApiError::InvalidRole => (StatusCode::BAD_REQUEST, "Invalid role".to_string()),
             ApiError::UserNotFound => (StatusCode::NOT_FOUND, "User not found".to_string()),
-            ApiError::ProjectNotFound => (StatusCode::NOT_FOUND, "Project not found".to_string()),
+            ApiError::WorkspaceNotFound => {
+                (StatusCode::NOT_FOUND, "Workspace not found".to_string())
+            }
             ApiError::Forbidden => (StatusCode::FORBIDDEN, "Forbidden".to_string()),
             ApiError::CannotRemoveSelf => (
                 StatusCode::BAD_REQUEST,

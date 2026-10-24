@@ -10,24 +10,24 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
-import { useProject } from '../../contexts/ProjectContext';
-import type { Project } from '../../services/projectService';
+import { useWorkspace } from '../../contexts/WorkspaceContext';
+import type { Workspace } from '../../services/workspaceService';
 
-interface CreateProjectDialogProps {
+interface CreateWorkspaceDialogProps {
   open: boolean;
   onClose: () => void;
-  onSuccess: (project: Project) => void;
+  onSuccess: (workspace: Workspace) => void;
 }
 
-export function CreateProjectDialog({ open, onClose, onSuccess }: CreateProjectDialogProps) {
-  const { createProject } = useProject();
+export function CreateWorkspaceDialog({ open, onClose, onSuccess }: CreateWorkspaceDialogProps) {
+  const { createWorkspace } = useWorkspace();
   const [name, setName] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async () => {
     if (!name.trim()) {
-      setError('Project name is required');
+      setError('Workspace name is required');
       return;
     }
 
@@ -35,11 +35,11 @@ export function CreateProjectDialog({ open, onClose, onSuccess }: CreateProjectD
     setError(null);
 
     try {
-      const project = await createProject(name.trim());
-      onSuccess(project);
+      const workspace = await createWorkspace(name.trim());
+      onSuccess(workspace);
       handleClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create project');
+      setError(err instanceof Error ? err.message : 'Failed to create workspace');
     } finally {
       setLoading(false);
     }
@@ -53,17 +53,17 @@ export function CreateProjectDialog({ open, onClose, onSuccess }: CreateProjectD
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="sm" fullWidth>
-      <DialogTitle>Create Project</DialogTitle>
+      <DialogTitle>Create Workspace</DialogTitle>
       <DialogContent>
         <Box sx={{ pt: 1 }}>
           {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
           <TextField
-            label="Project Name"
+            label="Workspace Name"
             value={name}
             onChange={(e) => setName(e.target.value)}
             fullWidth
             required
-            placeholder="My Project"
+            placeholder="My Workspace"
             disabled={loading}
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             autoFocus

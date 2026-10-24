@@ -9,7 +9,7 @@ const ROUTE_LABELS: Record<string, string> = {
   metrics: 'Saved Metrics',
   settings: 'Settings',
   org: 'Organization',
-  project: 'Project',
+  workspace: 'Workspace',
   members: 'Members',
   account: 'Account',
   discover: 'Discover',

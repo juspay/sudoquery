@@ -290,9 +290,9 @@ fn index_names_follow_opensearch_rules() {
 }
 
 #[test]
-fn index_can_be_per_project() {
+fn index_can_be_per_workspace() {
     let config =
-        config_with(&[("opensearch.index", json!("events-{org_id}-{project_id}"))]).unwrap();
+        config_with(&[("opensearch.index", json!("events-{org_id}-{workspace_id}"))]).unwrap();
 
     assert_eq!(
         config
@@ -308,11 +308,11 @@ fn index_can_be_per_project() {
 fn index_template_checks_its_fixed_parts() {
     for (index, needle) in [
         ("Events-{org_id}", "not a valid index name"),
-        ("Events-{org_id}-{project_id}", "not a valid index name"),
+        ("Events-{org_id}-{workspace_id}", "not a valid index name"),
         ("_{org_id}", "not a valid index name"),
         (
             "events-{org}",
-            "the only placeholders are `{org_id}` and `{project_id}`",
+            "the only placeholders are `{org_id}` and `{workspace_id}`",
         ),
         ("events-{date}-{org_id}", "the only placeholders"),
     ] {
@@ -325,13 +325,15 @@ fn fixed_index_ignores_the_ids() {
     let template = IndexTemplate::parse("events").unwrap();
 
     assert_eq!(
-        template.render("Anything, really", "Any project").unwrap(),
+        template
+            .render("Anything, really", "Any workspace")
+            .unwrap(),
         "events"
     );
 }
 
 #[test]
-fn a_template_without_project_id_ignores_the_project() {
+fn a_template_without_workspace_id_ignores_the_workspace() {
     let template = IndexTemplate::parse("events-{org_id}").unwrap();
 
     assert_eq!(
@@ -342,7 +344,7 @@ fn a_template_without_project_id_ignores_the_project() {
 
 #[test]
 fn orgs_that_cannot_form_an_index_name_are_refused() {
-    let template = IndexTemplate::parse("events-{org_id}-{project_id}").unwrap();
+    let template = IndexTemplate::parse("events-{org_id}-{workspace_id}").unwrap();
 
     for org in [
         "",
@@ -365,16 +367,16 @@ fn orgs_that_cannot_form_an_index_name_are_refused() {
 }
 
 #[test]
-fn projects_that_cannot_form_an_index_name_are_refused() {
-    let template = IndexTemplate::parse("events-{org_id}-{project_id}").unwrap();
+fn workspaces_that_cannot_form_an_index_name_are_refused() {
+    let template = IndexTemplate::parse("events-{org_id}-{workspace_id}").unwrap();
 
-    for project in ["", "Web", "a,b", "a b", "a*", "a/b", &"x".repeat(240)] {
+    for workspace in ["", "Web", "a,b", "a b", "a*", "a/b", &"x".repeat(240)] {
         assert!(
             matches!(
-                template.render("merchant-1", project),
-                Err(InvalidId::Project(_))
+                template.render("merchant-1", workspace),
+                Err(InvalidId::Workspace(_))
             ),
-            "`{project}` should be refused"
+            "`{workspace}` should be refused"
         );
     }
     // When both are bad, the org is reported.
@@ -442,7 +444,7 @@ async fn the_shipped_cac_file_is_valid() {
     assert_eq!(config.dlq.topic, "dlq.events");
     assert_eq!(
         config.opensearch.index,
-        IndexTemplate::parse("events-{org_id}-{project_id}").unwrap()
+        IndexTemplate::parse("events-{org_id}-{workspace_id}").unwrap()
     );
     cac.close().await;
 }

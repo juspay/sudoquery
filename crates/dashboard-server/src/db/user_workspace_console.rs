@@ -1,40 +1,40 @@
-use canonical_event::ProjectId;
+use canonical_event::WorkspaceId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
 use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct UserProjectConsole {
+pub struct UserWorkspaceConsole {
     pub id: Uuid,
     pub user_id: Uuid,
-    pub project_id: ProjectId,
+    pub workspace_id: WorkspaceId,
     pub console: Option<String>,
     pub name: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
 
-/// Create a new console for a user in a project
+/// Create a new console for a user in a workspace
 pub async fn create_console(
     pool: &PgPool,
     user_id: Uuid,
-    project_id: &ProjectId,
+    workspace_id: &WorkspaceId,
     name: Option<&str>,
     console: Option<&str>,
-) -> Result<UserProjectConsole, sqlx::Error> {
+) -> Result<UserWorkspaceConsole, sqlx::Error> {
     let id = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
 
-    sqlx::query_as::<_, UserProjectConsole>(
+    sqlx::query_as::<_, UserWorkspaceConsole>(
         r#"
-        INSERT INTO user_project_consoles (id, user_id, project_id, name, console)
+        INSERT INTO user_workspace_consoles (id, user_id, workspace_id, name, console)
         VALUES ($1, $2, $3, $4, $5)
-        RETURNING id, user_id, project_id, console, name, created_at, updated_at
+        RETURNING id, user_id, workspace_id, console, name, created_at, updated_at
         "#,
     )
     .bind(id)
     .bind(user_id)
-    .bind(project_id)
+    .bind(workspace_id)
     .bind(name)
     .bind(console)
     .fetch_one(pool)
@@ -45,11 +45,11 @@ pub async fn create_console(
 pub async fn get_console_by_id(
     pool: &PgPool,
     id: Uuid,
-) -> Result<Option<UserProjectConsole>, sqlx::Error> {
-    sqlx::query_as::<_, UserProjectConsole>(
+) -> Result<Option<UserWorkspaceConsole>, sqlx::Error> {
+    sqlx::query_as::<_, UserWorkspaceConsole>(
         r#"
-        SELECT id, user_id, project_id, console, name, created_at, updated_at
-        FROM user_project_consoles
+        SELECT id, user_id, workspace_id, console, name, created_at, updated_at
+        FROM user_workspace_consoles
         WHERE id = $1
         "#,
     )
@@ -63,11 +63,11 @@ pub async fn get_console_by_id_and_user(
     pool: &PgPool,
     id: Uuid,
     user_id: Uuid,
-) -> Result<Option<UserProjectConsole>, sqlx::Error> {
-    sqlx::query_as::<_, UserProjectConsole>(
+) -> Result<Option<UserWorkspaceConsole>, sqlx::Error> {
+    sqlx::query_as::<_, UserWorkspaceConsole>(
         r#"
-        SELECT id, user_id, project_id, console, name, created_at, updated_at
-        FROM user_project_consoles
+        SELECT id, user_id, workspace_id, console, name, created_at, updated_at
+        FROM user_workspace_consoles
         WHERE id = $1 AND user_id = $2
         "#,
     )
@@ -85,22 +85,22 @@ pub struct ConsoleSummary {
     pub updated_at: DateTime<Utc>,
 }
 
-/// List all consoles for a specific user in a specific project (summary only)
-pub async fn list_consoles_by_user_and_project(
+/// List all consoles for a specific user in a specific workspace (summary only)
+pub async fn list_consoles_by_user_and_workspace(
     pool: &PgPool,
     user_id: Uuid,
-    project_id: &ProjectId,
+    workspace_id: &WorkspaceId,
 ) -> Result<Vec<ConsoleSummary>, sqlx::Error> {
     sqlx::query_as::<_, ConsoleSummary>(
         r#"
         SELECT id, name, created_at, updated_at
-        FROM user_project_consoles
-        WHERE user_id = $1 AND project_id = $2
+        FROM user_workspace_consoles
+        WHERE user_id = $1 AND workspace_id = $2
         ORDER BY created_at DESC
         "#,
     )
     .bind(user_id)
-    .bind(project_id)
+    .bind(workspace_id)
     .fetch_all(pool)
     .await
 }
@@ -112,13 +112,13 @@ pub async fn update_console(
     id: Uuid,
     name: Option<&str>,
     console: Option<&str>,
-) -> Result<UserProjectConsole, sqlx::Error> {
-    sqlx::query_as::<_, UserProjectConsole>(
+) -> Result<UserWorkspaceConsole, sqlx::Error> {
+    sqlx::query_as::<_, UserWorkspaceConsole>(
         r#"
-        UPDATE user_project_consoles
+        UPDATE user_workspace_consoles
         SET name = $2, console = $3, updated_at = NOW()
         WHERE id = $1
-        RETURNING id, user_id, project_id, console, name, created_at, updated_at
+        RETURNING id, user_id, workspace_id, console, name, created_at, updated_at
         "#,
     )
     .bind(id)
@@ -132,7 +132,7 @@ pub async fn update_console(
 pub async fn delete_console(pool: &PgPool, id: Uuid) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
-        DELETE FROM user_project_consoles
+        DELETE FROM user_workspace_consoles
         WHERE id = $1
         "#,
     )

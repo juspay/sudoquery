@@ -1,6 +1,6 @@
 # Test Suite Documentation
 
-This directory contains comprehensive automated tests for the Hyper-Analytics TypeScript project.
+This directory contains comprehensive automated tests for the Hyper-Analytics TypeScript workspace.
 
 ## Test Structure
 

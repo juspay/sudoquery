@@ -1,4 +1,4 @@
-use canonical_event::ProjectId;
+use canonical_event::WorkspaceId;
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
@@ -8,7 +8,7 @@ use uuid::Uuid;
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct LiveDashboard {
     pub id: Uuid,
-    pub project_id: ProjectId,
+    pub workspace_id: WorkspaceId,
     pub query: String,
     pub description: String,
     pub title: Option<String>,
@@ -23,7 +23,7 @@ pub struct LiveDashboard {
 /// Create a new live dashboard
 pub async fn create_dashboard(
     pool: &PgPool,
-    project_id: &ProjectId,
+    workspace_id: &WorkspaceId,
     query: &str,
     description: &str,
     title: Option<&str>,
@@ -34,13 +34,13 @@ pub async fn create_dashboard(
 
     sqlx::query_as::<_, LiveDashboard>(
         r#"
-        INSERT INTO live_dashboards (id, project_id, query, description, title, chart_config, creation_source)
+        INSERT INTO live_dashboards (id, workspace_id, query, description, title, chart_config, creation_source)
         VALUES ($1, $2, $3, $4, $5, $6, $7)
-        RETURNING id, project_id, query, description, title, chart_config, last_ran_at, response, creation_source, created_at, updated_at
+        RETURNING id, workspace_id, query, description, title, chart_config, last_ran_at, response, creation_source, created_at, updated_at
         "#,
     )
     .bind(id)
-    .bind(project_id)
+    .bind(workspace_id)
     .bind(query)
     .bind(description)
     .bind(title)
@@ -57,7 +57,7 @@ pub async fn get_dashboard(
 ) -> Result<Option<LiveDashboard>, sqlx::Error> {
     sqlx::query_as::<_, LiveDashboard>(
         r#"
-        SELECT id, project_id, query, description, title, chart_config, last_ran_at, response, creation_source, created_at, updated_at
+        SELECT id, workspace_id, query, description, title, chart_config, last_ran_at, response, creation_source, created_at, updated_at
         FROM live_dashboards
         WHERE id = $1
         "#,
@@ -67,39 +67,39 @@ pub async fn get_dashboard(
     .await
 }
 
-/// Get a dashboard by project_id and creation_source (uses idx_project_id_source index)
+/// Get a dashboard by workspace_id and creation_source (uses idx_workspace_id_source index)
 pub async fn get_dashboard_by_source(
     pool: &PgPool,
-    project_id: &ProjectId,
+    workspace_id: &WorkspaceId,
     creation_source: &str,
 ) -> Result<Option<LiveDashboard>, sqlx::Error> {
     sqlx::query_as::<_, LiveDashboard>(
         r#"
-        SELECT id, project_id, query, description, title, chart_config, last_ran_at, response, creation_source, created_at, updated_at
+        SELECT id, workspace_id, query, description, title, chart_config, last_ran_at, response, creation_source, created_at, updated_at
         FROM live_dashboards
-        WHERE project_id = $1 AND creation_source = $2
+        WHERE workspace_id = $1 AND creation_source = $2
         "#,
     )
-    .bind(project_id)
+    .bind(workspace_id)
     .bind(creation_source)
     .fetch_optional(pool)
     .await
 }
 
-/// Get all live dashboards associated with a project
+/// Get all live dashboards associated with a workspace
 pub async fn get_dashboards(
     pool: &PgPool,
-    project_id: &ProjectId,
+    workspace_id: &WorkspaceId,
 ) -> Result<Vec<LiveDashboard>, sqlx::Error> {
     sqlx::query_as::<_, LiveDashboard>(
         r#"
-        SELECT id, project_id, query, description, title, chart_config, last_ran_at, response, creation_source, created_at, updated_at
+        SELECT id, workspace_id, query, description, title, chart_config, last_ran_at, response, creation_source, created_at, updated_at
         FROM live_dashboards
-        WHERE project_id = $1
+        WHERE workspace_id = $1
         ORDER BY created_at DESC
         "#,
     )
-    .bind(project_id)
+    .bind(workspace_id)
     .fetch_all(pool)
     .await
 }
@@ -107,17 +107,17 @@ pub async fn get_dashboards(
 /// Get minimal dashboard info (id and description) for listing
 pub async fn list_dashboards_summary(
     pool: &PgPool,
-    project_id: &ProjectId,
+    workspace_id: &WorkspaceId,
 ) -> Result<Vec<(Uuid, String)>, sqlx::Error> {
     sqlx::query_as::<_, (Uuid, String)>(
         r#"
         SELECT id, description
         FROM live_dashboards
-        WHERE project_id = $1
+        WHERE workspace_id = $1
         ORDER BY created_at DESC
         "#,
     )
-    .bind(project_id)
+    .bind(workspace_id)
     .fetch_all(pool)
     .await
 }
@@ -136,7 +136,7 @@ pub async fn update_dashboard(
         UPDATE live_dashboards
         SET query = $2, description = $3, title = $4, chart_config = $5, updated_at = NOW()
         WHERE id = $1
-        RETURNING id, project_id, query, description, title, chart_config, last_ran_at, response, creation_source, created_at, updated_at
+        RETURNING id, workspace_id, query, description, title, chart_config, last_ran_at, response, creation_source, created_at, updated_at
         "#,
     )
     .bind(dashboard_id)
@@ -159,7 +159,7 @@ pub async fn update_dashboard_run(
         UPDATE live_dashboards
         SET last_ran_at = NOW(), response = $2, updated_at = NOW()
         WHERE id = $1
-        RETURNING id, project_id, query, description, title, chart_config, last_ran_at, response, creation_source, created_at, updated_at
+        RETURNING id, workspace_id, query, description, title, chart_config, last_ran_at, response, creation_source, created_at, updated_at
         "#,
     )
     .bind(dashboard_id)

@@ -14,9 +14,9 @@ fn event() -> String {
     event_for("merchant-1", "acme-shop-42")
 }
 
-fn event_for(org: &str, project: &str) -> String {
+fn event_for(org: &str, workspace: &str) -> String {
     format!(
-        r#"{{"envelop_version":"1.0","id":"{ID}","name":"payment_initiated","org_id":"{org}","project_id":"{project}","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z","properties":{{"amount":100}}}}"#
+        r#"{{"envelop_version":"1.0","id":"{ID}","name":"payment_initiated","org_id":"{org}","workspace_id":"{workspace}","anon_id":"anon-42","occured_at":"2026-09-02T10:30:00Z","properties":{{"amount":100}}}}"#
     )
 }
 
@@ -93,40 +93,43 @@ fn rejects_documents_over_the_batch_byte_limit() {
 }
 
 #[test]
-fn writes_each_project_to_its_own_index() {
-    let template = index("events-{org_id}-{project_id}");
+fn writes_each_workspace_to_its_own_index() {
+    let template = index("events-{org_id}-{workspace_id}");
 
-    for (org, project) in [
+    for (org, workspace) in [
         ("acme-k3x9qa", "web-shop-9x2k1a"),
         ("acme-k3x9qa", "app-store-4m7p2q"),
         ("globex-8d2l0z", "web-shop-1b5c9e"),
     ] {
-        let payload = event_for(org, project);
+        let payload = event_for(org, workspace);
         let doc = prepare(Some(payload.as_bytes()), &template, 1024).unwrap();
 
         let action: serde_json::Value = serde_json::from_str(&lines(&doc)[0]).unwrap();
         assert_eq!(
             action["create"]["_index"],
-            format!("events-{org}-{project}")
+            format!("events-{org}-{workspace}")
         );
     }
 }
 
 #[test]
-fn rejects_projects_that_cannot_form_an_index_name() {
-    let template = index("events-{org_id}-{project_id}");
+fn rejects_workspaces_that_cannot_form_an_index_name() {
+    let template = index("events-{org_id}-{workspace_id}");
 
-    for project in ["Web-shop", "", "a,b", "a*"] {
-        let payload = event_for("acme-k3x9qa", project);
+    for workspace in ["Web-shop", "", "a,b", "a*"] {
+        let payload = event_for("acme-k3x9qa", workspace);
         let rejection = prepare(Some(payload.as_bytes()), &template, 1024).unwrap_err();
 
-        assert_eq!(rejection.class, "invalid_proj", "project `{project}`");
+        assert_eq!(
+            rejection.class, "invalid_workspace",
+            "workspace `{workspace}`"
+        );
     }
 }
 
 #[test]
 fn rejects_orgs_that_cannot_form_an_index_name() {
-    let template = index("events-{org_id}-{project_id}");
+    let template = index("events-{org_id}-{workspace_id}");
 
     for org in ["Merchant-1", "", "a,b", "a*"] {
         let payload = event_for(org, "acme-shop-42");

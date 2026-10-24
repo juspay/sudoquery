@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useMemo, useEffect, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import { useProject } from './ProjectContext';
+import { useWorkspace } from './WorkspaceContext';
 import type { Chat, ChatMessage } from '../types/chat';
 import { loadChats, saveChats, createChat, updateChat, deleteChat } from '../services/chatStorage';
 
@@ -35,8 +35,8 @@ interface ChatContextType {
 const ChatContext = createContext<ChatContextType | undefined>(undefined);
 
 export function ChatProvider({ children }: { children: ReactNode }) {
-  const { currentProject } = useProject();
-  const projectId = currentProject?.id || null;
+  const { currentWorkspace } = useWorkspace();
+  const workspaceId = currentWorkspace?.id || null;
 
   const [chats, setChats] = useState<Chat[]>([]);
   const [activeChatId, setActiveChatId] = useState<string | null>(null);
@@ -54,17 +54,17 @@ export function ChatProvider({ children }: { children: ReactNode }) {
     setPendingDateTimeToolCallId(null);
   }, []);
 
-  // Load chats when project changes — always start with a fresh new-chat state
+  // Load chats when workspace changes — always start with a fresh new-chat state
   useEffect(() => {
-    const loaded = loadChats(projectId);
+    const loaded = loadChats(workspaceId);
     setChats(loaded);
     setActiveChatId(null);
-  }, [projectId]);
+  }, [workspaceId]);
 
   // Save chats whenever they change
   useEffect(() => {
-    saveChats(projectId, chats);
-  }, [chats, projectId]);
+    saveChats(workspaceId, chats);
+  }, [chats, workspaceId]);
 
   const activeChat = chats.find((c) => c.id === activeChatId);
   const messages = activeChat?.messages || [];

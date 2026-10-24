@@ -1,4 +1,4 @@
-use canonical_event::{OrgId, ProjectId};
+use canonical_event::{OrgId, WorkspaceId};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use sqlx::PgPool;
@@ -21,17 +21,17 @@ impl OrgRole {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type, PartialEq)]
-#[sqlx(type_name = "project_role", rename_all = "snake_case")]
-pub enum ProjectRole {
-    ProjectAdmin,
-    ProjectUser,
+#[sqlx(type_name = "workspace_role", rename_all = "snake_case")]
+pub enum WorkspaceRole {
+    WorkspaceAdmin,
+    WorkspaceUser,
 }
 
-impl ProjectRole {
+impl WorkspaceRole {
     pub fn as_str(&self) -> &'static str {
         match self {
-            ProjectRole::ProjectAdmin => "project_admin",
-            ProjectRole::ProjectUser => "project_user",
+            WorkspaceRole::WorkspaceAdmin => "workspace_admin",
+            WorkspaceRole::WorkspaceUser => "workspace_user",
         }
     }
 }
@@ -47,11 +47,11 @@ pub struct OrganizationMembership {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
-pub struct ProjectMembership {
+pub struct WorkspaceMembership {
     pub id: Uuid,
     pub user_id: Uuid,
-    pub project_id: ProjectId,
-    pub role: ProjectRole,
+    pub workspace_id: WorkspaceId,
+    pub role: WorkspaceRole,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -179,47 +179,47 @@ pub async fn list_organization_members(
     .await
 }
 
-// Project membership functions
+// Workspace membership functions
 
-pub async fn add_user_to_project(
+pub async fn add_user_to_workspace(
     pool: &PgPool,
     user_id: Uuid,
-    project_id: &ProjectId,
-    role: &ProjectRole,
-) -> Result<ProjectMembership, sqlx::Error> {
+    workspace_id: &WorkspaceId,
+    role: &WorkspaceRole,
+) -> Result<WorkspaceMembership, sqlx::Error> {
     let uuid7 = uuid7::uuid7();
     let id = Uuid::from_bytes(*uuid7.as_bytes());
 
-    sqlx::query_as::<_, ProjectMembership>(
+    sqlx::query_as::<_, WorkspaceMembership>(
         r#"
-        INSERT INTO project_memberships (id, user_id, project_id, role)
+        INSERT INTO workspace_memberships (id, user_id, workspace_id, role)
         VALUES ($1, $2, $3, $4)
-        RETURNING id, user_id, project_id, role, created_at, updated_at
+        RETURNING id, user_id, workspace_id, role, created_at, updated_at
         "#,
     )
     .bind(id)
     .bind(user_id)
-    .bind(project_id)
+    .bind(workspace_id)
     .bind(role)
     .fetch_one(pool)
     .await
 }
 
-pub async fn get_user_project_role(
+pub async fn get_user_workspace_role(
     pool: &PgPool,
     user_id: Uuid,
-    project_id: &ProjectId,
-) -> Result<Option<ProjectRole>, sqlx::Error> {
-    // First check for direct project membership
-    let result: Option<(ProjectRole,)> = sqlx::query_as(
+    workspace_id: &WorkspaceId,
+) -> Result<Option<WorkspaceRole>, sqlx::Error> {
+    // First check for direct workspace membership
+    let result: Option<(WorkspaceRole,)> = sqlx::query_as(
         r#"
         SELECT role
-        FROM project_memberships
-        WHERE user_id = $1 AND project_id = $2
+        FROM workspace_memberships
+        WHERE user_id = $1 AND workspace_id = $2
         "#,
     )
     .bind(user_id)
-    .bind(project_id)
+    .bind(workspace_id)
     .fetch_optional(pool)
     .await?;
 
@@ -227,101 +227,101 @@ pub async fn get_user_project_role(
         return Ok(result.map(|r| r.0));
     }
 
-    // Check if user is org admin (grant admin role on all projects)
+    // Check if user is org admin (grant admin role on all workspaces)
     let org_admin: Option<(i32,)> = sqlx::query_as(
         r#"
         SELECT 1
         FROM organization_memberships om
-        JOIN projects p ON p.organization_id = om.organization_id
+        JOIN workspaces p ON p.organization_id = om.organization_id
         WHERE om.user_id = $1
           AND p.id = $2
           AND om.role::text = 'org_admin'
         "#,
     )
     .bind(user_id)
-    .bind(project_id)
+    .bind(workspace_id)
     .fetch_optional(pool)
     .await?;
 
     if org_admin.is_some() {
-        return Ok(Some(ProjectRole::ProjectAdmin));
+        return Ok(Some(WorkspaceRole::WorkspaceAdmin));
     }
 
-    // Check if user is org member (grant user role on projects)
+    // Check if user is org member (grant user role on workspaces)
     let org_member: Option<(i32,)> = sqlx::query_as(
         r#"
         SELECT 1
         FROM organization_memberships om
-        JOIN projects p ON p.organization_id = om.organization_id
+        JOIN workspaces p ON p.organization_id = om.organization_id
         WHERE om.user_id = $1
           AND p.id = $2
           AND om.role::text = 'org_user'
         "#,
     )
     .bind(user_id)
-    .bind(project_id)
+    .bind(workspace_id)
     .fetch_optional(pool)
     .await?;
 
     if org_member.is_some() {
-        return Ok(Some(ProjectRole::ProjectUser));
+        return Ok(Some(WorkspaceRole::WorkspaceUser));
     }
 
     Ok(None)
 }
 
-pub async fn get_project_membership(
+pub async fn get_workspace_membership(
     pool: &PgPool,
     user_id: Uuid,
-    project_id: &ProjectId,
-) -> Result<Option<ProjectMembership>, sqlx::Error> {
-    sqlx::query_as::<_, ProjectMembership>(
+    workspace_id: &WorkspaceId,
+) -> Result<Option<WorkspaceMembership>, sqlx::Error> {
+    sqlx::query_as::<_, WorkspaceMembership>(
         r#"
-        SELECT id, user_id, project_id, role, created_at, updated_at
-        FROM project_memberships
-        WHERE user_id = $1 AND project_id = $2
+        SELECT id, user_id, workspace_id, role, created_at, updated_at
+        FROM workspace_memberships
+        WHERE user_id = $1 AND workspace_id = $2
         "#,
     )
     .bind(user_id)
-    .bind(project_id)
+    .bind(workspace_id)
     .fetch_optional(pool)
     .await
 }
 
-pub async fn remove_user_from_project(
+pub async fn remove_user_from_workspace(
     pool: &PgPool,
     user_id: Uuid,
-    project_id: &ProjectId,
+    workspace_id: &WorkspaceId,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
-        DELETE FROM project_memberships
-        WHERE user_id = $1 AND project_id = $2
+        DELETE FROM workspace_memberships
+        WHERE user_id = $1 AND workspace_id = $2
         "#,
     )
     .bind(user_id)
-    .bind(project_id)
+    .bind(workspace_id)
     .execute(pool)
     .await?;
 
     Ok(())
 }
 
-pub async fn update_project_membership_role(
+pub async fn update_workspace_membership_role(
     pool: &PgPool,
     user_id: Uuid,
-    project_id: &ProjectId,
-    role: &ProjectRole,
+    workspace_id: &WorkspaceId,
+    role: &WorkspaceRole,
 ) -> Result<(), sqlx::Error> {
     sqlx::query(
         r#"
-        UPDATE project_memberships
+        UPDATE workspace_memberships
         SET role = $3, updated_at = NOW()
-        WHERE user_id = $1 AND project_id = $2
+        WHERE user_id = $1 AND workspace_id = $2
         "#,
     )
     .bind(user_id)
-    .bind(project_id)
+    .bind(workspace_id)
     .bind(role)
     .execute(pool)
     .await?;
@@ -329,32 +329,32 @@ pub async fn update_project_membership_role(
     Ok(())
 }
 
-pub async fn list_project_members(
+pub async fn list_workspace_members(
     pool: &PgPool,
-    project_id: &ProjectId,
-) -> Result<Vec<(Uuid, String, String, ProjectRole)>, sqlx::Error> {
+    workspace_id: &WorkspaceId,
+) -> Result<Vec<(Uuid, String, String, WorkspaceRole)>, sqlx::Error> {
     sqlx::query_as(
         r#"
         SELECT u.id, u.email, u.username, pm.role
         FROM users u
-        JOIN project_memberships pm ON u.id = pm.user_id
-        WHERE pm.project_id = $1 AND u.deleted_at IS NULL
+        JOIN workspace_memberships pm ON u.id = pm.user_id
+        WHERE pm.workspace_id = $1 AND u.deleted_at IS NULL
         ORDER BY u.created_at DESC
         "#,
     )
-    .bind(project_id)
+    .bind(workspace_id)
     .fetch_all(pool)
     .await
 }
 
-pub async fn list_user_projects(
+pub async fn list_user_workspaces(
     pool: &PgPool,
     user_id: Uuid,
-) -> Result<Vec<ProjectId>, sqlx::Error> {
-    let result: Vec<(ProjectId,)> = sqlx::query_as(
+) -> Result<Vec<WorkspaceId>, sqlx::Error> {
+    let result: Vec<(WorkspaceId,)> = sqlx::query_as(
         r#"
-        SELECT project_id
-        FROM project_memberships
+        SELECT workspace_id
+        FROM workspace_memberships
         WHERE user_id = $1
         "#,
     )

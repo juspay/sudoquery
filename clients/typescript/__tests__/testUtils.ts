@@ -6,7 +6,7 @@ export function createMockEvent(id: number, overrides: Partial<Event> = {}): Eve
     id: crypto.randomUUID(),
     name: `event_${id}`,
     org_id: "acme-org-1",
-    project_id: "acme-project-1",
+    workspace_id: "acme-workspace-1",
     session_id: "session-1",
     anon_id: crypto.randomUUID(),
     actor_id: `user_${id}`,

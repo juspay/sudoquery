@@ -1,9 +1,9 @@
 //! Read side of OpenSearch: queries the events `sink-opensearch` indexed.
-//! Provisioning also creates and deletes each project's data stream through
+//! Provisioning also creates and deletes each workspace's data stream through
 //! it, with the admin credentials when they are set.
 //!
 //! Every query goes through the same steps: check the client's query, wrap it
-//! in the project's scope, have OpenSearch validate it, then run it.
+//! in the workspace's scope, have OpenSearch validate it, then run it.
 
 use std::time::Duration;
 
@@ -27,20 +27,20 @@ const MAX_ERROR_TEXT: usize = 512;
 /// Sort key of an event: `[occured_at, id]`.
 const EVENT_KEY_LEN: usize = 2;
 
-/// What a project may read: the events of its organization (`org_id`) that
-/// were sent for the project itself (`project_id`).
+/// What a workspace may read: the events of its organization (`org_id`) that
+/// were sent for the workspace itself (`workspace_id`).
 #[derive(Clone, Debug, PartialEq)]
 pub struct Scope {
     pub org_id: String,
-    pub project_id: String,
+    pub workspace_id: String,
 }
 
 impl Scope {
-    /// `None` when the project has no organization, and therefore no `org_id`.
-    pub fn for_project(project: &db::Project) -> Option<Self> {
+    /// `None` when the workspace has no organization, and therefore no `org_id`.
+    pub fn for_workspace(workspace: &db::Workspace) -> Option<Self> {
         Some(Self {
-            org_id: project.organization_id.as_ref()?.to_string(),
-            project_id: project.id.to_string(),
+            org_id: workspace.organization_id.as_ref()?.to_string(),
+            workspace_id: workspace.id.to_string(),
         })
     }
 }
@@ -54,7 +54,7 @@ pub enum RequestError {
     #[error("`query` must not contain `{0}`")]
     ForbiddenKey(String),
 
-    #[error("`query` filters on an `org_id` this project cannot read")]
+    #[error("`query` filters on an `org_id` this workspace cannot read")]
     WrongOrg,
 
     #[error("`query` must include a `range` on `occured_at` with a lower and an upper bound")]
@@ -180,7 +180,7 @@ pub struct OpenSearch {
 
 impl OpenSearch {
     /// `index_template` names the data stream to read; `{org_id}` and
-    /// `{project_id}` in it are replaced per request, as `sink-opensearch`
+    /// `{workspace_id}` in it are replaced per request, as `sink-opensearch`
     /// does when writing.
     pub fn new(
         url: &str,
@@ -272,7 +272,7 @@ impl OpenSearch {
             .ok_or_else(|| decode_error("no `count` in the count response"))
     }
 
-    /// The event with this id, if the project may read it.
+    /// The event with this id, if the workspace may read it.
     pub async fn get_event(
         &self,
         scope: &Scope,
@@ -280,7 +280,7 @@ impl OpenSearch {
     ) -> Result<Option<Event>, OpenSearchError> {
         let target = self.target(scope);
         // A data stream doesn't serve `_doc` by id, so the event is searched
-        // for, inside the project's scope.
+        // for, inside the workspace's scope.
         let query = query::scoped_query(None, scope, vec![query::ids_filter(id)]);
         let body = json!({ "query": query, "size": 1 });
         let Some(reply) = self
@@ -295,7 +295,7 @@ impl OpenSearch {
 
         let event = CanonicalEvent::deserialize(&hit["_source"]).map_err(decode_error)?;
         // Checked on the document too, should the query ever lose its scope.
-        let in_scope = event.org_id == scope.org_id && event.project_id == scope.project_id;
+        let in_scope = event.org_id == scope.org_id && event.workspace_id == scope.workspace_id;
         if !in_scope {
             return Ok(None);
         }
@@ -422,16 +422,16 @@ impl OpenSearch {
         Ok(facets(total, other, buckets))
     }
 
-    /// Creates the data stream the project's events are written to,
+    /// Creates the data stream the workspace's events are written to,
     /// treating "already exists" as success. OpenSearch refuses unless an
     /// index template with `data_stream` matches the name
     /// (`crates/sink-opensearch/index-template.json` covers `events-*`).
     pub async fn create_data_stream(
         &self,
         org_id: &str,
-        project_id: &str,
+        workspace_id: &str,
     ) -> Result<(), OpenSearchError> {
-        let path = format!("_data_stream/{}", self.index_name(org_id, project_id));
+        let path = format!("_data_stream/{}", self.index_name(org_id, workspace_id));
         let (status, text) = self
             .send(Method::PUT, &path, self.admin_credentials(), None)
             .await?;
@@ -448,14 +448,14 @@ impl OpenSearch {
         }
     }
 
-    /// Deletes the project's data stream with every event in it, treating
+    /// Deletes the workspace's data stream with every event in it, treating
     /// "does not exist" as success.
     pub async fn delete_data_stream(
         &self,
         org_id: &str,
-        project_id: &str,
+        workspace_id: &str,
     ) -> Result<(), OpenSearchError> {
-        let path = format!("_data_stream/{}", self.index_name(org_id, project_id));
+        let path = format!("_data_stream/{}", self.index_name(org_id, workspace_id));
         let (status, text) = self
             .send(Method::DELETE, &path, self.admin_credentials(), None)
             .await?;
@@ -475,15 +475,15 @@ impl OpenSearch {
             .or(self.credentials.as_ref())
     }
 
-    fn index_name(&self, org_id: &str, project_id: &str) -> String {
+    fn index_name(&self, org_id: &str, workspace_id: &str) -> String {
         self.index_template
             .replace("{org_id}", org_id)
-            .replace("{project_id}", project_id)
+            .replace("{workspace_id}", workspace_id)
     }
 
     fn target<'a>(&self, scope: &'a Scope) -> Target<'a> {
         Target {
-            index: self.index_name(&scope.org_id, &scope.project_id),
+            index: self.index_name(&scope.org_id, &scope.workspace_id),
             scope,
         }
     }
@@ -700,14 +700,14 @@ mod tests {
     use super::*;
 
     const ORG: &str = "0198c0de-0000-7000-8000-000000000001";
-    const PROJ: &str = "0198c0de-0000-7000-8000-000000000002";
+    const WORKSPACE: &str = "0198c0de-0000-7000-8000-000000000002";
     const INDEX: &str =
         "events-0198c0de-0000-7000-8000-000000000001-0198c0de-0000-7000-8000-000000000002";
 
     fn scope() -> Scope {
         Scope {
             org_id: ORG.into(),
-            project_id: PROJ.into(),
+            workspace_id: WORKSPACE.into(),
         }
     }
 
@@ -715,7 +715,7 @@ mod tests {
         OpenSearch::new(
             &server.uri(),
             None,
-            "events-{org_id}-{project_id}".into(),
+            "events-{org_id}-{workspace_id}".into(),
             Duration::from_secs(2),
         )
         .unwrap()
@@ -733,14 +733,14 @@ mod tests {
     }
 
     /// A stored event, the way `sink-opensearch` writes it.
-    fn source(n: u32, proj: &str) -> Value {
+    fn source(n: u32, workspace: &str) -> Value {
         json!({
             "envelop_version": "1.0",
             "id": format!("00000000-0000-4000-8000-{n:012}"),
             "name": "checkout_viewed",
             "occured_at": format!("2026-09-29T09:50:{n:02}Z"),
             "org_id": ORG,
-            "project_id": proj,
+            "workspace_id": workspace,
             "session_id": "session-1",
             "anon_id": "anon-1",
             "properties": { "plan": "pro" },
@@ -748,7 +748,7 @@ mod tests {
     }
 
     fn hit(n: u32) -> Value {
-        let source = source(n, PROJ);
+        let source = source(n, WORKSPACE);
         json!({ "_id": source["id"], "_source": source, "sort": [n, source["id"]] })
     }
 
@@ -833,7 +833,7 @@ mod tests {
 
         let page = search(&server, &request(None)).await;
 
-        let mut expected = source(1, PROJ);
+        let mut expected = source(1, WORKSPACE);
         expected.as_object_mut().unwrap().remove("org_id");
         assert_eq!(items(&page), json!([expected]));
     }
@@ -1066,10 +1066,10 @@ mod tests {
 
     #[tokio::test]
     async fn get_event_hides_documents_outside_the_scope() {
-        let mut other_org = source(1, PROJ);
+        let mut other_org = source(1, WORKSPACE);
         other_org["org_id"] = json!("someone-else");
 
-        for stored in [source(1, "another-proj"), other_org] {
+        for stored in [source(1, "another-workspace"), other_org] {
             let server = MockServer::start().await;
             let found = json!({ "hits": { "hits": [{ "_id": stored["id"], "_source": stored }] } });
             mount(
@@ -1300,7 +1300,7 @@ mod tests {
         let client = OpenSearch::new(
             &format!("{}/search/", server.uri()),
             Some(("dashboard".into(), "hunter2".into())),
-            "events-{org_id}-{project_id}".into(),
+            "events-{org_id}-{workspace_id}".into(),
             Duration::from_secs(2),
         )
         .unwrap();
@@ -1332,8 +1332,8 @@ mod tests {
             .await;
         let client = client(&server);
 
-        client.create_data_stream(ORG, PROJ).await.unwrap();
-        client.create_data_stream(ORG, PROJ).await.unwrap();
+        client.create_data_stream(ORG, WORKSPACE).await.unwrap();
+        client.create_data_stream(ORG, WORKSPACE).await.unwrap();
     }
 
     #[tokio::test]
@@ -1353,14 +1353,14 @@ mod tests {
         let client = OpenSearch::new(
             &server.uri(),
             Some(("dashboard".into(), "hunter2".into())),
-            "events-{org_id}-{project_id}".into(),
+            "events-{org_id}-{workspace_id}".into(),
             Duration::from_secs(2),
         )
         .unwrap()
         .with_admin_credentials(Some(("admin".into(), "s3cret".into())));
 
-        client.create_data_stream(ORG, PROJ).await.unwrap();
-        client.delete_data_stream(ORG, PROJ).await.unwrap();
+        client.create_data_stream(ORG, WORKSPACE).await.unwrap();
+        client.delete_data_stream(ORG, WORKSPACE).await.unwrap();
     }
 
     #[tokio::test]
@@ -1376,12 +1376,12 @@ mod tests {
         let client = OpenSearch::new(
             &server.uri(),
             Some(("dashboard".into(), "hunter2".into())),
-            "events-{org_id}-{project_id}".into(),
+            "events-{org_id}-{workspace_id}".into(),
             Duration::from_secs(2),
         )
         .unwrap();
 
-        client.create_data_stream(ORG, PROJ).await.unwrap();
+        client.create_data_stream(ORG, WORKSPACE).await.unwrap();
     }
 
     #[tokio::test]
@@ -1397,7 +1397,10 @@ mod tests {
             .mount(&server)
             .await;
 
-        client(&server).delete_data_stream(ORG, PROJ).await.unwrap();
+        client(&server)
+            .delete_data_stream(ORG, WORKSPACE)
+            .await
+            .unwrap();
     }
 
     #[tokio::test]
@@ -1410,7 +1413,7 @@ mod tests {
             .await;
 
         let error = client(&server)
-            .delete_data_stream(ORG, PROJ)
+            .delete_data_stream(ORG, WORKSPACE)
             .await
             .unwrap_err();
 
@@ -1434,7 +1437,7 @@ mod tests {
             .await;
 
         let error = client(&server)
-            .create_data_stream(ORG, PROJ)
+            .create_data_stream(ORG, WORKSPACE)
             .await
             .unwrap_err();
 
@@ -1447,27 +1450,27 @@ mod tests {
     #[test]
     fn a_scope_needs_an_organization() {
         let organization = canonical_event::OrgId::try_from("acme-corp".to_string()).unwrap();
-        let mut project = db::Project {
-            id: canonical_event::ProjectId::try_from("acme-corp-shop".to_string()).unwrap(),
+        let mut workspace = db::Workspace {
+            id: canonical_event::WorkspaceId::try_from("acme-corp-shop".to_string()).unwrap(),
             organization_id: Some(organization.clone()),
             name: "shop".into(),
             timezone: None,
-            status: db::ProjectStatus::Active,
+            status: db::WorkspaceStatus::Active,
             deleted_at: None,
             created_at: Utc::now(),
             updated_at: Utc::now(),
         };
 
         assert_eq!(
-            Scope::for_project(&project),
+            Scope::for_workspace(&workspace),
             Some(Scope {
                 org_id: organization.to_string(),
-                project_id: project.id.to_string(),
+                workspace_id: workspace.id.to_string(),
             })
         );
 
-        project.organization_id = None;
-        assert_eq!(Scope::for_project(&project), None);
+        workspace.organization_id = None;
+        assert_eq!(Scope::for_workspace(&workspace), None);
     }
 
     #[test]
@@ -1721,7 +1724,7 @@ mod tests {
         );
     }
 
-    /// A real OpenSearch with one data stream per project of an org, the way
+    /// A real OpenSearch with one data stream per workspace of an org, the way
     /// `sink-opensearch` writes them.
     struct Live {
         http: reqwest::Client,
@@ -1742,7 +1745,7 @@ mod tests {
                 client: OpenSearch::new(
                     &url,
                     None,
-                    "events-{org_id}-{project_id}".into(),
+                    "events-{org_id}-{workspace_id}".into(),
                     Duration::from_secs(10),
                 )
                 .unwrap(),
@@ -1764,8 +1767,8 @@ mod tests {
             live
         }
 
-        fn stream(&self, proj: &str) -> String {
-            format!("events-{}-{proj}", self.org)
+        fn stream(&self, workspace: &str) -> String {
+            format!("events-{}-{workspace}", self.org)
         }
 
         /// Every stream of the test's org.
@@ -1790,10 +1793,10 @@ mod tests {
             );
         }
 
-        fn scope(&self, proj: &str) -> Scope {
+        fn scope(&self, workspace: &str) -> Scope {
             Scope {
                 org_id: self.org.clone(),
-                project_id: proj.into(),
+                workspace_id: workspace.into(),
             }
         }
 
@@ -1804,7 +1807,7 @@ mod tests {
             &self,
             stream: &str,
             org: &str,
-            proj: &str,
+            workspace: &str,
             session: Option<&str>,
             second: u32,
             name: &str,
@@ -1815,7 +1818,7 @@ mod tests {
                 .name(name.into())
                 .occured_at(Utc.with_ymd_and_hms(2026, 9, 1, 10, 0, second).unwrap())
                 .org_id(org.into())
-                .project_id(proj.into())
+                .workspace_id(workspace.into())
                 .session_id(session.map(Into::into))
                 .anon_id("anon-1".into())
                 .properties(Some(json!({ "plan": "pro" })))
@@ -1895,14 +1898,14 @@ mod tests {
     /// `cargo test -p hyper-analytics-dashboard-server -- --ignored`
     #[tokio::test]
     #[ignore = "needs a running OpenSearch"]
-    async fn live_opensearch_pages_and_isolates_projects() {
-        const A: &str = "proj-a";
-        const B: &str = "proj-b";
+    async fn live_opensearch_pages_and_isolates_workspaces() {
+        const A: &str = "workspace-a";
+        const B: &str = "workspace-b";
         let live = Live::start().await;
         let org = live.org.clone();
         let (a_stream, b_stream) = (live.stream(A), live.stream(B));
 
-        // Project A: two sessions and one event outside any session. Two
+        // Workspace A: two sessions and one event outside any session. Two
         // events share a timestamp, which only the `id` tie-breaker orders.
         let mut a_ids = Vec::new();
         for (session, second, name) in [
@@ -1916,7 +1919,7 @@ mod tests {
         ] {
             a_ids.push(live.index(&a_stream, &org, A, session, second, name).await);
         }
-        // Project B has its own stream.
+        // Workspace B has its own stream.
         let b_id = live.index(&b_stream, &org, B, Some("s3"), 6, "click").await;
         live.index(&b_stream, &org, B, Some("s1"), 7, "page_view")
             .await;
@@ -1940,7 +1943,7 @@ mod tests {
         assert_eq!(pages, 3);
         assert!(times.windows(2).all(|pair| pair[0] >= pair[1]), "{times:?}");
         assert!(events.iter().all(|event| event.get("org_id").is_none()));
-        assert!(events.iter().all(|event| event["project_id"] == A));
+        assert!(events.iter().all(|event| event["workspace_id"] == A));
         found.sort();
         a_ids.sort();
         assert_eq!(found, a_ids);
@@ -1959,7 +1962,7 @@ mod tests {
         assert_eq!(live.client.count(&a, Some(&page_views)).await.unwrap(), 3);
         assert_eq!(live.client.count(&b, None).await.unwrap(), 2);
 
-        // Get: only documents of the project's own org and project.
+        // Get: only documents of the workspace's own org and workspace.
         let own = live.client.get_event(&a, &a_ids[0]).await.unwrap();
         let own = serde_json::to_value(own.expect("A reads its own event")).unwrap();
         assert_eq!(own["id"], a_ids[0].as_str());
@@ -2085,10 +2088,10 @@ mod tests {
         assert!(reason.contains("not-a-date"), "{reason}");
         assert!(!reason.contains(&org), "{reason}");
 
-        // A project with no stream yet has no events.
+        // A workspace with no stream yet has no events.
         let nobody = Scope {
             org_id: uuid::Uuid::new_v4().to_string(),
-            project_id: A.into(),
+            workspace_id: A.into(),
         };
         assert_eq!(live.client.count(&nobody, None).await.unwrap(), 0);
         assert!(

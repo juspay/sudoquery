@@ -116,13 +116,13 @@ pub async fn list_user_organizations(
             CASE
                 WHEN om.role = 'org_admin' THEN 'org_admin'
                 WHEN om.role = 'org_user' THEN 'org_user'
-                WHEN pm.role IS NOT NULL THEN 'project_' || pm.role
+                WHEN pm.role IS NOT NULL THEN 'workspace_' || pm.role
                 ELSE 'none'
             END AS access_level
         FROM organizations o
         LEFT JOIN organization_memberships om ON o.id = om.organization_id AND om.user_id = $1
-        LEFT JOIN projects p ON o.id = p.organization_id AND p.deleted_at IS NULL
-        LEFT JOIN project_memberships pm ON p.id = pm.project_id AND pm.user_id = $1
+        LEFT JOIN workspaces p ON o.id = p.organization_id AND p.deleted_at IS NULL
+        LEFT JOIN workspace_memberships pm ON p.id = pm.workspace_id AND pm.user_id = $1
         WHERE o.deleted_at IS NULL
           AND (om.user_id IS NOT NULL OR pm.user_id IS NOT NULL)
         ORDER BY o.id, o.created_at DESC

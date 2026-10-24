@@ -3,10 +3,10 @@ import { Box, Typography, TextField, Button, Alert, IconButton, Tooltip, Paper, 
 import { Copy, Eye, EyeOff, ChevronDown, ChevronUp, ExternalLink, Loader2 } from 'lucide-react';
 import { Link as RouterLink } from 'react-router-dom';
 import countriesAndTimezones from 'countries-and-timezones';
-import { useProject } from '../../contexts/ProjectContext';
+import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { useOrganization } from '../../contexts/OrganizationContext';
 import { useToast } from '../../contexts/ToastContext';
-import { projectService } from '../../services/projectService';
+import { workspaceService } from '../../services/workspaceService';
 import { CopyableId } from '../shared/CopyableId';
 import { colorInk, colorCream2, colorBluePale, fontFamilyMono } from '../../theme/tokens';
 
@@ -40,17 +40,17 @@ function buildTimezoneOptions(): TimezoneOption[] {
 const TIMEZONE_OPTIONS = buildTimezoneOptions();
 const DEFAULT_TIMEZONE = 'Asia/Kolkata';
 
-export function ProjectSettingsForm() {
-  const { currentProject, setCurrentProject, refreshProjects } = useProject();
+export function WorkspaceSettingsForm() {
+  const { currentWorkspace, setCurrentWorkspace, refreshWorkspaces } = useWorkspace();
   const { currentOrganization } = useOrganization();
   const { showSuccess, showError } = useToast();
 
-  const [name, setName] = useState(currentProject?.name || '');
-  const [timezone, setTimezone] = useState<string>(currentProject?.timezone || DEFAULT_TIMEZONE);
+  const [name, setName] = useState(currentWorkspace?.name || '');
+  const [timezone, setTimezone] = useState<string>(currentWorkspace?.timezone || DEFAULT_TIMEZONE);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showToken, setShowToken] = useState(true);
-  const [projectToken, setProjectToken] = useState<string>('');
+  const [workspaceToken, setWorkspaceToken] = useState<string>('');
   const [loadingToken, setLoadingToken] = useState(false);
   const [tokenExpanded, setTokenExpanded] = useState(false);
   const [timezoneSearch, setTimezoneSearch] = useState('');
@@ -68,49 +68,49 @@ export function ProjectSettingsForm() {
     );
   }, [timezoneSearch]);
 
-  // Fetch project token on demand
+  // Fetch workspace token on demand
   useEffect(() => {
-    if (!currentOrganization?.id || !currentProject?.id) return;
+    if (!currentOrganization?.id || !currentWorkspace?.id) return;
 
     const fetchToken = async () => {
       setLoadingToken(true);
       try {
-        const response = await projectService.getProjectTokens(currentOrganization.id, currentProject.id);
+        const response = await workspaceService.getWorkspaceTokens(currentOrganization.id, currentWorkspace.id);
         // Response is an object with numeric keys, e.g. { "0": { token, name, ... } }
         const tokens = Object.values(response);
         if (tokens.length > 0) {
-          setProjectToken(tokens[0].token);
+          setWorkspaceToken(tokens[0].token);
         }
       } catch (err) {
-        showError(err instanceof Error ? err.message : 'Failed to fetch project token');
+        showError(err instanceof Error ? err.message : 'Failed to fetch workspace token');
       } finally {
         setLoadingToken(false);
       }
     };
 
     fetchToken();
-  }, [currentOrganization?.id, currentProject?.id, showError]);
+  }, [currentOrganization?.id, currentWorkspace?.id, showError]);
 
-  if (!currentProject) return null;
+  if (!currentWorkspace) return null;
 
-  // Sync timezone with current project
+  // Sync timezone with current workspace
   useEffect(() => {
-    if (currentProject?.timezone) {
-      setTimezone(currentProject.timezone);
+    if (currentWorkspace?.timezone) {
+      setTimezone(currentWorkspace.timezone);
     }
-  }, [currentProject?.timezone]);
+  }, [currentWorkspace?.timezone]);
 
-  if (!currentProject) return null;
+  if (!currentWorkspace) return null;
 
   const handleSave = async () => {
     if (!currentOrganization?.id) return;
     if (!name.trim()) return;
 
     const updates: { name?: string; timezone?: string } = {};
-    if (name.trim() !== currentProject.name) {
+    if (name.trim() !== currentWorkspace.name) {
       updates.name = name.trim();
     }
-    if (timezone !== currentProject.timezone) {
+    if (timezone !== currentWorkspace.timezone) {
       updates.timezone = timezone;
     }
 
@@ -120,37 +120,37 @@ export function ProjectSettingsForm() {
     setError(null);
 
     try {
-      const updated = await projectService.update(currentOrganization.id, currentProject.id, updates);
-      setCurrentProject(updated);
-      await refreshProjects();
-      showSuccess('Project updated successfully.');
+      const updated = await workspaceService.update(currentOrganization.id, currentWorkspace.id, updates);
+      setCurrentWorkspace(updated);
+      await refreshWorkspaces();
+      showSuccess('Workspace updated successfully.');
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update project');
+      setError(err instanceof Error ? err.message : 'Failed to update workspace');
     } finally {
       setLoading(false);
     }
   };
 
   const handleCopyToken = () => {
-    if (projectToken) {
-      navigator.clipboard.writeText(projectToken);
-      showSuccess('Project token copied to clipboard');
+    if (workspaceToken) {
+      navigator.clipboard.writeText(workspaceToken);
+      showSuccess('Workspace token copied to clipboard');
     }
   };
 
-  const isDirty = name.trim() !== currentProject.name || timezone !== currentProject.timezone;
+  const isDirty = name.trim() !== currentWorkspace.name || timezone !== currentWorkspace.timezone;
 
   return (
     <Box sx={{ p: { xs: 3, sm: 4 }, border: `1px solid ${colorCream2}`, borderRadius: 2, bgcolor: '#fff' }}>
       <Typography variant="h6" color={colorInk} mb={3}>
-        Project Details
+        Workspace Details
       </Typography>
 
       {error && <Alert severity="error" sx={{ mb: 3 }}>{error}</Alert>}
 
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 520 }}>
         <TextField
-          label="Project Name"
+          label="Workspace Name"
           value={name}
           onChange={(e) => setName(e.target.value)}
           disabled={loading}
@@ -158,9 +158,9 @@ export function ProjectSettingsForm() {
         />
 
         <CopyableId
-          label="Project ID"
-          value={currentProject.id}
-          helperText="Server-generated slug that identifies your project in API calls and the SDK. It cannot be changed."
+          label="Workspace ID"
+          value={currentWorkspace.id}
+          helperText="Server-generated slug that identifies your workspace in API calls and the SDK. It cannot be changed."
         />
 
         <Autocomplete
@@ -215,7 +215,7 @@ export function ProjectSettingsForm() {
 
       <Divider sx={{ my: 4 }} />
 
-      {/* Project Token Section - Collapsible */}
+      {/* Workspace Token Section - Collapsible */}
       <Box
         onClick={() => setTokenExpanded(!tokenExpanded)}
         sx={{
@@ -252,9 +252,9 @@ export function ProjectSettingsForm() {
         ) : null}
         <Box sx={{ mb: 2 }}>
           <CopyableId
-            label="Project ID"
-            value={currentProject.id}
-            helperText="Sent as the X-Project-Id header in API requests."
+            label="Workspace ID"
+            value={currentWorkspace.id}
+            helperText="Sent as the X-Workspace-Id header in API requests."
           />
         </Box>
         <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', mb: 2 }}>
@@ -265,16 +265,16 @@ export function ProjectSettingsForm() {
               fontSize: '0.875rem',
               wordBreak: 'break-all',
               flex: 1,
-              color: projectToken ? 'text.primary' : 'text.secondary',
+              color: workspaceToken ? 'text.primary' : 'text.secondary',
             }}
           >
-            {loadingToken ? 'Loading...' : (projectToken ? (showToken ? projectToken : '•'.repeat(projectToken.length)) : 'No token generated yet')}
+            {loadingToken ? 'Loading...' : (workspaceToken ? (showToken ? workspaceToken : '•'.repeat(workspaceToken.length)) : 'No token generated yet')}
           </Typography>
           {loadingToken && <Loader2 size={16} className="animate-spin" />}
           <Tooltip title={showToken ? 'Hide Token' : 'Show Token'}>
             <IconButton
               onClick={() => setShowToken(!showToken)}
-              disabled={!projectToken || loadingToken}
+              disabled={!workspaceToken || loadingToken}
               size="small"
               sx={{ color: 'text.secondary' }}
             >
@@ -284,7 +284,7 @@ export function ProjectSettingsForm() {
           <Tooltip title="Copy Token">
             <IconButton
               onClick={handleCopyToken}
-              disabled={!projectToken || loadingToken}
+              disabled={!workspaceToken || loadingToken}
               size="small"
               sx={{ color: 'text.secondary' }}
             >

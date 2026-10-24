@@ -13,7 +13,7 @@ It initializes SudoQuery with:
 - `source: "shopify"`
 - `batchSize: 1`
 - `orgId` from pixel settings, defaulting to `breeze`
-- `projectId` from pixel settings, defaulting to `d2cmerino`
+- `workspaceId` from pixel settings, defaulting to `d2cmerino`
 - `collectorEndpoint` from pixel settings, defaulting to `https://73g8lnmf-3000.inc1.devtunnels.ms/batch`
 
 It maps Shopify events into collector event names:
@@ -108,7 +108,7 @@ When Shopify pixel settings are available, these keys override the built-in defa
 {
   "collectorEndpoint": "https://collector.example.com/batch",
   "orgId": "acme-org-1",
-  "projectId": "acme-project-1"
+  "workspaceId": "acme-workspace-1"
 }
 ```
 

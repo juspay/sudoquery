@@ -1,4 +1,4 @@
-use canonical_event::ProjectId;
+use canonical_event::WorkspaceId;
 use reqwest::Client;
 use serde_json::Value;
 
@@ -10,19 +10,19 @@ pub enum ClickHouseError {
     Query(String),
 }
 
-pub async fn create_project_user(
+pub async fn create_workspace_user(
     admin_url: &str,
     admin_user: &str,
     admin_password: &str,
-    project_password: &str,
-    project_id: &ProjectId,
+    workspace_password: &str,
+    workspace_id: &WorkspaceId,
 ) -> Result<(), ClickHouseError> {
     let client = Client::new();
-    let project_id_str = project_id.to_string();
+    let workspace_id_str = workspace_id.to_string();
 
     let create_query = format!(
         "CREATE USER IF NOT EXISTS '{}' IDENTIFIED WITH sha256_password BY '{}'",
-        project_id_str, project_password
+        workspace_id_str, workspace_password
     );
     execute_admin_query(
         &client,
@@ -33,13 +33,13 @@ pub async fn create_project_user(
     )
     .await?;
 
-    // Read access to the project's own database (provisioning.rs), and
+    // Read access to the workspace's own database (provisioning.rs), and
     // nothing else. Only the tables: never its Kafka table, which a SELECT
     // would consume from.
-    for table in crate::provisioning::PROJECT_TABLES {
+    for table in crate::provisioning::WORKSPACE_TABLES {
         let grant_query = format!(
             "GRANT SELECT ON `{}`.{} TO '{}'",
-            project_id_str, table, project_id_str
+            workspace_id_str, table, workspace_id_str
         );
         execute_admin_query(&client, admin_url, admin_user, admin_password, &grant_query).await?;
     }
@@ -47,16 +47,16 @@ pub async fn create_project_user(
     Ok(())
 }
 
-pub async fn drop_project_user(
+pub async fn drop_workspace_user(
     admin_url: &str,
     admin_user: &str,
     admin_password: &str,
-    project_id: &ProjectId,
+    workspace_id: &WorkspaceId,
 ) -> Result<(), ClickHouseError> {
     let client = Client::new();
-    let project_id_str = project_id.to_string();
+    let workspace_id_str = workspace_id.to_string();
 
-    let drop_query = format!("DROP USER IF EXISTS '{}'", project_id_str);
+    let drop_query = format!("DROP USER IF EXISTS '{}'", workspace_id_str);
     execute_admin_query(&client, admin_url, admin_user, admin_password, &drop_query).await?;
 
     Ok(())
@@ -108,25 +108,28 @@ pub async fn execute_query(clickhouse_url: &str, query: &str) -> Result<Value, C
     serde_json::from_str(&body).map_err(|e| ClickHouseError::Query(e.to_string()))
 }
 
-pub async fn execute_project_query(
+pub async fn execute_workspace_query(
     clickhouse_url: &str,
-    project_id: &ProjectId,
-    project_password: &str,
+    workspace_id: &WorkspaceId,
+    workspace_password: &str,
     query: &str,
 ) -> Result<Value, ClickHouseError> {
     let client = Client::new();
-    let project_id_str = project_id.to_string();
+    let workspace_id_str = workspace_id.to_string();
     let formatted_query = format!("{} FORMAT JSON", query.trim());
 
-    println!("Executing query for project {}: {}", project_id_str, query);
+    println!(
+        "Executing query for workspace {}: {}",
+        workspace_id_str, query
+    );
 
-    // Every project has its own database, named after the project
+    // Every workspace has its own database, named after the workspace
     // (provisioning.rs), so unqualified table names resolve to its tables.
-    let url = format!("{}?database={}", clickhouse_url, project_id_str);
+    let url = format!("{}?database={}", clickhouse_url, workspace_id_str);
 
     let response = client
         .post(&url)
-        .basic_auth(&project_id_str, Some(project_password))
+        .basic_auth(&workspace_id_str, Some(workspace_password))
         .body(formatted_query)
         .send()
         .await
@@ -137,7 +140,7 @@ pub async fn execute_project_query(
     let body = response.text().await.unwrap_or_default();
 
     if !status.is_success() {
-        tracing::error!("ClickHouse error for project {}: {}", project_id, body);
+        tracing::error!("ClickHouse error for workspace {}: {}", workspace_id, body);
         return Err(ClickHouseError::Query(format!(
             "ClickHouse error: {}",
             body
