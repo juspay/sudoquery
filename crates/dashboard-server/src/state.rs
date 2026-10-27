@@ -16,7 +16,6 @@ pub struct AppState {
     pub keycloak: KeycloakAdmin,
     pub keycloak_url: String,
     pub keycloak_realm: String,
-    pub temp_password: String,
     pub clickhouse_url: String,
     pub clickhouse_admin_url: String,
     pub clickhouse_admin_user: String,

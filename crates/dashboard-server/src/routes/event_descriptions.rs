@@ -106,8 +106,14 @@ pub struct ListEventDescriptionsResponse {
 /// List all event descriptions for a workspace (any workspace member)
 pub async fn list_event_descriptions(
     State(state): State<AppState>,
-    WorkspaceContext { workspace, .. }: WorkspaceContext,
+    WorkspaceContext {
+        workspace, role, ..
+    }: WorkspaceContext,
 ) -> Result<Json<ListEventDescriptionsResponse>, EventDescriptionError> {
+    if role.is_none() {
+        return Err(EventDescriptionError::Forbidden);
+    }
+
     let descriptions = db::list_event_descriptions_by_workspace(&state.db_pool, &workspace.id)
         .await
         .map_err(|e| EventDescriptionError::Database(e.to_string()))?;

@@ -25,7 +25,7 @@ mod routes;
 mod state;
 
 use keycloak::KeycloakAdmin;
-use middleware::auth::WorkspaceAccess;
+use middleware::auth::{AuthUser, WorkspaceAccess};
 use models::ChatCompletionRequest;
 use opensearch::OpenSearch;
 use sea_orm::Database;
@@ -109,7 +109,10 @@ async fn get_events_today_count(
                 .unwrap_or(0);
             Json(json!({ "count": count }))
         }
-        Err(e) => Json(json!({ "count": 0, "error": e.to_string() })),
+        Err(e) => {
+            tracing::error!("Failed to fetch today's event count: {}", e);
+            Json(json!({ "count": 0, "error": "Failed to fetch event count" }))
+        }
     }
 }
 
@@ -137,7 +140,10 @@ async fn get_events(
                 .unwrap_or_default();
             Json(json!(event_names))
         }
-        Err(e) => Json(json!({"error": e.to_string()})),
+        Err(e) => {
+            tracing::error!("Failed to fetch events: {}", e);
+            Json(json!({"error": "Failed to fetch events"}))
+        }
     }
 }
 
@@ -183,7 +189,10 @@ async fn get_event_props(
             keys.sort();
             Json(json!(keys))
         }
-        Err(e) => Json(json!({"error": e.to_string()})),
+        Err(e) => {
+            tracing::error!("Failed to fetch event properties: {}", e);
+            Json(json!({"error": "Failed to fetch event properties"}))
+        }
     }
 }
 
@@ -212,7 +221,7 @@ async fn run_raw_query(
     .await
     {
         Ok(response) => Json(json!({"success": true, "response": response})),
-        Err(e) => Json(json!({"success": false, "error": e.to_string()})),
+        Err(e) => Json(json!({"success": false, "error": e.public_message()})),
     }
 }
 
@@ -300,7 +309,10 @@ fn get_opensearch_request_timeout() -> std::time::Duration {
     std::time::Duration::from_millis(millis)
 }
 
-async fn chat_completions(Json(req): Json<ChatCompletionRequest>) -> impl IntoResponse {
+async fn chat_completions(
+    _auth_user: AuthUser,
+    Json(req): Json<ChatCompletionRequest>,
+) -> impl IntoResponse {
     let api_key = get_llm_api_key();
     if api_key.is_empty() {
         return Json(json!({"error": "LLM_API_KEY not configured on server"}));
@@ -323,15 +335,25 @@ async fn chat_completions(Json(req): Json<ChatCompletionRequest>) -> impl IntoRe
             match resp.text().await {
                 Ok(body) => match serde_json::from_str::<serde_json::Value>(&body) {
                     Ok(json_response) => Json(json_response),
-                    Err(_) => Json(json!({
-                        "error": format!("Invalid JSON response from LLM API: {}", body),
-                        "status": status.as_u16()
-                    })),
+                    Err(_) => {
+                        tracing::error!(
+                            "Invalid JSON response from LLM API ({}): {}",
+                            status,
+                            body
+                        );
+                        Json(json!({"error": "LLM request failed"}))
+                    }
                 },
-                Err(e) => Json(json!({"error": format!("Failed to read LLM API response: {}", e)})),
+                Err(e) => {
+                    tracing::error!("Failed to read LLM API response: {}", e);
+                    Json(json!({"error": "LLM request failed"}))
+                }
             }
         }
-        Err(e) => Json(json!({"error": format!("LLM API request failed: {}", e)})),
+        Err(e) => {
+            tracing::error!("LLM API request failed: {}", e);
+            Json(json!({"error": "LLM request failed"}))
+        }
     }
 }
 
@@ -370,8 +392,6 @@ async fn main() {
         std::env::var("KEYCLOAK_ADMIN_PASS").expect("KEYCLOAK_ADMIN_PASS must be set");
     let keycloak_realm =
         std::env::var("KEYCLOAK_REALM").unwrap_or_else(|_| "hyper-analytics".to_string());
-    let temp_password =
-        std::env::var("TEMP_PASSWORD").unwrap_or_else(|_| "ChangeMe123!".to_string());
 
     let keycloak = KeycloakAdmin::new(
         &keycloak_url,
@@ -408,7 +428,6 @@ async fn main() {
         keycloak,
         keycloak_url,
         keycloak_realm,
-        temp_password,
         clickhouse_url,
         clickhouse_admin_url,
         clickhouse_admin_user,

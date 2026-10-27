@@ -82,9 +82,15 @@ pub struct ListPropertyDescriptionsResponse {
 /// - Otherwise returns all property descriptions for the workspace
 pub async fn list_property_descriptions(
     State(state): State<AppState>,
-    WorkspaceContext { workspace, .. }: WorkspaceContext,
+    WorkspaceContext {
+        workspace, role, ..
+    }: WorkspaceContext,
     Query(query): Query<ListPropertyDescriptionsQuery>,
 ) -> Result<Json<ListPropertyDescriptionsResponse>, PropertyDescriptionError> {
+    if role.is_none() {
+        return Err(PropertyDescriptionError::Forbidden);
+    }
+
     let descriptions = if let Some(event_name) = query.event_name {
         db::list_property_descriptions_by_event(&state.db_pool, &workspace.id, &event_name)
             .await

@@ -45,7 +45,10 @@ impl axum::response::IntoResponse for ChatHandlerError {
         let (status, message) = match self {
             ChatHandlerError::Database(msg) => {
                 tracing::error!("Database error: {}", msg);
-                (StatusCode::INTERNAL_SERVER_ERROR, msg)
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
             ChatHandlerError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             ChatHandlerError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg),
@@ -441,7 +444,8 @@ async fn talk_to_llm(
             call_litellm(&state, &messages, &model, get_tools(chat_type), tx.clone()).await;
         match result {
             Err(e) => {
-                let error_json = json!({"error": e.to_string()}).to_string();
+                tracing::error!("LLM request failed for chat {}: {}", chat_id, e);
+                let error_json = json!({"error": "LLM request failed"}).to_string();
                 let _ = tx
                     .send(Ok(Event::default().event("error").data(error_json)))
                     .await;

@@ -11,7 +11,7 @@ use uuid::Uuid;
 use crate::{
     AppState,
     db::{self, Invitation, InvitationStatus, InvitationType, OrgRole, WorkspaceRole},
-    middleware::{AuthUser, OrgAdmin, OrgContext, WorkspaceAccess},
+    middleware::{AuthUser, OrgAdmin, OrgContext, WorkspaceAccess, WorkspaceAdmin},
 };
 
 // ============ Create Invitation ============
@@ -97,11 +97,10 @@ pub async fn create_organization_invitation(
 
 pub async fn create_workspace_invitation(
     State(state): State<AppState>,
-    WorkspaceAccess {
+    WorkspaceAdmin {
         auth_user,
         workspace,
-        ..
-    }: WorkspaceAccess,
+    }: WorkspaceAdmin,
     Json(req): Json<CreateInvitationRequest>,
 ) -> Result<(StatusCode, Json<InvitationResponse>), InvitationError> {
     // Prevent self-invite
@@ -162,8 +161,14 @@ pub async fn list_sent_invitations(
 
 pub async fn list_organization_invitations(
     State(state): State<AppState>,
-    OrgContext { organization, .. }: OrgContext,
+    OrgContext {
+        organization, role, ..
+    }: OrgContext,
 ) -> Result<Json<Vec<InvitationResponse>>, InvitationError> {
+    if role.is_none() {
+        return Err(InvitationError::Forbidden);
+    }
+
     let invitations = db::list_invitations_for_target(
         &state.db_pool,
         organization.id.as_ref(),
@@ -379,7 +384,13 @@ impl axum::response::IntoResponse for InvitationError {
                 StatusCode::FORBIDDEN,
                 "You do not have permission to perform this action".to_string(),
             ),
-            InvitationError::Database(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
+            InvitationError::Database(e) => {
+                tracing::error!("Database error: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
+            }
         };
         (status, Json(serde_json::json!({ "error": message }))).into_response()
     }

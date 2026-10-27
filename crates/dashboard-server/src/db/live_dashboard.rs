@@ -67,6 +67,25 @@ pub async fn get_dashboard(
     .await
 }
 
+/// Get a single live dashboard by id, scoped to a workspace
+pub async fn get_workspace_dashboard(
+    pool: &PgPool,
+    workspace_id: &WorkspaceId,
+    dashboard_id: Uuid,
+) -> Result<Option<LiveDashboard>, sqlx::Error> {
+    sqlx::query_as::<_, LiveDashboard>(
+        r#"
+        SELECT id, workspace_id, query, description, title, chart_config, last_ran_at, response, creation_source, created_at, updated_at
+        FROM live_dashboards
+        WHERE id = $1 AND workspace_id = $2
+        "#,
+    )
+    .bind(dashboard_id)
+    .bind(workspace_id)
+    .fetch_optional(pool)
+    .await
+}
+
 /// Get a dashboard by workspace_id and creation_source (uses idx_workspace_id_source index)
 pub async fn get_dashboard_by_source(
     pool: &PgPool,

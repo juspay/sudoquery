@@ -33,7 +33,10 @@ impl axum::response::IntoResponse for TitleGenError {
         let (status, message) = match self {
             TitleGenError::Database(msg) => {
                 tracing::error!("Database error: {}", msg);
-                (StatusCode::INTERNAL_SERVER_ERROR, msg)
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
             }
             TitleGenError::NotFound(msg) => (StatusCode::NOT_FOUND, msg),
             TitleGenError::Forbidden(msg) => (StatusCode::FORBIDDEN, msg),

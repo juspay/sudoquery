@@ -324,8 +324,13 @@ impl axum::response::IntoResponse for WorkspaceError {
                 StatusCode::CONFLICT,
                 "Workspace is being provisioned; try again in a few minutes".to_string(),
             ),
-            WorkspaceError::Database(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
-            WorkspaceError::Deprovision(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
+            WorkspaceError::Database(e) | WorkspaceError::Deprovision(e) => {
+                tracing::error!("Workspace error: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
+            }
             WorkspaceError::Auth(e) => return e.into_response(),
         };
         (status, Json(serde_json::json!({ "error": message }))).into_response()

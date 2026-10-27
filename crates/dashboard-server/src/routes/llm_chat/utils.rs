@@ -69,8 +69,11 @@ pub async fn chat_handler(
         match result {
             Err(e) => {
                 // Send error as a final SSE event, then drop tx to close stream
+                tracing::error!("LLM request failed: {}", e);
                 let _ = tx
-                    .send(Ok(Event::default().event("error").data(e.to_string())))
+                    .send(Ok(Event::default()
+                        .event("error")
+                        .data("LLM request failed")))
                     .await;
             }
             Ok(r) => {

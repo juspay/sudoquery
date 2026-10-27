@@ -19,13 +19,13 @@ pub enum KeycloakError {
 
 impl IntoResponse for KeycloakError {
     fn into_response(self) -> Response {
+        tracing::error!("Keycloak error: {}", self);
         let (status, message) = match &self {
-            KeycloakError::Api { status, message } => {
-                let http_status =
-                    StatusCode::from_u16(*status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
-                (http_status, message.clone())
+            KeycloakError::Api { status: 409, .. } => (StatusCode::CONFLICT, "User already exists"),
+            KeycloakError::Api { status: 400, .. } => {
+                (StatusCode::BAD_REQUEST, "Invalid user details")
             }
-            _ => (StatusCode::INTERNAL_SERVER_ERROR, self.to_string()),
+            _ => (StatusCode::INTERNAL_SERVER_ERROR, "Internal server error"),
         };
         (status, Json(serde_json::json!({ "error": message }))).into_response()
     }

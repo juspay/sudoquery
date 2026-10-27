@@ -94,8 +94,14 @@ pub async fn list_my_organizations(
 // ============ Get Organization by ID ============
 
 pub async fn get_organization(
-    OrgContext { organization, .. }: OrgContext,
+    OrgContext {
+        organization, role, ..
+    }: OrgContext,
 ) -> Result<Json<OrganizationResponse>, OrganizationError> {
+    if role.is_none() {
+        return Err(AuthError::Forbidden.into());
+    }
+
     Ok(Json(OrganizationResponse {
         id: organization.id.to_string(),
         name: organization.name,
@@ -218,8 +224,14 @@ pub struct OrgMemberListResponse {
 
 pub async fn list_organization_members(
     State(state): State<AppState>,
-    OrgContext { organization, .. }: OrgContext,
+    OrgContext {
+        organization, role, ..
+    }: OrgContext,
 ) -> Result<Json<Vec<OrgMemberListResponse>>, OrganizationError> {
+    if role.is_none() {
+        return Err(AuthError::Forbidden.into());
+    }
+
     let members = db::list_organization_members(&state.db_pool, &organization.id)
         .await
         .map_err(|e| OrganizationError::Database(e.to_string()))?;
@@ -302,7 +314,13 @@ impl axum::response::IntoResponse for OrganizationError {
                 StatusCode::BAD_REQUEST,
                 "Cannot remove yourself".to_string(),
             ),
-            OrganizationError::Database(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
+            OrganizationError::Database(e) => {
+                tracing::error!("Database error: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
+            }
             OrganizationError::Auth(e) => return e.into_response(),
         };
         (status, Json(serde_json::json!({ "error": message }))).into_response()

@@ -37,43 +37,6 @@ impl KeycloakAdmin {
         Ok(user_id)
     }
 
-    pub async fn set_password(
-        &self,
-        user_id: &str,
-        password: &str,
-        temporary: bool,
-    ) -> Result<(), KeycloakError> {
-        let body = serde_json::json!({
-            "type": "password",
-            "value": password,
-            "temporary": temporary,
-        });
-        let res = self
-            .put(
-                &format!(
-                    "/admin/realms/{}/users/{}/reset-password",
-                    self.realm, user_id
-                ),
-                &body,
-            )
-            .await?;
-        KeycloakAdmin::check(res).await?;
-
-        // Clear any required actions after setting password
-        let body = serde_json::json!({
-            "requiredActions": []
-        });
-        let res = self
-            .put(
-                &format!("/admin/realms/{}/users/{}", self.realm, user_id),
-                &body,
-            )
-            .await?;
-        KeycloakAdmin::check(res).await?;
-
-        Ok(())
-    }
-
     pub async fn get_user(&self, user_id: &str) -> Result<UserInfo, KeycloakError> {
         let res = self
             .get(&format!("/admin/realms/{}/users/{}", self.realm, user_id))

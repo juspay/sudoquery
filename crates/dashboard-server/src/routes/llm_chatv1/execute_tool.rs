@@ -64,7 +64,7 @@ pub async fn execute_tool(
                     }
                     Some(result)
                 }
-                Err(e) => Some(json!({"error": e.to_string()})),
+                Err(e) => Some(json!({"error": e.public_message()})),
             }
         }
 
@@ -90,7 +90,10 @@ pub async fn execute_tool(
                     .await
                     {
                         Ok(result) => Some(result),
-                        Err(e) => Some(json!({"error": e.to_string()})),
+                        Err(e) => {
+                            tracing::error!("Failed to fetch event descriptions: {}", e);
+                            Some(json!({"error": "Failed to fetch event descriptions"}))
+                        }
                     }
                 }
                 None => {
@@ -104,7 +107,10 @@ pub async fn execute_tool(
                     .await
                     {
                         Ok(result) => Some(result),
-                        Err(e) => Some(json!({"error": e.to_string()})),
+                        Err(e) => {
+                            tracing::error!("Failed to fetch event descriptions: {}", e);
+                            Some(json!({"error": "Failed to fetch event descriptions"}))
+                        }
                     }
                 }
             }
@@ -142,25 +148,29 @@ pub async fn execute_tool(
                 return Some(json!({"error": "No dashboard_id provided"}));
             }
             match Uuid::parse_str(dashboard_id) {
-                Ok(id) => match live_dashboard::get_dashboard(&state.db_pool, id).await {
-                    Ok(Some(dashboard)) => Some(json!({
-                        "id": dashboard.id.to_string(),
-                        "title": dashboard.title,
-                        "description": dashboard.description,
-                        "query": dashboard.query,
-                        "chart_config": dashboard.chart_config,
-                        "last_ran_at": dashboard.last_ran_at,
-                        "response": dashboard.response,
-                        "creation_source": dashboard.creation_source,
-                        "created_at": dashboard.created_at,
-                        "updated_at": dashboard.updated_at,
-                    })),
-                    Ok(None) => Some(json!({"error": "Dashboard not found"})),
-                    Err(e) => {
-                        tracing::error!("Failed to get dashboard: {}", e);
-                        Some(json!({"error": "Failed to fetch dashboard"}))
+                Ok(id) => {
+                    match live_dashboard::get_workspace_dashboard(&state.db_pool, workspace_id, id)
+                        .await
+                    {
+                        Ok(Some(dashboard)) => Some(json!({
+                            "id": dashboard.id.to_string(),
+                            "title": dashboard.title,
+                            "description": dashboard.description,
+                            "query": dashboard.query,
+                            "chart_config": dashboard.chart_config,
+                            "last_ran_at": dashboard.last_ran_at,
+                            "response": dashboard.response,
+                            "creation_source": dashboard.creation_source,
+                            "created_at": dashboard.created_at,
+                            "updated_at": dashboard.updated_at,
+                        })),
+                        Ok(None) => Some(json!({"error": "Dashboard not found"})),
+                        Err(e) => {
+                            tracing::error!("Failed to get dashboard: {}", e);
+                            Some(json!({"error": "Failed to fetch dashboard"}))
+                        }
                     }
-                },
+                }
                 Err(_) => Some(json!({"error": "Invalid dashboard_id format"})),
             }
         }

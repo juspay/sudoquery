@@ -200,10 +200,13 @@ impl IntoResponse for AdminError {
                     serde_json::json!({ "error": message, "status": workspace_status }),
                 )
             }
-            AdminError::Database(e) => (
-                StatusCode::INTERNAL_SERVER_ERROR,
-                serde_json::json!({ "error": e }),
-            ),
+            AdminError::Database(e) => {
+                tracing::error!("Database error: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    serde_json::json!({ "error": "Internal server error" }),
+                )
+            }
         };
         (status, Json(body)).into_response()
     }

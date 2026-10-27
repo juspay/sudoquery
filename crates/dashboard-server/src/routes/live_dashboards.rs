@@ -99,8 +99,14 @@ pub async fn create_dashboard(
 
 pub async fn list_dashboards(
     State(state): State<AppState>,
-    WorkspaceContext { workspace, .. }: WorkspaceContext,
+    WorkspaceContext {
+        workspace, role, ..
+    }: WorkspaceContext,
 ) -> Result<Json<ListDashboardsResponse>, DashboardError> {
+    if role.is_none() {
+        return Err(DashboardError::Forbidden);
+    }
+
     let dashboards = db::get_dashboards(&state.db_pool, &workspace.id)
         .await
         .map_err(|e| DashboardError::Database(e.to_string()))?;
@@ -117,9 +123,15 @@ pub async fn list_dashboards(
 
 pub async fn get_dashboard(
     State(state): State<AppState>,
-    WorkspaceContext { workspace, .. }: WorkspaceContext,
+    WorkspaceContext {
+        workspace, role, ..
+    }: WorkspaceContext,
     Query(query): Query<GetDashboardQuery>,
 ) -> Result<Json<DashboardResponse>, DashboardError> {
+    if role.is_none() {
+        return Err(DashboardError::Forbidden);
+    }
+
     let dashboard_id =
         Uuid::parse_str(&query.dashboard_id).map_err(|_| DashboardError::InvalidDashboardId)?;
 
@@ -167,7 +179,7 @@ pub async fn get_dashboard(
                     dashboard_id,
                     e
                 );
-                error = Some(e.to_string());
+                error = Some(e.public_message());
             }
         }
     }
@@ -262,7 +274,7 @@ pub async fn test_run_dashboard(
         Ok(data) => (Some(data), None),
         Err(e) => {
             tracing::error!("ClickHouse query error: {}", e);
-            (None, Some(e.to_string()))
+            (None, Some(e.public_message()))
         }
     };
 
@@ -306,6 +318,7 @@ pub enum DashboardError {
     Database(String),
     NotFound,
     InvalidDashboardId,
+    Forbidden,
 }
 
 impl axum::response::IntoResponse for DashboardError {
@@ -322,6 +335,10 @@ impl axum::response::IntoResponse for DashboardError {
             DashboardError::InvalidDashboardId => {
                 (StatusCode::BAD_REQUEST, "Invalid dashboard ID".to_string())
             }
+            DashboardError::Forbidden => (
+                StatusCode::FORBIDDEN,
+                "Insufficient permissions".to_string(),
+            ),
         };
 
         (status, Json(serde_json::json!({ "error": message }))).into_response()

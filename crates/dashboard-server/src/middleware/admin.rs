@@ -43,7 +43,7 @@ impl FromRequestParts<AppState> for Admin {
 
 #[derive(Debug, thiserror::Error)]
 pub enum AdminAuthError {
-    #[error("The admin API is disabled: ADMIN_API_TOKEN is not set")]
+    #[error("The admin API is disabled")]
     Disabled,
     #[error("Missing X-Admin-Token header")]
     MissingToken,

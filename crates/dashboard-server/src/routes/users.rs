@@ -7,7 +7,7 @@ use uuid::Uuid;
 use crate::{
     AppState, db,
     keycloak::KeycloakError,
-    middleware::{AuthError, AuthUser, OrgAdmin, OrgContext},
+    middleware::{AuthError, AuthUser, OrgAdmin, OrgContext, WorkspaceAccess},
 };
 
 // ============ Create User (Organization Admin) ============
@@ -37,13 +37,6 @@ pub async fn create_user(
     let keycloak_user_id = state
         .keycloak
         .create_user(&req.username, &req.email)
-        .await
-        .map_err(ApiError::Keycloak)?;
-
-    // Set temporary password
-    state
-        .keycloak
-        .set_password(&keycloak_user_id, &state.temp_password, false)
         .await
         .map_err(ApiError::Keycloak)?;
 
@@ -81,7 +74,7 @@ pub async fn delete_user(
     }
 
     // Get user from database
-    let user = db::get_user_by_id(&state.db_pool, user_uuid)
+    db::get_user_by_id(&state.db_pool, user_uuid)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?
         .ok_or(ApiError::UserNotFound)?;
@@ -95,14 +88,7 @@ pub async fn delete_user(
         return Err(ApiError::UserNotFound);
     }
 
-    // Delete user from Keycloak
-    state
-        .keycloak
-        .delete_user(&user.keycloak_user_id)
-        .await
-        .map_err(ApiError::Keycloak)?;
-
-    // Soft delete user from database
+    // Soft delete user from database (Keycloak account is intentionally left untouched)
     db::soft_delete_user(&state.db_pool, user_uuid)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?;
@@ -149,7 +135,7 @@ pub async fn add_workspace_member(
     State(state): State<AppState>,
     OrgContext {
         auth_user,
-        organization: _,
+        organization,
         role: org_role,
     }: OrgContext,
     headers: axum::http::HeaderMap,
@@ -177,10 +163,14 @@ pub async fn add_workspace_member(
     };
 
     // Verify workspace exists and belongs to the organization context
-    let _workspace = db::get_workspace_by_id(&state.db_pool, &workspace_id)
+    let workspace = db::get_workspace_by_id(&state.db_pool, &workspace_id)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?
         .ok_or(ApiError::WorkspaceNotFound)?;
+
+    if workspace.organization_id.as_ref() != Some(&organization.id) {
+        return Err(ApiError::WorkspaceNotFound);
+    }
 
     // Check if the requesting user is workspace admin or org admin
     match org_role {
@@ -224,7 +214,7 @@ pub async fn remove_workspace_member(
     State(state): State<AppState>,
     OrgContext {
         auth_user,
-        organization: _,
+        organization,
         role: org_role,
     }: OrgContext,
     headers: axum::http::HeaderMap,
@@ -245,11 +235,15 @@ pub async fn remove_workspace_member(
         return Err(ApiError::CannotRemoveSelf);
     }
 
-    // Verify workspace exists
-    let _workspace = db::get_workspace_by_id(&state.db_pool, &workspace_id)
+    // Verify workspace exists and belongs to the organization context
+    let workspace = db::get_workspace_by_id(&state.db_pool, &workspace_id)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?
         .ok_or(ApiError::WorkspaceNotFound)?;
+
+    if workspace.organization_id.as_ref() != Some(&organization.id) {
+        return Err(ApiError::WorkspaceNotFound);
+    }
 
     // Check if user is workspace admin or org admin
     match org_role {
@@ -278,17 +272,9 @@ pub struct WorkspaceMemberListResponse {
 
 pub async fn list_workspace_members(
     State(state): State<AppState>,
-    headers: axum::http::HeaderMap,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
 ) -> Result<Json<Vec<WorkspaceMemberListResponse>>, ApiError> {
-    let workspace_id_str = headers
-        .get("X-Workspace-Id")
-        .and_then(|v| v.to_str().ok())
-        .ok_or(ApiError::InvalidWorkspaceId)?;
-
-    let workspace_id =
-        WorkspaceId::from_str(workspace_id_str).map_err(|_| ApiError::InvalidWorkspaceId)?;
-
-    let members = db::list_workspace_members(&state.db_pool, &workspace_id)
+    let members = db::list_workspace_members(&state.db_pool, &workspace.id)
         .await
         .map_err(|e| ApiError::Database(e.to_string()))?;
 
@@ -352,7 +338,13 @@ impl axum::response::IntoResponse for ApiError {
                 StatusCode::BAD_REQUEST,
                 "Cannot remove yourself".to_string(),
             ),
-            ApiError::Database(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
+            ApiError::Database(e) => {
+                tracing::error!("Database error: {}", e);
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    "Internal server error".to_string(),
+                )
+            }
         };
         (status, Json(serde_json::json!({ "error": message }))).into_response()
     }
