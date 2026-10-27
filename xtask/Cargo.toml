@@ -13,9 +13,9 @@ base64 = "0.22"
 canonical-event = { path = "../crates/canonical-event" }
 chrono = { workspace = true }
 hex = "0.4"
-jsonwebtoken = "9"
+jsonwebtoken = "10"
 rdkafka = { workspace = true }
-rand = "0.8"
+rand = "0.10"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rsa = "0.9"
 serde = { workspace = true }
