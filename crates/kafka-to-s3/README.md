@@ -1,7 +1,7 @@
 # kafka-to-s3
 
 Archives canonical events from Kafka to S3 as zstd-compressed JSONL, segregated
-per org + project and partitioned by arrival date/hour. The downstream
+per org + workspace and partitioned by arrival date/hour. The downstream
 counterpart of the HTTP `event-collector` service: it consumes what the collector
 publishes and lands it in object storage.
 
@@ -13,7 +13,7 @@ message naming the variable.
 | Variable | Required | Default | Purpose |
 |---|---|---|---|
 | `KAFKA_BOOTSTRAP_SERVERS` | yes | — | librdkafka `bootstrap.servers` |
-| `KAFKA_TOPICS` | yes | — | Comma-separated, trimmed, non-empty; the service subscribes to all of them. An entry starting with `^` is a regex, e.g. `^events\..*` for every project topic |
+| `KAFKA_TOPICS` | yes | — | Comma-separated, trimmed, non-empty; the service subscribes to all of them. An entry starting with `^` is a regex, e.g. `^events\..*` for every workspace topic |
 | `KAFKA_GROUP_ID` | yes | — | Consumer group |
 | `KAFKA_METADATA_REFRESH_SECS` | no | `30` | How often topic metadata is refreshed, i.e. how soon a new topic matching a `^` pattern is consumed; must be > 0 |
 | `S3_BUCKET` | yes | — | Target bucket |
@@ -30,21 +30,21 @@ log verbosity (defaults to `info`).
 ## S3 key layout
 
 ```
-{S3_PREFIX?}/{org_id}/{project_id}/dt=YYYY-MM-DD/hour=HH/{hash}.jsonl.zst
+{S3_PREFIX?}/{org_id}/{workspace_id}/dt=YYYY-MM-DD/hour=HH/{hash}.jsonl.zst
 {S3_PREFIX?}/_quarantine/{hash}.jsonl.zst
 ```
 
 - `dt`/`hour` come from the event's `arrived_at` (UTC); if `arrived_at` is
   absent or unparseable the service falls back to `occured_at` and logs a
   warning. The hour is zero-padded (`hour=03`).
-- `project_id` absent routes the event to the literal `default` directory
+- `workspace_id` absent routes the event to the literal `default` directory
   (with a warning).
 - `hash` is the first 16 lowercase hex chars of the sha256 of the uncompressed
   JSONL body. Identical content produces an identical key; different content
   produces a different key.
 - File content is the raw Kafka payload bytes, one event per line, in
   consumption order — events are never re-serialized.
-- One file per `(org, project_id, dt, hour)` per flush cycle, merged across
+- One file per `(org, workspace_id, dt, hour)` per flush cycle, merged across
   all topics and partitions. Per-partition consumption order is preserved
   within a file; cross-partition ordering is not guaranteed — downstream
   consumers sort by `arrived_at` as needed.

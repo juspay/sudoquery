@@ -25,7 +25,7 @@ mod routes;
 mod state;
 
 use keycloak::KeycloakAdmin;
-use middleware::auth::ProjectAccess;
+use middleware::auth::WorkspaceAccess;
 use models::ChatCompletionRequest;
 use opensearch::OpenSearch;
 use sea_orm::Database;
@@ -86,17 +86,17 @@ async fn health_check(State(s): State<AppState>) -> impl IntoResponse {
 
 async fn get_events_today_count(
     State(s): State<AppState>,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
 ) -> impl IntoResponse {
-    let timezone = project.timezone.as_deref().unwrap_or("Asia/Kolkata");
+    let timezone = workspace.timezone.as_deref().unwrap_or("Asia/Kolkata");
     let query = format!(
         "SELECT count() as count FROM events_v2 WHERE toDate(event_timestamp, '{}') = toDate(now('{}'))",
         timezone, timezone
     );
-    match clickhouse::execute_project_query(
+    match clickhouse::execute_workspace_query(
         &s.clickhouse_url,
-        &project.id,
-        &s.clickhouse_project_password,
+        &workspace.id,
+        &s.clickhouse_workspace_password,
         &query,
     )
     .await
@@ -115,13 +115,13 @@ async fn get_events_today_count(
 
 async fn get_events(
     State(s): State<AppState>,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
 ) -> impl IntoResponse {
     let query = "SELECT event_name FROM events_v2 GROUP BY event_name";
-    match clickhouse::execute_project_query(
+    match clickhouse::execute_workspace_query(
         &s.clickhouse_url,
-        &project.id,
-        &s.clickhouse_project_password,
+        &workspace.id,
+        &s.clickhouse_workspace_password,
         query,
     )
     .await
@@ -143,7 +143,7 @@ async fn get_events(
 
 async fn get_event_props(
     State(s): State<AppState>,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
     axum::extract::Query(params): axum::extract::Query<std::collections::HashMap<String, String>>,
 ) -> impl IntoResponse {
     let event_name = match params.get("event_name") {
@@ -163,10 +163,10 @@ async fn get_event_props(
         event_name
     );
 
-    match clickhouse::execute_project_query(
+    match clickhouse::execute_workspace_query(
         &s.clickhouse_url,
-        &project.id,
-        &s.clickhouse_project_password,
+        &workspace.id,
+        &s.clickhouse_workspace_password,
         &query,
     )
     .await
@@ -194,7 +194,7 @@ struct RawQueryRequest {
 
 async fn run_raw_query(
     State(s): State<AppState>,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
     Json(req): Json<RawQueryRequest>,
 ) -> impl IntoResponse {
     let trimmed_query = req.query.trim();
@@ -203,10 +203,10 @@ async fn run_raw_query(
         return Json(json!({"error": "Empty query"}));
     }
 
-    match clickhouse::execute_project_query(
+    match clickhouse::execute_workspace_query(
         &s.clickhouse_url,
-        &project.id,
-        &s.clickhouse_project_password,
+        &workspace.id,
+        &s.clickhouse_workspace_password,
         trimmed_query,
     )
     .await
@@ -232,8 +232,8 @@ fn get_clickhouse_admin_password() -> String {
     std::env::var("CLICKHOUSE_ADMIN_PASSWORD").unwrap_or_default()
 }
 
-fn get_clickhouse_project_password() -> String {
-    std::env::var("CLICKHOUSE_PROJECT_PASSWORD").unwrap_or_default()
+fn get_clickhouse_workspace_password() -> String {
+    std::env::var("CLICKHOUSE_WORKSPACE_PASSWORD").unwrap_or_default()
 }
 
 fn get_bind_addr() -> String {
@@ -257,10 +257,11 @@ fn get_opensearch_url() -> String {
     std::env::var("OPENSEARCH_URL").unwrap_or_else(|_| "http://localhost:9200".to_string())
 }
 
-// Must name the data stream sink-opensearch writes to; `{org_id}` and `{project_id}` are
+// Must name the data stream sink-opensearch writes to; `{org_id}` and `{workspace_id}` are
 // filled in per request.
 fn get_opensearch_index() -> String {
-    std::env::var("OPENSEARCH_INDEX").unwrap_or_else(|_| "events-{org_id}-{project_id}".to_string())
+    std::env::var("OPENSEARCH_INDEX")
+        .unwrap_or_else(|_| "events-{org_id}-{workspace_id}".to_string())
 }
 
 fn get_admin_api_token() -> Option<String> {
@@ -349,9 +350,9 @@ async fn main() {
     let clickhouse_admin_url = get_clickhouse_admin_url();
     let clickhouse_admin_user = get_clickhouse_admin_user();
     let clickhouse_admin_password = get_clickhouse_admin_password();
-    let clickhouse_project_password = get_clickhouse_project_password();
+    let clickhouse_workspace_password = get_clickhouse_workspace_password();
     let provisioning = provisioning::ProvisioningConfig::from_env(get_kafka_broker_url())
-        .unwrap_or_else(|e| panic!("invalid project provisioning configuration: {e}"));
+        .unwrap_or_else(|e| panic!("invalid workspace provisioning configuration: {e}"));
 
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
@@ -412,7 +413,7 @@ async fn main() {
         clickhouse_admin_url,
         clickhouse_admin_user,
         clickhouse_admin_password,
-        clickhouse_project_password,
+        clickhouse_workspace_password,
         opensearch,
         provisioning,
         admin_api_token,
@@ -475,31 +476,43 @@ async fn main() {
             "/my/organizations",
             get(routes::organizations::list_my_organizations),
         )
-        .route("/my/projects", get(routes::projects::list_my_projects))
-        // Project routes
-        .route("/projects", post(routes::projects::create_project))
-        .route("/projects", get(routes::projects::list_projects))
-        .route("/project", get(routes::projects::get_project))
-        .route("/project", patch(routes::projects::update_project))
-        .route("/project", delete(routes::projects::delete_project))
-        .route("/project/tokens", get(routes::projects::get_project_tokens))
-        .route("/timezones", get(routes::projects::get_timezones))
+        .route(
+            "/my/workspaces",
+            get(routes::workspaces::list_my_workspaces),
+        )
+        // Workspace routes
+        .route("/workspaces", post(routes::workspaces::create_workspace))
+        .route("/workspaces", get(routes::workspaces::list_workspaces))
+        .route("/workspace", get(routes::workspaces::get_workspace))
+        .route("/workspace", patch(routes::workspaces::update_workspace))
+        .route("/workspace", delete(routes::workspaces::delete_workspace))
+        .route(
+            "/workspace/tokens",
+            get(routes::workspaces::get_workspace_tokens),
+        )
+        .route("/timezones", get(routes::workspaces::get_timezones))
         // Admin routes (X-Admin-Token)
         .route(
-            "/admin/projects/{project_id}",
-            get(routes::admin::get_project_provisioning),
+            "/admin/workspaces/{workspace_id}",
+            get(routes::admin::get_workspace_provisioning),
         )
         .route(
-            "/admin/projects/{project_id}/provision",
-            post(routes::admin::provision_project),
+            "/admin/workspaces/{workspace_id}/provision",
+            post(routes::admin::provision_workspace),
         )
-        // Project member routes
-        .route("/project/members", post(routes::users::add_project_member))
+        // Workspace member routes
         .route(
-            "/project/members/{user_id}",
-            delete(routes::users::remove_project_member),
+            "/workspace/members",
+            post(routes::users::add_workspace_member),
         )
-        .route("/project/members", get(routes::users::list_project_members))
+        .route(
+            "/workspace/members/{user_id}",
+            delete(routes::users::remove_workspace_member),
+        )
+        .route(
+            "/workspace/members",
+            get(routes::users::list_workspace_members),
+        )
         // Invitation routes
         .route(
             "/invitations/my",
@@ -526,16 +539,16 @@ async fn main() {
             get(routes::invitations::list_organization_invitations),
         )
         .route(
-            "/project/invitations",
-            post(routes::invitations::create_project_invitation),
+            "/workspace/invitations",
+            post(routes::invitations::create_workspace_invitation),
         )
         .route(
-            "/project/invitations",
-            get(routes::invitations::list_project_invitations),
+            "/workspace/invitations",
+            get(routes::invitations::list_workspace_invitations),
         )
         // Event description routes
         .route(
-            "/project/event-description",
+            "/workspace/event-description",
             post(routes::event_descriptions::upsert_event_description),
         )
         .route(
@@ -548,7 +561,7 @@ async fn main() {
         )
         // Property description routes
         .route(
-            "/project/property-description",
+            "/workspace/property-description",
             post(routes::property_descriptions::upsert_property_description),
         )
         .route(
@@ -560,42 +573,42 @@ async fn main() {
             get(routes::property_descriptions::get_property_description),
         )
         // Chat routes
-        .route("/project/chats", get(routes::chats::list_chats))
+        .route("/workspace/chats", get(routes::chats::list_chats))
         .route(
-            "/project/chat/{chat_id}",
+            "/workspace/chat/{chat_id}",
             delete(routes::chats::delete_chat),
         )
         .route(
-            "/project/chat/llm_chatv1",
+            "/workspace/chat/llm_chatv1",
             post(routes::llm_chatv1::utils::chat_handler_v1),
         )
         .route(
-            "/project/chat/gen_titlev1",
+            "/workspace/chat/gen_titlev1",
             post(routes::llm_chatv1::title_gen::generate_title_handler),
         )
         .route(
-            "/project/chat/{chat_id}/messages",
+            "/workspace/chat/{chat_id}/messages",
             get(routes::llm_chatv1::utils::get_chat_messages),
         )
         .route(
-            "/project/chat/client_tool_response_v1",
+            "/workspace/chat/client_tool_response_v1",
             post(routes::llm_chatv1::utils::client_tool_call_response_v1),
         )
         .route(
-            "/project/chat/get_metric_data_v1",
+            "/workspace/chat/get_metric_data_v1",
             post(routes::llm_chatv1::metric_data::get_metric_data_handler),
         )
         .route(
-            "/project/chat/{chat_id}/save-dashboard",
+            "/workspace/chat/{chat_id}/save-dashboard",
             post(routes::save_live_dashboard::save_live_dashboard_from_tool_call),
         )
         // Live dashboard routes
         .route(
-            "/project/live-dashboards",
+            "/workspace/live-dashboards",
             post(routes::live_dashboards::create_dashboard),
         )
         .route(
-            "/project/live-dashboards",
+            "/workspace/live-dashboards",
             get(routes::live_dashboards::list_dashboards),
         )
         .route(
@@ -615,24 +628,24 @@ async fn main() {
             post(routes::live_dashboards::test_run_dashboard),
         )
         .route(
-            "/project/consoles",
-            post(routes::user_project_consoles::create_console),
+            "/workspace/consoles",
+            post(routes::user_workspace_consoles::create_console),
         )
         .route(
-            "/project/consoles",
-            get(routes::user_project_consoles::list_consoles),
+            "/workspace/consoles",
+            get(routes::user_workspace_consoles::list_consoles),
         )
         .route(
-            "/project/console",
-            get(routes::user_project_consoles::get_console),
+            "/workspace/console",
+            get(routes::user_workspace_consoles::get_console),
         )
         .route(
-            "/project/console",
-            patch(routes::user_project_consoles::update_console),
+            "/workspace/console",
+            patch(routes::user_workspace_consoles::update_console),
         )
         .route(
-            "/project/console",
-            delete(routes::user_project_consoles::delete_console),
+            "/workspace/console",
+            delete(routes::user_workspace_consoles::delete_console),
         )
         // Event search routes (OpenSearch)
         .route("/search", post(routes::search::search))

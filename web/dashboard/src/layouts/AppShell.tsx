@@ -4,19 +4,19 @@ import { TopBar } from '../components/Shell/TopBar';
 import { SideNav } from '../components/Shell/SideNav';
 import { BottomTabBar } from '../components/Shell/BottomTabBar';
 import { BreadcrumbBar } from '../components/Shell/BreadcrumbBar';
-import { ProjectSetupState } from '../components/Shell/ProjectStatus';
+import { WorkspaceSetupState } from '../components/Shell/WorkspaceStatus';
 import { HistoryDrawerProvider } from '../contexts/HistoryDrawerContext';
-import { useProject } from '../contexts/ProjectContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { colorCream } from '../theme/tokens';
 
 export default function AppShell() {
-  const { currentProject } = useProject();
+  const { currentWorkspace } = useWorkspace();
   const { pathname } = useLocation();
-  // Pages query the project, which only works once it is ACTIVE. Settings
-  // stay reachable, so a project that is not ready can still be managed.
+  // Pages query the workspace, which only works once it is ACTIVE. Settings
+  // stay reachable, so a workspace that is not ready can still be managed.
   const notReadyStatus =
-    currentProject && currentProject.status !== 'ACTIVE' && !pathname.startsWith('/app/settings')
-      ? currentProject.status
+    currentWorkspace && currentWorkspace.status !== 'ACTIVE' && !pathname.startsWith('/app/settings')
+      ? currentWorkspace.status
       : null;
 
   return (
@@ -45,7 +45,7 @@ export default function AppShell() {
 
           {/* Nested Routes Render Here */}
           <Box sx={{ flex: 1, position: 'relative', overflow: 'auto', '&::-webkit-scrollbar': { display: 'none' }, msOverflowStyle: 'none', scrollbarWidth: 'none' }}>
-            {notReadyStatus ? <ProjectSetupState status={notReadyStatus} /> : <Outlet />}
+            {notReadyStatus ? <WorkspaceSetupState status={notReadyStatus} /> : <Outlet />}
           </Box>
         </Box>
       </Box>

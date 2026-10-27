@@ -72,7 +72,7 @@ fn usage() -> ! {
         "Usage: cargo xtask e2e <SUITE> [filter]
 
 Suites:
-  dashboard   Org and project creation against dashboard-server
+  dashboard   Org and workspace creation against dashboard-server
               (needs the compose postgres, redpanda, clickhouse and
               opensearch: `cargo xtask setup postgres redpanda clickhouse
               opensearch opensearch-init`)

@@ -22,7 +22,7 @@ use tokio::net::TcpListener;
 use tower_http::cors::CorsLayer;
 
 const ORG_ID_HEADER: &str = "x-org-id";
-const PROJECT_ID_HEADER: &str = "x-project-id";
+const WORKSPACE_ID_HEADER: &str = "x-workspace-id";
 const FORWARDED_FOR_HEADER: &str = "x-forwarded-for";
 const REAL_IP_HEADER: &str = "x-real-ip";
 const ROUTE_PREFIX: &str = "/v1";
@@ -89,7 +89,7 @@ async fn push_batch(
 ) -> Result<Json<CollectionStatus>, ApiError> {
     let context = RequestContext::from_headers(&headers, Some(peer_addr))?;
     let config =
-        get_config_from_local_file(context.org_id.clone(), context.project_id.clone()).await?;
+        get_config_from_local_file(context.org_id.clone(), context.workspace_id.clone()).await?;
     let body = request_body_as_str(&body)?;
     let status = collect_events_batch(
         body,
@@ -109,7 +109,7 @@ async fn push_events(
 ) -> Result<Json<CollectionStatus>, ApiError> {
     let context = RequestContext::from_headers(&headers, Some(peer_addr))?;
     let config =
-        get_config_from_local_file(context.org_id.clone(), context.project_id.clone()).await?;
+        get_config_from_local_file(context.org_id.clone(), context.workspace_id.clone()).await?;
     let body = request_body_as_str(&body)?;
     let status = collect_events(
         body,
@@ -130,7 +130,7 @@ async fn push_events_authenticated(
     auth::validate_bearer_token(&headers).await?;
     let context = RequestContext::from_headers(&headers, Some(peer_addr))?;
     let config =
-        get_config_from_local_file(context.org_id.clone(), context.project_id.clone()).await?;
+        get_config_from_local_file(context.org_id.clone(), context.workspace_id.clone()).await?;
     let body = request_body_as_str(&body)?;
     let status = collect_events_authenticated(
         body,
@@ -149,7 +149,7 @@ fn request_body_as_str(body: &Bytes) -> Result<&str, ApiError> {
 
 struct RequestContext {
     org_id: String,
-    project_id: String,
+    workspace_id: String,
     ip_address: Option<String>,
 }
 
@@ -157,19 +157,19 @@ impl RequestContext {
     fn scope(&self) -> Scope<'_> {
         Scope {
             org_id: &self.org_id,
-            project_id: &self.project_id,
+            workspace_id: &self.workspace_id,
         }
     }
 
     fn from_headers(headers: &HeaderMap, peer_addr: Option<SocketAddr>) -> Result<Self, ApiError> {
         let org_id = required_slug_header(headers, ORG_ID_HEADER)?;
-        let project_id = required_slug_header(headers, PROJECT_ID_HEADER)?;
+        let workspace_id = required_slug_header(headers, WORKSPACE_ID_HEADER)?;
         let ip_address =
             forwarded_ip(headers)?.or_else(|| peer_addr.map(|addr| addr.ip().to_string()));
 
         Ok(Self {
             org_id,
-            project_id,
+            workspace_id,
             ip_address,
         })
     }
@@ -194,7 +194,7 @@ fn optional_header(headers: &HeaderMap, name: &'static str) -> Result<Option<Str
 }
 
 /// Reads a required header whose value must be a valid slug
-/// ([`is_valid_slug`]). The org/project ids select the CAC config for the
+/// ([`is_valid_slug`]). The org/workspace ids select the CAC config for the
 /// request, so malformed values are rejected here, before any processing.
 fn required_slug_header(headers: &HeaderMap, name: &'static str) -> Result<String, ApiError> {
     let value = required_header(headers, name)?;
@@ -304,7 +304,7 @@ mod tests {
     fn request_context_reads_headers() {
         let mut headers = HeaderMap::new();
         headers.insert(ORG_ID_HEADER, "acme-k3x9qa".parse().unwrap());
-        headers.insert(PROJECT_ID_HEADER, "blue-ocean-7".parse().unwrap());
+        headers.insert(WORKSPACE_ID_HEADER, "blue-ocean-7".parse().unwrap());
         headers.insert(
             FORWARDED_FOR_HEADER,
             "203.0.113.1, 203.0.113.2".parse().unwrap(),
@@ -314,7 +314,7 @@ mod tests {
         let context = RequestContext::from_headers(&headers, Some(peer_addr)).unwrap();
 
         assert_eq!(context.org_id, "acme-k3x9qa");
-        assert_eq!(context.project_id, "blue-ocean-7");
+        assert_eq!(context.workspace_id, "blue-ocean-7");
         assert_eq!(context.ip_address.as_deref(), Some("203.0.113.1"));
     }
 
@@ -322,7 +322,7 @@ mod tests {
     fn request_context_falls_back_to_peer_ip() {
         let mut headers = HeaderMap::new();
         headers.insert(ORG_ID_HEADER, "acme-k3x9qa".parse().unwrap());
-        headers.insert(PROJECT_ID_HEADER, "blue-ocean-7".parse().unwrap());
+        headers.insert(WORKSPACE_ID_HEADER, "blue-ocean-7".parse().unwrap());
         let peer_addr = "127.0.0.1:51000".parse().unwrap();
 
         let context = RequestContext::from_headers(&headers, Some(peer_addr)).unwrap();
@@ -333,7 +333,7 @@ mod tests {
     #[test]
     fn request_context_requires_org_id() {
         let mut headers = HeaderMap::new();
-        headers.insert(PROJECT_ID_HEADER, "blue-ocean-7".parse().unwrap());
+        headers.insert(WORKSPACE_ID_HEADER, "blue-ocean-7".parse().unwrap());
 
         assert!(matches!(
             RequestContext::from_headers(&headers, None),
@@ -342,7 +342,7 @@ mod tests {
     }
 
     #[test]
-    fn request_context_requires_project_id() {
+    fn request_context_requires_workspace_id() {
         let mut headers = HeaderMap::new();
         headers.insert(ORG_ID_HEADER, "acme-k3x9qa".parse().unwrap());
 
@@ -362,8 +362,8 @@ mod tests {
             "acme_k3x9qa",
         ] {
             for (header, other) in [
-                (ORG_ID_HEADER, PROJECT_ID_HEADER),
-                (PROJECT_ID_HEADER, ORG_ID_HEADER),
+                (ORG_ID_HEADER, WORKSPACE_ID_HEADER),
+                (WORKSPACE_ID_HEADER, ORG_ID_HEADER),
             ] {
                 let mut headers = HeaderMap::new();
                 headers.insert(header, invalid.parse().unwrap());
@@ -383,7 +383,7 @@ mod tests {
     #[test]
     fn scope_mismatch_is_a_bad_request() {
         let response = ApiError::from(AppError::ScopeMismatch(
-            "event 0 is for another project".into(),
+            "event 0 is for another workspace".into(),
         ))
         .into_response();
 

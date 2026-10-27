@@ -10,7 +10,7 @@ use uuid::Uuid;
 
 use crate::{
     AppState, clickhouse, db,
-    middleware::{ProjectAdmin, ProjectContext},
+    middleware::{WorkspaceAdmin, WorkspaceContext},
 };
 
 // ============ Request/Response Types ============
@@ -56,7 +56,7 @@ pub struct TestRunDashboardRequest {
 #[derive(Serialize)]
 pub struct DashboardResponse {
     pub id: String,
-    pub project_id: String,
+    pub workspace_id: String,
     pub query: String,
     pub description: String,
     pub title: Option<String>,
@@ -77,12 +77,12 @@ pub struct ListDashboardsResponse {
 
 pub async fn create_dashboard(
     State(state): State<AppState>,
-    ProjectAdmin { project, .. }: ProjectAdmin,
+    WorkspaceAdmin { workspace, .. }: WorkspaceAdmin,
     Json(req): Json<CreateDashboardRequest>,
 ) -> Result<(StatusCode, Json<DashboardResponse>), DashboardError> {
     let dashboard = db::create_dashboard(
         &state.db_pool,
-        &project.id,
+        &workspace.id,
         &req.query,
         &req.description,
         None, // title - deprecated, not accepted
@@ -99,9 +99,9 @@ pub async fn create_dashboard(
 
 pub async fn list_dashboards(
     State(state): State<AppState>,
-    ProjectContext { project, .. }: ProjectContext,
+    WorkspaceContext { workspace, .. }: WorkspaceContext,
 ) -> Result<Json<ListDashboardsResponse>, DashboardError> {
-    let dashboards = db::get_dashboards(&state.db_pool, &project.id)
+    let dashboards = db::get_dashboards(&state.db_pool, &workspace.id)
         .await
         .map_err(|e| DashboardError::Database(e.to_string()))?;
 
@@ -117,7 +117,7 @@ pub async fn list_dashboards(
 
 pub async fn get_dashboard(
     State(state): State<AppState>,
-    ProjectContext { project, .. }: ProjectContext,
+    WorkspaceContext { workspace, .. }: WorkspaceContext,
     Query(query): Query<GetDashboardQuery>,
 ) -> Result<Json<DashboardResponse>, DashboardError> {
     let dashboard_id =
@@ -128,8 +128,8 @@ pub async fn get_dashboard(
         .map_err(|e| DashboardError::Database(e.to_string()))?
         .ok_or(DashboardError::NotFound)?;
 
-    // Verify dashboard belongs to the project
-    if dashboard.project_id != project.id {
+    // Verify dashboard belongs to the workspace
+    if dashboard.workspace_id != workspace.id {
         return Err(DashboardError::NotFound);
     }
 
@@ -147,10 +147,10 @@ pub async fn get_dashboard(
 
     if should_run {
         // Execute query against ClickHouse
-        match clickhouse::execute_project_query(
+        match clickhouse::execute_workspace_query(
             &state.clickhouse_url,
-            &project.id,
-            &state.clickhouse_project_password,
+            &workspace.id,
+            &state.clickhouse_workspace_password,
             &dashboard.query,
         )
         .await
@@ -181,19 +181,19 @@ pub async fn get_dashboard(
 
 pub async fn update_dashboard(
     State(state): State<AppState>,
-    ProjectAdmin { project, .. }: ProjectAdmin,
+    WorkspaceAdmin { workspace, .. }: WorkspaceAdmin,
     Json(req): Json<UpdateDashboardRequest>,
 ) -> Result<Json<DashboardResponse>, DashboardError> {
     let dashboard_id =
         Uuid::parse_str(&req.dashboard_id).map_err(|_| DashboardError::InvalidDashboardId)?;
 
-    // Verify dashboard belongs to the project
+    // Verify dashboard belongs to the workspace
     let existing = db::get_dashboard(&state.db_pool, dashboard_id)
         .await
         .map_err(|e| DashboardError::Database(e.to_string()))?
         .ok_or(DashboardError::NotFound)?;
 
-    if existing.project_id != project.id {
+    if existing.workspace_id != workspace.id {
         return Err(DashboardError::NotFound);
     }
 
@@ -217,19 +217,19 @@ pub async fn update_dashboard(
 
 pub async fn delete_dashboard(
     State(state): State<AppState>,
-    ProjectAdmin { project, .. }: ProjectAdmin,
+    WorkspaceAdmin { workspace, .. }: WorkspaceAdmin,
     Query(query): Query<DeleteDashboardQuery>,
 ) -> Result<StatusCode, DashboardError> {
     let dashboard_id =
         Uuid::parse_str(&query.dashboard_id).map_err(|_| DashboardError::InvalidDashboardId)?;
 
-    // Verify dashboard belongs to the project
+    // Verify dashboard belongs to the workspace
     let existing = db::get_dashboard(&state.db_pool, dashboard_id)
         .await
         .map_err(|e| DashboardError::Database(e.to_string()))?
         .ok_or(DashboardError::NotFound)?;
 
-    if existing.project_id != project.id {
+    if existing.workspace_id != workspace.id {
         return Err(DashboardError::NotFound);
     }
 
@@ -244,14 +244,14 @@ pub async fn delete_dashboard(
 
 pub async fn test_run_dashboard(
     State(state): State<AppState>,
-    ProjectAdmin { project, .. }: ProjectAdmin,
+    WorkspaceAdmin { workspace, .. }: WorkspaceAdmin,
     Json(req): Json<TestRunDashboardRequest>,
 ) -> Result<Json<DashboardResponse>, DashboardError> {
     // Execute query against ClickHouse
-    let response = clickhouse::execute_project_query(
+    let response = clickhouse::execute_workspace_query(
         &state.clickhouse_url,
-        &project.id,
-        &state.clickhouse_project_password,
+        &workspace.id,
+        &state.clickhouse_workspace_password,
         &req.query,
     )
     .await;
@@ -268,7 +268,7 @@ pub async fn test_run_dashboard(
 
     Ok(Json(DashboardResponse {
         id: String::new(),
-        project_id: project.id.to_string(),
+        workspace_id: workspace.id.to_string(),
         query: req.query,
         description: req.description.unwrap_or_default(),
         title: None,
@@ -286,7 +286,7 @@ pub async fn test_run_dashboard(
 fn dashboard_to_response(d: db::LiveDashboard) -> DashboardResponse {
     DashboardResponse {
         id: d.id.to_string(),
-        project_id: d.project_id.to_string(),
+        workspace_id: d.workspace_id.to_string(),
         query: d.query,
         description: d.description,
         title: d.title,

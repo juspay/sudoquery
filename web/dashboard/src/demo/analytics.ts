@@ -26,11 +26,11 @@ const listeners = new Set<() => void>();
  * Takes effect once per page load: the SDK keeps its first configuration, so
  * changing the destination means reloading the page.
  */
-export function initDemoAnalytics({ orgId, projectId }: Destination): void {
+export function initDemoAnalytics({ orgId, workspaceId }: Destination): void {
   SudoQuery.init({
     endpoint: DEMO_CONFIG.COLLECTOR_URL,
     orgId,
-    projectId,
+    workspaceId,
     source: 'dashboard-demo',
     // Small batches on a short timer, so events reach the collector while
     // you're still clicking around.

@@ -6,7 +6,7 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{AppState, db, middleware::ProjectAccess};
+use crate::{AppState, db, middleware::WorkspaceAccess};
 
 // ============ Request/Response Types ============
 
@@ -41,7 +41,7 @@ pub struct DeleteConsoleQuery {
 pub struct ConsoleResponse {
     pub id: String,
     pub user_id: String,
-    pub project_id: String,
+    pub workspace_id: String,
     pub name: Option<String>,
     pub console: Option<String>,
     pub created_at: String,
@@ -52,15 +52,17 @@ pub struct ConsoleResponse {
 
 pub async fn create_console(
     State(state): State<AppState>,
-    ProjectAccess {
-        project, auth_user, ..
-    }: ProjectAccess,
+    WorkspaceAccess {
+        workspace,
+        auth_user,
+        ..
+    }: WorkspaceAccess,
     Json(req): Json<CreateConsoleRequest>,
 ) -> Result<(StatusCode, Json<ConsoleResponse>), ConsoleError> {
     let console = db::create_console(
         &state.db_pool,
         auth_user.user.id,
-        &project.id,
+        &workspace.id,
         req.name.as_deref(),
         req.console.as_deref(),
     )
@@ -82,12 +84,14 @@ pub struct ConsoleListItem {
 
 pub async fn list_consoles(
     State(state): State<AppState>,
-    ProjectAccess {
-        project, auth_user, ..
-    }: ProjectAccess,
+    WorkspaceAccess {
+        workspace,
+        auth_user,
+        ..
+    }: WorkspaceAccess,
 ) -> Result<Json<Vec<ConsoleListItem>>, ConsoleError> {
     let consoles =
-        db::list_consoles_by_user_and_project(&state.db_pool, auth_user.user.id, &project.id)
+        db::list_consoles_by_user_and_workspace(&state.db_pool, auth_user.user.id, &workspace.id)
             .await
             .map_err(|e| ConsoleError::Database(e.to_string()))?;
 
@@ -108,7 +112,7 @@ pub async fn list_consoles(
 
 pub async fn get_console(
     State(state): State<AppState>,
-    ProjectAccess { auth_user, .. }: ProjectAccess,
+    WorkspaceAccess { auth_user, .. }: WorkspaceAccess,
     Query(query): Query<GetConsoleQuery>,
 ) -> Result<Json<ConsoleResponse>, ConsoleError> {
     let console_id =
@@ -126,7 +130,7 @@ pub async fn get_console(
 
 pub async fn update_console(
     State(state): State<AppState>,
-    ProjectAccess { auth_user, .. }: ProjectAccess,
+    WorkspaceAccess { auth_user, .. }: WorkspaceAccess,
     Json(req): Json<UpdateConsoleRequest>,
 ) -> Result<Json<ConsoleResponse>, ConsoleError> {
     let console_id =
@@ -154,7 +158,7 @@ pub async fn update_console(
 
 pub async fn delete_console(
     State(state): State<AppState>,
-    ProjectAccess { auth_user, .. }: ProjectAccess,
+    WorkspaceAccess { auth_user, .. }: WorkspaceAccess,
     Query(query): Query<DeleteConsoleQuery>,
 ) -> Result<StatusCode, ConsoleError> {
     let console_id =
@@ -175,11 +179,11 @@ pub async fn delete_console(
 
 // ============ Helper ============
 
-fn console_to_response(c: db::UserProjectConsole) -> ConsoleResponse {
+fn console_to_response(c: db::UserWorkspaceConsole) -> ConsoleResponse {
     ConsoleResponse {
         id: c.id.to_string(),
         user_id: c.user_id.to_string(),
-        project_id: c.project_id.to_string(),
+        workspace_id: c.workspace_id.to_string(),
         name: c.name,
         console: c.console,
         created_at: c.created_at.to_rfc3339(),

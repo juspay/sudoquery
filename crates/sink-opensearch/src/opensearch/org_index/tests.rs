@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use super::*;
 
-/// A CAC file where merchant-1 has a dedicated index and project eu of
+/// A CAC file where merchant-1 has a dedicated index and workspace eu of
 /// merchant-2 has another.
 const CAC: &str = r#"
 [default-configs]
@@ -10,14 +10,14 @@ const CAC: &str = r#"
 
 [dimensions]
 org_id = { position = 1, schema = { type = "string" } }
-project_id = { position = 2, schema = { type = "string" } }
+workspace_id = { position = 2, schema = { type = "string" } }
 
 [[overrides]]
 _context_ = { org_id = "merchant-1" }
 "opensearch.index" = "events-merchant-1-dedicated"
 
 [[overrides]]
-_context_ = { org_id = "merchant-2", project_id = "eu" }
+_context_ = { org_id = "merchant-2", workspace_id = "eu" }
 "opensearch.index" = "events-merchant-2-eu"
 
 [[overrides]]
@@ -34,10 +34,10 @@ async fn indexes() -> (OrgIndexes, PathBuf) {
     (OrgIndexes::new(Cac::load(&path).await.unwrap(), None), path)
 }
 
-async fn index_name(indexes: &OrgIndexes, org_id: &str, project_id: Option<&str>) -> String {
-    let template = indexes.index_for(org_id, project_id).await.unwrap();
+async fn index_name(indexes: &OrgIndexes, org_id: &str, workspace_id: Option<&str>) -> String {
+    let template = indexes.index_for(org_id, workspace_id).await.unwrap();
     template
-        .render(org_id, project_id.unwrap_or_default())
+        .render(org_id, workspace_id.unwrap_or_default())
         .unwrap()
         .into_owned()
 }
@@ -69,7 +69,7 @@ async fn org_overrides_apply() {
 }
 
 #[tokio::test]
-async fn project_overrides_apply() {
+async fn workspace_overrides_apply() {
     let (indexes, path) = indexes().await;
 
     assert_eq!(

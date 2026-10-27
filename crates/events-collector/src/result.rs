@@ -23,7 +23,7 @@ pub enum AppError {
     #[error("Invalid bearer token")]
     InvalidToken,
 
-    /// An event's `org_id` / `project_id` differ from the request headers.
+    /// An event's `org_id` / `workspace_id` differ from the request headers.
     #[error("{0}")]
     ScopeMismatch(String),
 }

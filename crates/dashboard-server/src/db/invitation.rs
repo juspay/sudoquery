@@ -8,7 +8,7 @@ use uuid::Uuid;
 #[sqlx(rename_all = "snake_case")]
 pub enum InvitationType {
     Organization,
-    Project,
+    Workspace,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]

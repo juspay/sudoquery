@@ -3,7 +3,7 @@ import { Alert, Box, Button, Chip, CircularProgress, Tab, Tabs, Typography } fro
 import { Check as CheckIcon, Loader2, Undo2 } from 'lucide-react';
 import { PageHeader } from '../../components/shared/PageHeader';
 import { useOrganization } from '../../contexts/OrganizationContext';
-import { useProject } from '../../contexts/ProjectContext';
+import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { useToast } from '../../contexts/ToastContext';
 import { invitationService, type Invitation } from '../../services/invitationService';
 import { trackEvent } from '../../utils/analytics';
@@ -13,8 +13,8 @@ function formatRole(role: string): string {
   const roleMap: Record<string, string> = {
     org_admin: 'Organization Admin',
     org_user: 'Organization Member',
-    project_admin: 'Project Admin',
-    project_user: 'Project Member',
+    workspace_admin: 'Workspace Admin',
+    workspace_user: 'Workspace Member',
   };
 
   return roleMap[role] || role;
@@ -43,11 +43,11 @@ function getStatusBadgeStyles(status: Invitation['status']) {
 
 function getInvitationScope(invitation: Invitation) {
   const organizationName = invitation.organization_name?.trim();
-  const projectName = invitation.project_name?.trim();
+  const workspaceName = invitation.workspace_name?.trim();
 
-  if (organizationName && projectName) {
+  if (organizationName && workspaceName) {
     return {
-      primary: projectName,
+      primary: workspaceName,
       secondary: organizationName,
     };
   }
@@ -59,15 +59,15 @@ function getInvitationScope(invitation: Invitation) {
     };
   }
 
-  if (projectName) {
+  if (workspaceName) {
     return {
-      primary: projectName,
-      secondary: 'Project invitation',
+      primary: workspaceName,
+      secondary: 'Workspace invitation',
     };
   }
 
   return {
-    primary: invitation.role.startsWith('project_') ? 'Project invitation' : 'Organization invitation',
+    primary: invitation.role.startsWith('workspace_') ? 'Workspace invitation' : 'Organization invitation',
     secondary: undefined,
   };
 }
@@ -192,7 +192,7 @@ function InvitationCard({
 
 export default function InvitationsSettingsPage() {
   const { refreshOrganizations } = useOrganization();
-  const { refreshProjects } = useProject();
+  const { refreshWorkspaces } = useWorkspace();
   const { showSuccess, showError } = useToast();
   const [activeTab, setActiveTab] = useState<'my' | 'sent'>('my');
   const [myInvitations, setMyInvitations] = useState<Invitation[]>([]);
@@ -239,7 +239,7 @@ export default function InvitationsSettingsPage() {
       showSuccess('Invitation accepted successfully.');
       setMyInvitations((prev) => prev.filter((invitation) => invitation.id !== invitationId));
       await refreshOrganizations();
-      await refreshProjects();
+      await refreshWorkspaces();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to accept invitation';
       showError(message);

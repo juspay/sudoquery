@@ -1,5 +1,5 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from 'react';
-import { useProject } from './ProjectContext';
+import { useWorkspace } from './WorkspaceContext';
 import { eventService, type EventDescription, type PropertyDescription, type EventSchemaProperty } from '../services/eventService';
 import { executeQuery } from '../services/clickhouseService';
 
@@ -13,14 +13,14 @@ interface SchemaStatus {
 const SchemaContext = createContext<SchemaStatus | null>(null);
 
 export function SchemaProvider({ children }: { children: ReactNode }) {
-  const { currentProject } = useProject();
+  const { currentWorkspace } = useWorkspace();
   const [eventsNeedingDescription, setEventsNeedingDescription] = useState(0);
   const [propertiesNeedingDescription, setPropertiesNeedingDescription] = useState(0);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
-    // Only an ACTIVE project has a database to query.
-    if (!currentProject?.id || currentProject.status !== 'ACTIVE') {
+    // Only an ACTIVE workspace has a database to query.
+    if (!currentWorkspace?.id || currentWorkspace.status !== 'ACTIVE') {
       setEventsNeedingDescription(0);
       setPropertiesNeedingDescription(0);
       return;
@@ -32,8 +32,8 @@ export function SchemaProvider({ children }: { children: ReactNode }) {
       const [eventNamesResult, schemaCatalogResult, eventDescs, propDescs] = await Promise.all([
         executeQuery('SELECT DISTINCT event_name FROM events_v1'),
         executeQuery('SELECT event_name, property FROM event_schema_catalog'),
-        eventService.getEventDescriptions(currentProject.id),
-        eventService.getPropertyDescriptions(currentProject.id),
+        eventService.getEventDescriptions(currentWorkspace.id),
+        eventService.getPropertyDescriptions(currentWorkspace.id),
       ]);
 
       // Extract event names
@@ -65,7 +65,7 @@ export function SchemaProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [currentProject?.id, currentProject?.status]);
+  }, [currentWorkspace?.id, currentWorkspace?.status]);
 
   useEffect(() => {
     refresh();

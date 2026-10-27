@@ -142,10 +142,10 @@ impl Batch {
 mod tests {
     use super::*;
 
-    fn key(org: &str, project_id: &str, dt: &str, hour: u32) -> GroupKey {
+    fn key(org: &str, workspace_id: &str, dt: &str, hour: u32) -> GroupKey {
         GroupKey {
             org: org.to_string(),
-            project_id: project_id.to_string(),
+            workspace_id: workspace_id.to_string(),
             dt: dt.to_string(),
             hour,
         }

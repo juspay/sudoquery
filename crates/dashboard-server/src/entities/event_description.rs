@@ -1,4 +1,4 @@
-use canonical_event::ProjectId;
+use canonical_event::WorkspaceId;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
-    pub project_id: ProjectId,
+    pub workspace_id: WorkspaceId,
     pub event_name: String,
     pub description: String,
     pub created_at: DateTimeWithTimeZone,
@@ -17,16 +17,16 @@ pub struct Model {
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
     #[sea_orm(
-        belongs_to = "super::project::Entity",
-        from = "Column::ProjectId",
-        to = "super::project::Column::Id"
+        belongs_to = "super::workspace::Entity",
+        from = "Column::WorkspaceId",
+        to = "super::workspace::Column::Id"
     )]
-    Project,
+    Workspace,
 }
 
-impl Related<super::project::Entity> for Entity {
+impl Related<super::workspace::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Project.def()
+        Relation::Workspace.def()
     }
 }
 

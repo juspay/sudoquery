@@ -4,7 +4,7 @@ import { Check as CheckIcon, Copy as CopyIcon } from 'lucide-react';
 import { fontFamilyMono } from '../../theme/tokens';
 
 interface CopyableIdProps {
-  /** Label shown above the value, e.g. "Project ID". */
+  /** Label shown above the value, e.g. "Workspace ID". */
   label: string;
   /** Read-only identifier (server-generated slug). Never editable. */
   value: string;

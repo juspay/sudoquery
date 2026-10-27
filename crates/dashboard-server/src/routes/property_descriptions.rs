@@ -3,12 +3,12 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
-use canonical_event::ProjectId;
+use canonical_event::WorkspaceId;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     AppState, db,
-    middleware::{AuthUser, ProjectAdmin, ProjectContext},
+    middleware::{AuthUser, WorkspaceAdmin, WorkspaceContext},
 };
 
 // ============ Create/Update Property Description ============
@@ -24,7 +24,7 @@ pub struct UpsertPropertyDescriptionRequest {
 #[derive(Serialize)]
 pub struct PropertyDescriptionResponse {
     pub id: String,
-    pub project_id: String,
+    pub workspace_id: String,
     pub event_name: String,
     pub property_name: String,
     pub property_type: String,
@@ -33,15 +33,15 @@ pub struct PropertyDescriptionResponse {
     pub updated_at: String,
 }
 
-/// Create or update property description (requires project admin)
+/// Create or update property description (requires workspace admin)
 pub async fn upsert_property_description(
     State(state): State<AppState>,
-    ProjectAdmin { project, .. }: ProjectAdmin,
+    WorkspaceAdmin { workspace, .. }: WorkspaceAdmin,
     Json(req): Json<UpsertPropertyDescriptionRequest>,
 ) -> Result<(StatusCode, Json<PropertyDescriptionResponse>), PropertyDescriptionError> {
     let desc = db::upsert_property_description(
         &state.db_pool,
-        &project.id,
+        &workspace.id,
         &req.event_name,
         &req.property_name,
         &req.property_type,
@@ -54,7 +54,7 @@ pub async fn upsert_property_description(
         StatusCode::OK,
         Json(PropertyDescriptionResponse {
             id: desc.id.to_string(),
-            project_id: desc.project_id.to_string(),
+            workspace_id: desc.workspace_id.to_string(),
             event_name: desc.event_name,
             property_name: desc.property_name,
             property_type: desc.property_type,
@@ -77,20 +77,20 @@ pub struct ListPropertyDescriptionsResponse {
     pub property_descriptions: Vec<PropertyDescriptionResponse>,
 }
 
-/// List property descriptions for a project
+/// List property descriptions for a workspace
 /// - If event_name is provided, filters by event
-/// - Otherwise returns all property descriptions for the project
+/// - Otherwise returns all property descriptions for the workspace
 pub async fn list_property_descriptions(
     State(state): State<AppState>,
-    ProjectContext { project, .. }: ProjectContext,
+    WorkspaceContext { workspace, .. }: WorkspaceContext,
     Query(query): Query<ListPropertyDescriptionsQuery>,
 ) -> Result<Json<ListPropertyDescriptionsResponse>, PropertyDescriptionError> {
     let descriptions = if let Some(event_name) = query.event_name {
-        db::list_property_descriptions_by_event(&state.db_pool, &project.id, &event_name)
+        db::list_property_descriptions_by_event(&state.db_pool, &workspace.id, &event_name)
             .await
             .map_err(|e| PropertyDescriptionError::Database(e.to_string()))?
     } else {
-        db::list_property_descriptions_by_project(&state.db_pool, &project.id)
+        db::list_property_descriptions_by_workspace(&state.db_pool, &workspace.id)
             .await
             .map_err(|e| PropertyDescriptionError::Database(e.to_string()))?
     };
@@ -99,7 +99,7 @@ pub async fn list_property_descriptions(
         .into_iter()
         .map(|d| PropertyDescriptionResponse {
             id: d.id.to_string(),
-            project_id: d.project_id.to_string(),
+            workspace_id: d.workspace_id.to_string(),
             event_name: d.event_name,
             property_name: d.property_name,
             property_type: d.property_type,
@@ -118,19 +118,19 @@ pub async fn list_property_descriptions(
 
 #[derive(Deserialize)]
 pub struct GetPropertyDescriptionQuery {
-    pub project_id: ProjectId,
+    pub workspace_id: WorkspaceId,
     pub event_name: String,
     pub property_name: String,
 }
 
-/// Get a single property description by project_id, event_name, and property_name
+/// Get a single property description by workspace_id, event_name, and property_name
 pub async fn get_property_description(
     State(state): State<AppState>,
     Query(query): Query<GetPropertyDescriptionQuery>,
     AuthUser { user, .. }: AuthUser,
 ) -> Result<Json<PropertyDescriptionResponse>, PropertyDescriptionError> {
-    // Check user has access to this project
-    let role = db::get_user_project_role(&state.db_pool, user.id, &query.project_id)
+    // Check user has access to this workspace
+    let role = db::get_user_workspace_role(&state.db_pool, user.id, &query.workspace_id)
         .await
         .map_err(|e| PropertyDescriptionError::Database(e.to_string()))?;
 
@@ -140,7 +140,7 @@ pub async fn get_property_description(
 
     let desc = db::get_property_description(
         &state.db_pool,
-        &query.project_id,
+        &query.workspace_id,
         &query.event_name,
         &query.property_name,
     )
@@ -150,7 +150,7 @@ pub async fn get_property_description(
 
     Ok(Json(PropertyDescriptionResponse {
         id: desc.id.to_string(),
-        project_id: desc.project_id.to_string(),
+        workspace_id: desc.workspace_id.to_string(),
         event_name: desc.event_name,
         property_name: desc.property_name,
         property_type: desc.property_type,

@@ -27,9 +27,9 @@ import { DangerZone } from '../../components/Settings/DangerZone';
 import { MembersTable } from '../../components/Settings/MembersTable';
 import type { MemberRow } from '../../components/Settings/MembersTable';
 import { useOrganization } from '../../contexts/OrganizationContext';
-import { useProject } from '../../contexts/ProjectContext';
+import { useWorkspace } from '../../contexts/WorkspaceContext';
 import { useToast } from '../../contexts/ToastContext';
-import { projectService } from '../../services/projectService';
+import { workspaceService } from '../../services/workspaceService';
 import { organizationService } from '../../services/organizationService';
 import { invitationService, type Invitation } from '../../services/invitationService';
 import type { RoleType } from '../../components/Settings/RoleBadge';
@@ -37,7 +37,7 @@ import { trackEvent } from '../../utils/analytics';
 
 export default function OrganizationSettingsPage() {
   const { currentOrganization, setCurrentOrganization, refreshOrganizations } = useOrganization();
-  const { currentProject } = useProject();
+  const { currentWorkspace } = useWorkspace();
   const navigate = useNavigate();
   const { showSuccess, showError } = useToast();
   const [isDeleting, setIsDeleting] = useState(false);
@@ -168,8 +168,8 @@ export default function OrganizationSettingsPage() {
     const roleMap: Record<string, string> = {
       org_admin: 'Organization Admin',
       org_user: 'Organization Member',
-      project_admin: 'Project Admin',
-      project_user: 'Project Member',
+      workspace_admin: 'Workspace Admin',
+      workspace_user: 'Workspace Member',
     };
     return roleMap[role] || role;
   };
@@ -256,7 +256,7 @@ export default function OrganizationSettingsPage() {
         {!membersLoading && !membersError && (
           <>
             <Typography variant="body2" sx={{ mb: 2, color: 'text.secondary' }}>
-              Organization members have access to all projects within the organization.
+              Organization members have access to all workspaces within the organization.
             </Typography>
             <MembersTable
               members={orgMembers}
@@ -330,7 +330,7 @@ export default function OrganizationSettingsPage() {
 
       <DangerZone
         title="Delete Organization"
-        description="Permanently delete this organization, all of its projects, and all collected analytics data. This action cannot be reversed."
+        description="Permanently delete this organization, all of its workspaces, and all collected analytics data. This action cannot be reversed."
         action={
           <Button variant="contained" color="error" onClick={handleDeleteOrg} disabled={isDeleting}>
             Delete Organization
@@ -354,7 +354,7 @@ export default function OrganizationSettingsPage() {
         </DialogTitle>
         <DialogContent>
           <DialogContentText sx={{ color: 'text.secondary', lineHeight: 1.6 }}>
-            Are you sure you want to delete "{currentOrganization?.name}"? This will permanently delete this organization, all of its projects, and all collected analytics data. This action cannot be undone.
+            Are you sure you want to delete "{currentOrganization?.name}"? This will permanently delete this organization, all of its workspaces, and all collected analytics data. This action cannot be undone.
           </DialogContentText>
         </DialogContent>
         <DialogActions sx={{ px: 3, pb: 2.5, gap: 1 }}>
@@ -405,7 +405,7 @@ export default function OrganizationSettingsPage() {
               </Select>
             </FormControl>
             <Typography variant="caption" color="text.secondary">
-              Organization members can access all projects within the organization.
+              Organization members can access all workspaces within the organization.
             </Typography>
           </Box>
         </DialogContent>

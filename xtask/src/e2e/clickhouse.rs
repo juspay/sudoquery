@@ -1,5 +1,5 @@
 //! ClickHouse access for the dashboard suite: inspects what dashboard-server
-//! created for a project and queries as that project's user.
+//! created for a workspace and queries as that workspace's user.
 
 use anyhow::{Context, bail};
 

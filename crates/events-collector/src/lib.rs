@@ -14,27 +14,27 @@ pub mod enrichment;
 pub mod kafka_connector;
 pub mod result;
 
-/// The org and project a request is for, from its `x-org-id` and
-/// `x-project-id` headers. Every event in the request must carry the same
+/// The org and workspace a request is for, from its `x-org-id` and
+/// `x-workspace-id` headers. Every event in the request must carry the same
 /// ids: the headers choose the request's config (including its Kafka topic),
-/// so an event for another org or project would be published under the
+/// so an event for another org or workspace would be published under the
 /// wrong one.
 pub struct Scope<'a> {
     pub org_id: &'a str,
-    pub project_id: &'a str,
+    pub workspace_id: &'a str,
 }
 
-/// Fails on the first event whose `org_id` / `project_id` differ from `scope`.
+/// Fails on the first event whose `org_id` / `workspace_id` differ from `scope`.
 fn ensure_in_scope<'e>(
     events: impl IntoIterator<Item = &'e CollectorEvent>,
     scope: &Scope<'_>,
 ) -> result::Result<()> {
     for (index, event) in events.into_iter().enumerate() {
-        if event.org_id != scope.org_id || event.project_id != scope.project_id {
+        if event.org_id != scope.org_id || event.workspace_id != scope.workspace_id {
             return Err(result::AppError::ScopeMismatch(format!(
-                "event {index} is for org {:?} / project {:?}, but the request's \
-                 `x-org-id` / `x-project-id` headers are {:?} / {:?}",
-                event.org_id, event.project_id, scope.org_id, scope.project_id
+                "event {index} is for org {:?} / workspace {:?}, but the request's \
+                 `x-org-id` / `x-workspace-id` headers are {:?} / {:?}",
+                event.org_id, event.workspace_id, scope.org_id, scope.workspace_id
             )));
         }
     }
@@ -132,12 +132,12 @@ mod tests {
 
     const SCOPE: Scope<'static> = Scope {
         org_id: "acme-k3x9qa",
-        project_id: "web-shop-9x2k1a",
+        workspace_id: "web-shop-9x2k1a",
     };
 
-    fn event_json(org_id: &str, project_id: &str) -> String {
+    fn event_json(org_id: &str, workspace_id: &str) -> String {
         format!(
-            r#"{{"envelop_version":"1.0","id":"{}","name":"page_view","org_id":"{org_id}","project_id":"{project_id}","anon_id":"anon-1","occured_at":"2026-10-09T10:00:00Z"}}"#,
+            r#"{{"envelop_version":"1.0","id":"{}","name":"page_view","org_id":"{org_id}","workspace_id":"{workspace_id}","anon_id":"anon-1","occured_at":"2026-10-09T10:00:00Z"}}"#,
             uuid::Uuid::new_v4()
         )
     }
@@ -159,22 +159,22 @@ mod tests {
     #[test]
     fn events_matching_the_headers_are_in_scope() {
         let events = events(&[
-            event_json(SCOPE.org_id, SCOPE.project_id),
-            event_json(SCOPE.org_id, SCOPE.project_id),
+            event_json(SCOPE.org_id, SCOPE.workspace_id),
+            event_json(SCOPE.org_id, SCOPE.workspace_id),
         ]);
 
         assert!(ensure_in_scope(&events, &SCOPE).is_ok());
     }
 
     #[test]
-    fn events_for_another_org_or_project_are_rejected() {
-        for (org_id, project_id) in [
-            ("other-org-1x2y3z", SCOPE.project_id),
-            (SCOPE.org_id, "other-proj-1x2y3z"),
+    fn events_for_another_org_or_workspace_are_rejected() {
+        for (org_id, workspace_id) in [
+            ("other-org-1x2y3z", SCOPE.workspace_id),
+            (SCOPE.org_id, "other-workspace-1x2y3z"),
         ] {
             let events = events(&[
-                event_json(SCOPE.org_id, SCOPE.project_id),
-                event_json(org_id, project_id),
+                event_json(SCOPE.org_id, SCOPE.workspace_id),
+                event_json(org_id, workspace_id),
             ]);
 
             let error = ensure_in_scope(&events, &SCOPE).unwrap_err();
@@ -190,8 +190,8 @@ mod tests {
     async fn collect_events_rejects_out_of_scope_events_before_publishing() {
         let body = format!(
             "{}\n{}",
-            event_json(SCOPE.org_id, SCOPE.project_id),
-            event_json(SCOPE.org_id, "other-proj-1x2y3z")
+            event_json(SCOPE.org_id, SCOPE.workspace_id),
+            event_json(SCOPE.org_id, "other-workspace-1x2y3z")
         );
 
         let result = collect_events(&body, &unreachable_kafka_config(), &SCOPE, None).await;
@@ -203,8 +203,8 @@ mod tests {
     async fn collect_events_batch_rejects_out_of_scope_events_before_publishing() {
         let body = format!(
             r#"{{"events":[{},{}]}}"#,
-            event_json("other-org-1x2y3z", SCOPE.project_id),
-            event_json(SCOPE.org_id, SCOPE.project_id)
+            event_json("other-org-1x2y3z", SCOPE.workspace_id),
+            event_json(SCOPE.org_id, SCOPE.workspace_id)
         );
 
         let result = collect_events_batch(&body, &unreachable_kafka_config(), &SCOPE, None).await;

@@ -1,0 +1,54 @@
+-- rename_project_to_workspace: the product calls a project a workspace, so
+-- every table, column, type, constraint and index follows.
+
+ALTER TYPE public.project_role RENAME TO workspace_role;
+ALTER TYPE public.workspace_role RENAME VALUE 'project_admin' TO 'workspace_admin';
+ALTER TYPE public.workspace_role RENAME VALUE 'project_user' TO 'workspace_user';
+ALTER TYPE public.project_status RENAME TO workspace_status;
+ALTER TYPE public.invitation_type RENAME VALUE 'project' TO 'workspace';
+
+ALTER TABLE public.projects RENAME TO workspaces;
+ALTER TABLE public.project_memberships RENAME TO workspace_memberships;
+ALTER TABLE public.project_tokens RENAME TO workspace_tokens;
+ALTER TABLE public.user_project_consoles RENAME TO user_workspace_consoles;
+
+ALTER TABLE public.chats RENAME COLUMN project_id TO workspace_id;
+ALTER TABLE public.event_descriptions RENAME COLUMN project_id TO workspace_id;
+ALTER TABLE public.live_dashboards RENAME COLUMN project_id TO workspace_id;
+ALTER TABLE public.workspace_memberships RENAME COLUMN project_id TO workspace_id;
+ALTER TABLE public.workspace_tokens RENAME COLUMN project_id TO workspace_id;
+ALTER TABLE public.property_descriptions RENAME COLUMN project_id TO workspace_id;
+ALTER TABLE public.user_workspace_consoles RENAME COLUMN project_id TO workspace_id;
+
+ALTER TABLE public.chats RENAME CONSTRAINT chats_project_id_fkey TO chats_workspace_id_fkey;
+ALTER TABLE public.event_descriptions RENAME CONSTRAINT event_descriptions_project_id_event_name_key TO event_descriptions_workspace_id_event_name_key;
+ALTER TABLE public.event_descriptions RENAME CONSTRAINT event_descriptions_project_id_fkey TO event_descriptions_workspace_id_fkey;
+ALTER TABLE public.live_dashboards RENAME CONSTRAINT live_dashboards_project_id_fkey TO live_dashboards_workspace_id_fkey;
+ALTER TABLE public.workspace_memberships RENAME CONSTRAINT project_memberships_pkey TO workspace_memberships_pkey;
+ALTER TABLE public.workspace_memberships RENAME CONSTRAINT project_memberships_project_id_fkey TO workspace_memberships_workspace_id_fkey;
+ALTER TABLE public.workspace_memberships RENAME CONSTRAINT project_memberships_user_id_fkey TO workspace_memberships_user_id_fkey;
+ALTER TABLE public.workspace_memberships RENAME CONSTRAINT project_memberships_user_id_project_id_key TO workspace_memberships_user_id_workspace_id_key;
+ALTER TABLE public.workspaces RENAME CONSTRAINT projects_id_slug_check TO workspaces_id_slug_check;
+ALTER TABLE public.workspaces RENAME CONSTRAINT projects_organization_id_fkey TO workspaces_organization_id_fkey;
+ALTER TABLE public.workspaces RENAME CONSTRAINT projects_pkey TO workspaces_pkey;
+ALTER TABLE public.workspace_tokens RENAME CONSTRAINT project_tokens_pkey TO workspace_tokens_pkey;
+ALTER TABLE public.workspace_tokens RENAME CONSTRAINT project_tokens_project_id_fkey TO workspace_tokens_workspace_id_fkey;
+ALTER TABLE public.workspace_tokens RENAME CONSTRAINT project_tokens_token_key TO workspace_tokens_token_key;
+ALTER TABLE public.property_descriptions RENAME CONSTRAINT property_descriptions_project_id_event_name_property_name_key TO property_descriptions_workspace_id_event_name_property_name_key;
+ALTER TABLE public.property_descriptions RENAME CONSTRAINT property_descriptions_project_id_fkey TO property_descriptions_workspace_id_fkey;
+ALTER TABLE public.user_workspace_consoles RENAME CONSTRAINT user_project_consoles_pkey TO user_workspace_consoles_pkey;
+ALTER TABLE public.user_workspace_consoles RENAME CONSTRAINT user_project_consoles_project_id_fkey TO user_workspace_consoles_workspace_id_fkey;
+
+ALTER INDEX public.idx_chats_project_user RENAME TO idx_chats_workspace_user;
+ALTER INDEX public.idx_event_descriptions_project_id RENAME TO idx_event_descriptions_workspace_id;
+ALTER INDEX public.idx_live_dashboards_project_id RENAME TO idx_live_dashboards_workspace_id;
+ALTER INDEX public.idx_project_id_source RENAME TO idx_workspace_id_source;
+ALTER INDEX public.idx_project_memberships_project_id RENAME TO idx_workspace_memberships_workspace_id;
+ALTER INDEX public.idx_project_memberships_user_id RENAME TO idx_workspace_memberships_user_id;
+ALTER INDEX public.idx_projects_deleted_at RENAME TO idx_workspaces_deleted_at;
+ALTER INDEX public.idx_projects_organization_id RENAME TO idx_workspaces_organization_id;
+ALTER INDEX public.idx_project_tokens_project_id RENAME TO idx_workspace_tokens_workspace_id;
+ALTER INDEX public.idx_project_tokens_token RENAME TO idx_workspace_tokens_token;
+ALTER INDEX public.idx_property_descriptions_project_id RENAME TO idx_property_descriptions_workspace_id;
+ALTER INDEX public.idx_user_project_consoles_all_three RENAME TO idx_user_workspace_consoles_all_three;
+ALTER INDEX public.idx_user_project_consoles_user_and_proj RENAME TO idx_user_workspace_consoles_user_and_workspace;

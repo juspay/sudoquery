@@ -7,8 +7,8 @@
 # Every setting is one `section.name` key, so a single setting can be
 # overridden. Everything is read once at startup with no org context,
 # except `opensearch.index`, which is resolved per event for the event's
-# org_id and project_id. The file is re-read every 30 seconds, so org and
-# project overrides of `opensearch.index` apply without a restart; anything
+# org_id and workspace_id. The file is re-read every 30 seconds, so org and
+# workspace overrides of `opensearch.index` apply without a restart; anything
 # else needs a restart.
 #
 # Every key below can be overridden from the environment, and the environment
@@ -22,22 +22,22 @@
 
 [default-configs]
 # Topics to consume. Every payload must be a canonical event. An entry starting
-# with `^` is a regex: every project has its own topic,
-# `events.{org_id}.{project_id}`, created while the sink runs.
+# with `^` is a regex: every workspace has its own topic,
+# `events.{org_id}.{workspace_id}`, created while the sink runs.
 "kafka.topics" = { value = ["^events\\..*"], schema = { type = "array", items = { type = "string" } } }
 "kafka.group_id" = { value = "sink-opensearch", schema = { type = "string" } }
 # Raw librdkafka properties: brokers, security, timeouts. The sink always sets
 # group.id, enable.auto.commit=false and enable.auto.offset.store=false. The
-# metadata refresh is how soon a new project topic matching kafka.topics is
+# metadata refresh is how soon a new workspace topic matching kafka.topics is
 # consumed (librdkafka's default is 5 minutes).
 "kafka.client_config" = { value = { "bootstrap.servers" = "localhost:19092", "topic.metadata.refresh.interval.ms" = "30000" }, schema = { type = "object" } }
 
 "opensearch.url" = { value = "http://localhost:9200", schema = { type = "string" } }
-# Index, alias or data stream. `{org_id}` and `{project_id}` are replaced
-# with each event's org and project, so every project gets its own data
+# Index, alias or data stream. `{org_id}` and `{workspace_id}` are replaced
+# with each event's org and workspace, so every workspace gets its own data
 # stream (index-template.json makes every `events-*` name a data stream).
-# Override it per org or project below.
-"opensearch.index" = { value = "events-{org_id}-{project_id}", schema = { type = "string" } }
+# Override it per org or workspace below.
+"opensearch.index" = { value = "events-{org_id}-{workspace_id}", schema = { type = "string" } }
 "opensearch.request_timeout_ms" = { value = 30000, schema = { type = "integer" } }
 
 # A partition's buffer is written once it holds max_docs records or max_bytes
@@ -63,10 +63,10 @@
 
 [dimensions]
 org_id = { position = 1, schema = { type = "string" } }
-project_id = { position = 2, schema = { type = "string" } }
+workspace_id = { position = 2, schema = { type = "string" } }
 
-# Per-org or per-project data stream. For example, put all of one org's
-# projects in one stream, and a group of small orgs in one shared stream.
+# Per-org or per-workspace data stream. For example, put all of one org's
+# workspaces in one stream, and a group of small orgs in one shared stream.
 # Keep names under `events-*` so index-template.json applies to them:
 #
 # [[overrides]]

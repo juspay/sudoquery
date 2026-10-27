@@ -29,7 +29,7 @@ const OAuthCallbackPage = lazy(() => import('../pages/OAuthCallbackPage'));
 // ─── Onboarding pages ────────────────────────────────────────────────────────
 const OnboardingInvitationsPage = lazy(() => import('../pages/OnboardingInvitationsPage'));
 const OnboardingOrgPage = lazy(() => import('../pages/OnboardingOrgPage'));
-const OnboardingProjectPage = lazy(() => import('../pages/OnboardingProjectPage'));
+const OnboardingWorkspacePage = lazy(() => import('../pages/OnboardingWorkspacePage'));
 
 // ─── App pages ────────────────────────────────────────────────────────────────
 const ChatPage = lazy(() => import('../pages/ChatPageV1'));
@@ -39,7 +39,7 @@ const EventSchemaPage = lazy(() => import('../pages/EventSchemaPage'));
 const SettingsLayout = lazy(() => import('../layouts/SettingsLayout'));
 const AccountSettingsPage = lazy(() => import('../pages/settings/AccountSettingsPage'));
 const InvitationsSettingsPage = lazy(() => import('../pages/settings/InvitationsSettingsPage'));
-const ProjectSettingsPage = lazy(() => import('../pages/settings/ProjectSettingsPage'));
+const WorkspaceSettingsPage = lazy(() => import('../pages/settings/WorkspaceSettingsPage'));
 const OrganizationSettingsPage = lazy(() => import('../pages/settings/OrganizationSettingsPage'));
 const SQLConsole = lazy(() => import('../pages/SQLConsole'));
 const DiscoverPage = lazy(() => import('../pages/DiscoverPage'));
@@ -78,7 +78,7 @@ export function AppRoutes() {
           <Route index element={<Navigate to="invitations" replace />} />
           <Route path="invitations" element={<OnboardingInvitationsPage />} />
           <Route path="org" element={<OnboardingOrgPage />} />
-          <Route path="project" element={<OnboardingProjectPage />} />
+          <Route path="workspace" element={<OnboardingWorkspacePage />} />
         </Route>
 
         {/* Authenticated app routes */}
@@ -103,7 +103,7 @@ export function AppRoutes() {
             <Route index element={<Navigate to="account" replace />} />
             <Route path="account" element={<AccountSettingsPage />} />
             <Route path="invitations" element={<InvitationsSettingsPage />} />
-            <Route path="project" element={<ProjectSettingsPage />} />
+            <Route path="workspace" element={<WorkspaceSettingsPage />} />
             <Route path="organization" element={<OrganizationSettingsPage />} />
           </Route>
         </Route>

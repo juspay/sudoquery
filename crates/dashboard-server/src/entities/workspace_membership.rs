@@ -1,24 +1,24 @@
-use canonical_event::ProjectId;
+use canonical_event::WorkspaceId;
 use sea_orm::entity::prelude::*;
 use serde::{Deserialize, Serialize};
 
 #[derive(EnumIter, DeriveActiveEnum, Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "project_role")]
-pub enum ProjectRole {
-    #[sea_orm(string_value = "project_admin")]
-    ProjectAdmin,
-    #[sea_orm(string_value = "project_user")]
-    ProjectUser,
+#[sea_orm(rs_type = "String", db_type = "Enum", enum_name = "workspace_role")]
+pub enum WorkspaceRole {
+    #[sea_orm(string_value = "workspace_admin")]
+    WorkspaceAdmin,
+    #[sea_orm(string_value = "workspace_user")]
+    WorkspaceUser,
 }
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Serialize, Deserialize)]
-#[sea_orm(table_name = "project_memberships")]
+#[sea_orm(table_name = "workspace_memberships")]
 pub struct Model {
     #[sea_orm(primary_key, auto_increment = false)]
     pub id: Uuid,
     pub user_id: Uuid,
-    pub project_id: ProjectId,
-    pub role: ProjectRole,
+    pub workspace_id: WorkspaceId,
+    pub role: WorkspaceRole,
     pub created_at: DateTimeWithTimeZone,
     pub updated_at: DateTimeWithTimeZone,
 }
@@ -32,11 +32,11 @@ pub enum Relation {
     )]
     User,
     #[sea_orm(
-        belongs_to = "super::project::Entity",
-        from = "Column::ProjectId",
-        to = "super::project::Column::Id"
+        belongs_to = "super::workspace::Entity",
+        from = "Column::WorkspaceId",
+        to = "super::workspace::Column::Id"
     )]
-    Project,
+    Workspace,
 }
 
 impl Related<super::user::Entity> for Entity {
@@ -45,9 +45,9 @@ impl Related<super::user::Entity> for Entity {
     }
 }
 
-impl Related<super::project::Entity> for Entity {
+impl Related<super::workspace::Entity> for Entity {
     fn to() -> RelationDef {
-        Relation::Project.def()
+        Relation::Workspace.def()
     }
 }
 

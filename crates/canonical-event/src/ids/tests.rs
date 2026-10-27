@@ -1,4 +1,4 @@
-use super::{OrgId, ProjectId, is_valid_slug};
+use super::{OrgId, WorkspaceId, is_valid_slug};
 use std::convert::TryFrom;
 
 const VALID_SLUGS: [&str; 6] = [
@@ -45,11 +45,11 @@ fn is_valid_slug_rejects_slugs_breaking_any_rule() {
 fn from_str_accepts_valid_slugs_for_both_newtypes() {
     // Given/When: parse valid slugs into both slug newtypes.
     let org: OrgId = "acme-corp-42".parse().expect("valid org slug");
-    let project: ProjectId = "blue-ocean-shop-7".parse().expect("valid project slug");
+    let workspace: WorkspaceId = "blue-ocean-shop-7".parse().expect("valid workspace slug");
 
     // Then: the slug is preserved.
     assert_eq!(org.as_ref(), "acme-corp-42");
-    assert_eq!(project.as_ref(), "blue-ocean-shop-7");
+    assert_eq!(workspace.as_ref(), "blue-ocean-shop-7");
 }
 
 #[test]
@@ -69,12 +69,12 @@ fn from_str_rejects_invalid_slug_and_carries_the_input() {
 fn try_from_string_accepts_valid_slugs_for_both_newtypes() {
     // Given/When: convert owned strings into both slug newtypes.
     let org = OrgId::try_from(String::from("acme-corp-42")).expect("valid org slug");
-    let project =
-        ProjectId::try_from(String::from("blue-ocean-shop-7")).expect("valid project slug");
+    let workspace =
+        WorkspaceId::try_from(String::from("blue-ocean-shop-7")).expect("valid workspace slug");
 
     // Then: the slug is preserved.
     assert_eq!(org.as_ref(), "acme-corp-42");
-    assert_eq!(project.as_ref(), "blue-ocean-shop-7");
+    assert_eq!(workspace.as_ref(), "blue-ocean-shop-7");
 }
 
 #[test]
@@ -85,8 +85,8 @@ fn try_from_string_rejects_invalid_slugs_for_both_newtypes() {
             "expected {slug:?} to be rejected by OrgId"
         );
         assert!(
-            ProjectId::try_from(slug.to_owned()).is_err(),
-            "expected {slug:?} to be rejected by ProjectId"
+            WorkspaceId::try_from(slug.to_owned()).is_err(),
+            "expected {slug:?} to be rejected by WorkspaceId"
         );
     }
 }
@@ -105,7 +105,7 @@ fn display_and_string_conversion_round_trip_the_slug() {
 fn serde_serializes_newtypes_as_bare_strings() {
     // Given: parsed slug newtypes.
     let org: OrgId = "acme-corp-42".parse().expect("valid slug");
-    let project: ProjectId = "blue-ocean-shop-7".parse().expect("valid slug");
+    let workspace: WorkspaceId = "blue-ocean-shop-7".parse().expect("valid slug");
 
     // When/Then: they serialize as bare JSON strings, not objects.
     assert_eq!(
@@ -113,7 +113,7 @@ fn serde_serializes_newtypes_as_bare_strings() {
         serde_json::json!("acme-corp-42")
     );
     assert_eq!(
-        serde_json::to_value(&project).expect("serializes"),
+        serde_json::to_value(&workspace).expect("serializes"),
         serde_json::json!("blue-ocean-shop-7")
     );
 }
@@ -122,11 +122,11 @@ fn serde_serializes_newtypes_as_bare_strings() {
 fn serde_deserializes_valid_slugs_from_bare_strings() {
     // Given/When: deserialize bare JSON strings into both newtypes.
     let org: OrgId = serde_json::from_str("\"acme-corp-42\"").expect("valid slug");
-    let project: ProjectId = serde_json::from_str("\"blue-ocean-shop-7\"").expect("valid slug");
+    let workspace: WorkspaceId = serde_json::from_str("\"blue-ocean-shop-7\"").expect("valid slug");
 
     // Then: the slug is preserved.
     assert_eq!(org.as_ref(), "acme-corp-42");
-    assert_eq!(project.as_ref(), "blue-ocean-shop-7");
+    assert_eq!(workspace.as_ref(), "blue-ocean-shop-7");
 }
 
 #[test]
@@ -138,8 +138,8 @@ fn serde_rejects_invalid_slugs_from_bare_strings() {
             "expected {slug:?} to be rejected by OrgId deserialization"
         );
         assert!(
-            serde_json::from_str::<ProjectId>(&json).is_err(),
-            "expected {slug:?} to be rejected by ProjectId deserialization"
+            serde_json::from_str::<WorkspaceId>(&json).is_err(),
+            "expected {slug:?} to be rejected by WorkspaceId deserialization"
         );
     }
 }

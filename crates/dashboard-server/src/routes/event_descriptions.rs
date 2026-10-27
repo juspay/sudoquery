@@ -3,12 +3,12 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
-use canonical_event::ProjectId;
+use canonical_event::WorkspaceId;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     AppState, db,
-    middleware::{AuthUser, OrgAdmin, OrgContext, ProjectAdmin, ProjectContext},
+    middleware::{AuthUser, OrgAdmin, OrgContext, WorkspaceAdmin, WorkspaceContext},
 };
 
 // ============ Create/Update Event Description ============
@@ -22,22 +22,22 @@ pub struct UpsertEventDescriptionRequest {
 #[derive(Serialize)]
 pub struct EventDescriptionResponse {
     pub id: String,
-    pub project_id: String,
+    pub workspace_id: String,
     pub event_name: String,
     pub description: String,
     pub created_at: String,
     pub updated_at: String,
 }
 
-/// Create or update event description (requires project admin)
+/// Create or update event description (requires workspace admin)
 pub async fn upsert_event_description(
     State(state): State<AppState>,
-    ProjectAdmin { project, .. }: ProjectAdmin,
+    WorkspaceAdmin { workspace, .. }: WorkspaceAdmin,
     Json(req): Json<UpsertEventDescriptionRequest>,
 ) -> Result<(StatusCode, Json<EventDescriptionResponse>), EventDescriptionError> {
     let desc = db::upsert_event_description(
         &state.db_pool,
-        &project.id,
+        &workspace.id,
         &req.event_name,
         &req.description,
     )
@@ -48,7 +48,7 @@ pub async fn upsert_event_description(
         StatusCode::OK,
         Json(EventDescriptionResponse {
             id: desc.id.to_string(),
-            project_id: desc.project_id.to_string(),
+            workspace_id: desc.workspace_id.to_string(),
             event_name: desc.event_name,
             description: desc.description,
             created_at: desc.created_at.to_rfc3339(),
@@ -57,21 +57,21 @@ pub async fn upsert_event_description(
     ))
 }
 
-/// Create or update event description as org admin (requires X-Project-Id header)
+/// Create or update event description as org admin (requires X-Workspace-Id header)
 pub async fn upsert_event_description_as_org_admin(
     State(state): State<AppState>,
     OrgAdmin { organization, .. }: OrgAdmin,
-    ProjectContext { project, .. }: ProjectContext,
+    WorkspaceContext { workspace, .. }: WorkspaceContext,
     Json(req): Json<UpsertEventDescriptionRequest>,
 ) -> Result<(StatusCode, Json<EventDescriptionResponse>), EventDescriptionError> {
-    // Verify project belongs to this organization
-    if project.organization_id != Some(organization.id) {
+    // Verify workspace belongs to this organization
+    if workspace.organization_id != Some(organization.id) {
         return Err(EventDescriptionError::Forbidden);
     }
 
     let desc = db::upsert_event_description(
         &state.db_pool,
-        &project.id,
+        &workspace.id,
         &req.event_name,
         &req.description,
     )
@@ -82,7 +82,7 @@ pub async fn upsert_event_description_as_org_admin(
         StatusCode::OK,
         Json(EventDescriptionResponse {
             id: desc.id.to_string(),
-            project_id: desc.project_id.to_string(),
+            workspace_id: desc.workspace_id.to_string(),
             event_name: desc.event_name,
             description: desc.description,
             created_at: desc.created_at.to_rfc3339(),
@@ -95,7 +95,7 @@ pub async fn upsert_event_description_as_org_admin(
 
 #[derive(Deserialize)]
 pub struct ListEventDescriptionsQuery {
-    pub project_id: ProjectId,
+    pub workspace_id: WorkspaceId,
 }
 
 #[derive(Serialize)]
@@ -103,12 +103,12 @@ pub struct ListEventDescriptionsResponse {
     pub event_descriptions: Vec<EventDescriptionResponse>,
 }
 
-/// List all event descriptions for a project (any project member)
+/// List all event descriptions for a workspace (any workspace member)
 pub async fn list_event_descriptions(
     State(state): State<AppState>,
-    ProjectContext { project, .. }: ProjectContext,
+    WorkspaceContext { workspace, .. }: WorkspaceContext,
 ) -> Result<Json<ListEventDescriptionsResponse>, EventDescriptionError> {
-    let descriptions = db::list_event_descriptions_by_project(&state.db_pool, &project.id)
+    let descriptions = db::list_event_descriptions_by_workspace(&state.db_pool, &workspace.id)
         .await
         .map_err(|e| EventDescriptionError::Database(e.to_string()))?;
 
@@ -116,7 +116,7 @@ pub async fn list_event_descriptions(
         .into_iter()
         .map(|d| EventDescriptionResponse {
             id: d.id.to_string(),
-            project_id: d.project_id.to_string(),
+            workspace_id: d.workspace_id.to_string(),
             event_name: d.event_name,
             description: d.description,
             created_at: d.created_at.to_rfc3339(),
@@ -133,18 +133,18 @@ pub async fn list_event_descriptions(
 
 #[derive(Deserialize)]
 pub struct GetEventDescriptionQuery {
-    pub project_id: ProjectId,
+    pub workspace_id: WorkspaceId,
     pub event_name: String,
 }
 
-/// Get a single event description by project_id and event_name
+/// Get a single event description by workspace_id and event_name
 pub async fn get_event_description(
     State(state): State<AppState>,
     Query(query): Query<GetEventDescriptionQuery>,
     AuthUser { user, .. }: AuthUser,
 ) -> Result<Json<EventDescriptionResponse>, EventDescriptionError> {
-    // Check user has access to this project
-    let role = db::get_user_project_role(&state.db_pool, user.id, &query.project_id)
+    // Check user has access to this workspace
+    let role = db::get_user_workspace_role(&state.db_pool, user.id, &query.workspace_id)
         .await
         .map_err(|e| EventDescriptionError::Database(e.to_string()))?;
 
@@ -152,14 +152,14 @@ pub async fn get_event_description(
         return Err(EventDescriptionError::Forbidden);
     }
 
-    let desc = db::get_event_description(&state.db_pool, &query.project_id, &query.event_name)
+    let desc = db::get_event_description(&state.db_pool, &query.workspace_id, &query.event_name)
         .await
         .map_err(|e| EventDescriptionError::Database(e.to_string()))?
         .ok_or(EventDescriptionError::NotFound)?;
 
     Ok(Json(EventDescriptionResponse {
         id: desc.id.to_string(),
-        project_id: desc.project_id.to_string(),
+        workspace_id: desc.workspace_id.to_string(),
         event_name: desc.event_name,
         description: desc.description,
         created_at: desc.created_at.to_rfc3339(),

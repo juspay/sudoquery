@@ -32,11 +32,11 @@ interface TokenResponse {
   token_type: string;
 }
 
-interface Project {
+interface Workspace {
   id: string;
   realm_id: string;
   name: string;
-  project_token?: string;
+  workspace_token?: string;
   created_at: string;
 }
 
@@ -264,16 +264,16 @@ const adminService = {
     await apiClient.delete(`/users/${userId}`);
   },
 
-  async createProject(name: string): Promise<Project> {
-    return apiClient.post('/projects', { name });
+  async createWorkspace(name: string): Promise<Workspace> {
+    return apiClient.post('/workspaces', { name });
   },
 
-  async listProjects(): Promise<Project[]> {
-    return apiClient.get('/projects');
+  async listWorkspaces(): Promise<Workspace[]> {
+    return apiClient.get('/workspaces');
   },
 
-  async deleteProject(projectId: string): Promise<void> {
-    await apiClient.delete(`/projects/${projectId}`);
+  async deleteWorkspace(workspaceId: string): Promise<void> {
+    await apiClient.delete(`/workspaces/${workspaceId}`);
   },
 
   async getCurrentUser(): Promise<KeycloakUser> {

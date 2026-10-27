@@ -68,7 +68,7 @@ export default function DiscoverPage() {
   const { state, update, built, range, searchKey } = discover;
   const query = built.ok ? built.query : null;
 
-  const baseKey = scope && searchKey ? `${scope.projectId}:${searchKey}` : null;
+  const baseKey = scope && searchKey ? `${scope.workspaceId}:${searchKey}` : null;
   const eventsKey = baseKey ? `${baseKey}:${state.order}` : null;
 
   const first = useAsyncResult(eventsKey, async (signal) => {
@@ -166,8 +166,8 @@ export default function DiscoverPage() {
   if (!scope) {
     return (
       <EmptyStateCard
-        heading="No project selected"
-        subtext="Choose an organization and a project to search its events."
+        heading="No workspace selected"
+        subtext="Choose an organization and a workspace to search its events."
       />
     );
   }

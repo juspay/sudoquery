@@ -2,14 +2,14 @@ import { DEMO_CONFIG } from '../config/api';
 
 /**
  * Where the demo store files its events. The collector requires both ids, and
- * the dashboard only shows a project the events whose `org_id` and
- * `project_id` both match it.
+ * the dashboard only shows a workspace the events whose `org_id` and
+ * `workspace_id` both match it.
  */
 export type Destination = {
   /** Organization slug, sent to the collector as `x-org-id` (`org_id`). */
   orgId: string;
-  /** Project slug, sent to the collector as `x-project-id` (`project_id`). */
-  projectId: string;
+  /** Workspace slug, sent to the collector as `x-workspace-id` (`workspace_id`). */
+  workspaceId: string;
 };
 
 // Suffixed `_v2`: the v1 key stored a tenant and a workspace UUID, which the
@@ -17,7 +17,7 @@ export type Destination = {
 // asks again.
 const STORAGE_KEY = 'sudoquery_demo_destination_v2';
 
-// The collector's slug rule for `x-org-id` and `x-project-id`.
+// The collector's slug rule for `x-org-id` and `x-workspace-id`.
 const SLUG_PATTERN = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
 
 export const isSlug = (value: string): boolean => SLUG_PATTERN.test(value);
@@ -39,8 +39,8 @@ export function saveDestination(destination: Destination): void {
 function loadSaved(): Destination | null {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? 'null') as Partial<Destination> | null;
-    if (typeof saved?.orgId === 'string' && typeof saved.projectId === 'string') {
-      return { orgId: saved.orgId, projectId: saved.projectId };
+    if (typeof saved?.orgId === 'string' && typeof saved.workspaceId === 'string') {
+      return { orgId: saved.orgId, workspaceId: saved.workspaceId };
     }
   } catch {
     // Unreadable storage or a malformed value; use the environment's instead.
@@ -50,6 +50,6 @@ function loadSaved(): Destination | null {
 
 function fromEnv(): Destination | null {
   const orgId = DEMO_CONFIG.ORG_ID;
-  const projectId = DEMO_CONFIG.PROJECT_ID;
-  return orgId && projectId ? { orgId, projectId } : null;
+  const workspaceId = DEMO_CONFIG.WORKSPACE_ID;
+  return orgId && workspaceId ? { orgId, workspaceId } : null;
 }

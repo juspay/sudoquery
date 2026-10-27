@@ -2,14 +2,14 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Box, Typography, Button, TextField, Alert, Paper } from '@mui/material';
 import { useOrganization } from '../contexts/OrganizationContext';
-import { useProject } from '../contexts/ProjectContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { OnboardingProgressStepper } from '../components/Onboarding/OnboardingProgressStepper';
 import { fontFamilyDisplay } from '../theme/tokens';
 
-export default function OnboardingProjectPage() {
+export default function OnboardingWorkspacePage() {
   const navigate = useNavigate();
   const { currentOrganization } = useOrganization();
-  const { createProject } = useProject();
+  const { createWorkspace } = useWorkspace();
 
   const [name, setName] = useState('');
   const [loading, setLoading] = useState(false);
@@ -17,7 +17,7 @@ export default function OnboardingProjectPage() {
 
   const handleSubmit = async () => {
     if (!name.trim()) {
-      setError('Please enter a project name.');
+      setError('Please enter a workspace name.');
       return;
     }
     if (!currentOrganization) {
@@ -29,10 +29,10 @@ export default function OnboardingProjectPage() {
     setError(null);
 
     try {
-      await createProject(name.trim());
+      await createWorkspace(name.trim());
       navigate('/app/chat', { replace: true });
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create project.');
+      setError(err instanceof Error ? err.message : 'Failed to create workspace.');
     } finally {
       setLoading(false);
     }
@@ -52,10 +52,10 @@ export default function OnboardingProjectPage() {
         sx={{ p: { xs: 3, sm: 5 }, borderRadius: 2, border: '1px solid', borderColor: 'divider', bgcolor: '#fff' }}
       >
         <Typography variant="h3" sx={{ fontFamily: fontFamilyDisplay, fontWeight: 700, mb: 0.75 }}>
-          Create your first project
+          Create your first workspace
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3.5 }}>
-          Projects contain your analytics configurations, queries, and team access rules.
+          Workspaces contain your analytics configurations, queries, and team access rules.
         </Typography>
 
         {error && (
@@ -63,7 +63,7 @@ export default function OnboardingProjectPage() {
         )}
 
         <TextField
-          label="Project name"
+          label="Workspace name"
           value={name}
           onChange={(e) => {
             setName(e.target.value);
@@ -74,7 +74,7 @@ export default function OnboardingProjectPage() {
           fullWidth
           autoFocus
           placeholder="e.g., Marketing Analytics, Production Core"
-          helperText="You can create more projects later."
+          helperText="You can create more workspaces later."
           inputProps={{ maxLength: 60 }}
         />
 

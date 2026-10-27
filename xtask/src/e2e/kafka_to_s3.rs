@@ -58,10 +58,10 @@ struct Produced {
     payload: Vec<u8>,
 }
 
-/// An org/project/hour group the archiver segregates events into.
+/// An org/workspace/hour group the archiver segregates events into.
 struct Group {
     org_id: String,
-    project_id: String,
+    workspace_id: String,
     hour: u32,
 }
 
@@ -70,7 +70,7 @@ impl Group {
     fn prefix(&self) -> String {
         format!(
             "{}/{}/dt={DATE}/hour={:02}/",
-            self.org_id, self.project_id, self.hour
+            self.org_id, self.workspace_id, self.hour
         )
     }
 
@@ -82,7 +82,7 @@ impl Group {
                 CanonicalEvent::builder()
                     .name("archiver_test_event".to_owned())
                     .org_id(self.org_id.clone())
-                    .project_id(self.project_id.clone())
+                    .workspace_id(self.workspace_id.clone())
                     .anon_id(format!("anon-{}", short_id()))
                     .occured_at(at)
                     .arrived_at(Some(at))
@@ -107,11 +107,11 @@ impl Ctx {
         self.group_in(&format!("e2e-org-{}", short_id()), hour)
     }
 
-    /// A fresh project in `org_id`.
+    /// A fresh workspace in `org_id`.
     fn group_in(&self, org_id: &str, hour: u32) -> Group {
         Group {
             org_id: org_id.to_owned(),
-            project_id: format!("e2e-proj-{}", short_id()),
+            workspace_id: format!("e2e-workspace-{}", short_id()),
             hour,
         }
     }
@@ -246,7 +246,7 @@ async fn run_with_infra(ctx: &Ctx, cases: &[&Case<Ctx>]) -> anyhow::Result<bool>
 
 cases![Ctx:
     archives_a_full_batch_as_one_object,
-    segregates_events_by_org_and_project,
+    segregates_events_by_org_and_workspace,
     segregates_events_by_arrival_hour,
     keeps_consuming_after_a_flush,
     quarantines_unroutable_payloads,
@@ -263,7 +263,7 @@ async fn archives_a_full_batch_as_one_object(ctx: &Ctx) -> anyhow::Result<()> {
     ctx.expect_archived(&group.prefix(), &[&produced]).await
 }
 
-async fn segregates_events_by_org_and_project(ctx: &Ctx) -> anyhow::Result<()> {
+async fn segregates_events_by_org_and_workspace(ctx: &Ctx) -> anyhow::Result<()> {
     let shop = ctx.group(13);
     let blog = ctx.group_in(&shop.org_id, 13);
     let other_org = ctx.group(13);
@@ -299,7 +299,7 @@ async fn segregates_events_by_arrival_hour(ctx: &Ctx) -> anyhow::Result<()> {
     let night = ctx.group(3);
     let afternoon = Group {
         org_id: night.org_id.clone(),
-        project_id: night.project_id.clone(),
+        workspace_id: night.workspace_id.clone(),
         hour: 14,
     };
 
@@ -473,7 +473,7 @@ async fn merges_every_subscribed_topic_into_one_object(ctx: &Ctx) -> anyhow::Res
     .await
 }
 
-/// Projects get topics while the archiver runs, so it subscribes to a `^`
+/// Workspaces get topics while the archiver runs, so it subscribes to a `^`
 /// pattern: a matching topic created after it started is archived too.
 async fn a_topic_pattern_picks_up_topics_created_later(ctx: &Ctx) -> anyhow::Result<()> {
     let family = format!("{}-pattern-{}", ctx.run_id, short_id());
@@ -482,7 +482,7 @@ async fn a_topic_pattern_picks_up_topics_created_later(ctx: &Ctx) -> anyhow::Res
         .await?;
 
     let group = ctx.group(13);
-    let topic = format!("{family}.{}.{}", group.org_id, group.project_id);
+    let topic = format!("{family}.{}.{}", group.org_id, group.workspace_id);
     ctx.kafka.create_topic(&topic).await?;
     let produced = ctx.produce(&topic, &group.events(BATCH)).await?;
 

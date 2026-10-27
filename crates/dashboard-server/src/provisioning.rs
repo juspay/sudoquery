@@ -1,19 +1,19 @@
-//! Per-project infrastructure: the project's Kafka topic, its ClickHouse
-//! database (`ckh/project.sql`) and user, and its OpenSearch data stream.
-//! The admin API provisions them after the project is created (see
-//! `routes/admin.rs`); deleting the project drops them all.
+//! Per-workspace infrastructure: the workspace's Kafka topic, its ClickHouse
+//! database (`ckh/workspace.sql`) and user, and its OpenSearch data stream.
+//! The admin API provisions them after the workspace is created (see
+//! `routes/admin.rs`); deleting the workspace drops them all.
 //!
 //! Every step is idempotent in both directions, so provisioning or
 //! deprovisioning can be re-run after a partial failure. Every step is
 //! bounded by [`STEP_TIMEOUT`], so an attempt always ends before
-//! [`STALE_CREATING_AFTER`] lets another attempt take the project over.
+//! [`STALE_CREATING_AFTER`] lets another attempt take the workspace over.
 
 use std::any::Any;
 use std::future::Future;
 use std::panic::AssertUnwindSafe;
 use std::time::Duration;
 
-use canonical_event::{OrgId, ProjectId};
+use canonical_event::{OrgId, WorkspaceId};
 use chrono::{DateTime, Utc};
 use futures_util::FutureExt;
 use rdkafka::admin::{AdminClient, AdminOptions, NewTopic, TopicReplication};
@@ -27,14 +27,14 @@ use crate::AppState;
 use crate::clickhouse::{self, ClickHouseError};
 use crate::opensearch::{self, OpenSearchError};
 
-/// Per-project ClickHouse objects; see the file header for placeholders.
-const PROJECT_SQL: &str = include_str!("../../../ckh/project.sql");
+/// Per-workspace ClickHouse objects; see the file header for placeholders.
+const WORKSPACE_SQL: &str = include_str!("../../../ckh/workspace.sql");
 
-/// The tables in a project's database that its ClickHouse user may read.
-pub const PROJECT_TABLES: [&str; 3] = ["events_v2", "user_events_v2", "event_schema_catalog"];
+/// The tables in a workspace's database that its ClickHouse user may read.
+pub const WORKSPACE_TABLES: [&str; 3] = ["events_v2", "user_events_v2", "event_schema_catalog"];
 
 const ORG_ID_PLACEHOLDER: &str = "{org_id}";
-const PROJECT_ID_PLACEHOLDER: &str = "{project_id}";
+const WORKSPACE_ID_PLACEHOLDER: &str = "{workspace_id}";
 /// Kafka's limit on topic name length.
 const MAX_TOPIC_LEN: usize = 249;
 const ADMIN_TIMEOUT: Duration = Duration::from_secs(10);
@@ -42,7 +42,7 @@ const ADMIN_TIMEOUT: Duration = Duration::from_secs(10);
 /// How long one provisioning or deprovisioning step may take.
 pub const STEP_TIMEOUT: Duration = Duration::from_secs(2 * 60);
 
-/// A `CREATING` project whose attempt started this long ago lost it (e.g.
+/// A `CREATING` workspace whose attempt started this long ago lost it (e.g.
 /// the server restarted mid-way), so it may be provisioned or deleted.
 pub const STALE_CREATING_AFTER: Duration = Duration::from_secs(15 * 60);
 
@@ -90,7 +90,7 @@ impl Step {
     ];
 }
 
-/// Why provisioning stopped; stored as the project's `provisioning_error`.
+/// Why provisioning stopped; stored as the workspace's `provisioning_error`.
 #[derive(Debug, Serialize)]
 pub struct ProvisioningFailure {
     pub failed_step: Step,
@@ -102,14 +102,14 @@ pub struct ProvisioningFailure {
     pub failed_at: DateTime<Utc>,
 }
 
-/// Where and how project infrastructure is created, from the environment.
+/// Where and how workspace infrastructure is created, from the environment.
 #[derive(Clone, Debug)]
 pub struct ProvisioningConfig {
     /// Brokers as dashboard-server reaches them (`KAFKA_BROKER_URL`).
     pub kafka_brokers: String,
     /// Brokers as ClickHouse reaches them (`CLICKHOUSE_KAFKA_BROKERS`).
     pub clickhouse_kafka_brokers: String,
-    /// Topic name template (`PROJECT_TOPIC_TEMPLATE`); must render the same
+    /// Topic name template (`WORKSPACE_TOPIC_TEMPLATE`); must render the same
     /// name as the events-collector's `kafka_connector.topic`.
     pub topic_template: String,
     pub topic_partitions: i32,
@@ -137,10 +137,10 @@ impl ProvisioningConfig {
                 .ok_or_else(|| format!("{name} must be a positive integer, got {raw:?}"))
         };
 
-        let topic_template = var("PROJECT_TOPIC_TEMPLATE", "events.{org_id}.{project_id}");
-        if !topic_template.contains(PROJECT_ID_PLACEHOLDER) {
+        let topic_template = var("WORKSPACE_TOPIC_TEMPLATE", "events.{org_id}.{workspace_id}");
+        if !topic_template.contains(WORKSPACE_ID_PLACEHOLDER) {
             return Err(format!(
-                "PROJECT_TOPIC_TEMPLATE must contain {PROJECT_ID_PLACEHOLDER}, got {topic_template:?}"
+                "WORKSPACE_TOPIC_TEMPLATE must contain {WORKSPACE_ID_PLACEHOLDER}, got {topic_template:?}"
             ));
         }
         // Slugs are legal topic characters, so checking the template with a
@@ -148,24 +148,26 @@ impl ProvisioningConfig {
         let sample = render_topic(
             &topic_template,
             "sample-org-aaaaaa",
-            "sample-project-aaaaaa",
+            "sample-workspace-aaaaaa",
         );
         validate_topic(&sample).map_err(|reason| {
-            format!("PROJECT_TOPIC_TEMPLATE renders invalid topics ({reason}): {topic_template:?}")
+            format!(
+                "WORKSPACE_TOPIC_TEMPLATE renders invalid topics ({reason}): {topic_template:?}"
+            )
         })?;
 
         Ok(Self {
             kafka_brokers,
             clickhouse_kafka_brokers: var("CLICKHOUSE_KAFKA_BROKERS", "redpanda:9092"),
             topic_template,
-            topic_partitions: positive("PROJECT_TOPIC_PARTITIONS", "1")?,
-            topic_replication: positive("PROJECT_TOPIC_REPLICATION", "1")?,
+            topic_partitions: positive("WORKSPACE_TOPIC_PARTITIONS", "1")?,
+            topic_replication: positive("WORKSPACE_TOPIC_REPLICATION", "1")?,
         })
     }
 
-    /// The Kafka topic carrying `project`'s events.
-    pub fn topic(&self, org: &OrgId, project: &ProjectId) -> String {
-        render_topic(&self.topic_template, org.as_ref(), project.as_ref())
+    /// The Kafka topic carrying `workspace`'s events.
+    pub fn topic(&self, org: &OrgId, workspace: &WorkspaceId) -> String {
+        render_topic(&self.topic_template, org.as_ref(), workspace.as_ref())
     }
 }
 
@@ -186,21 +188,21 @@ impl<'a> ClickHouseAdmin<'a> {
     }
 }
 
-/// Runs every step of [`Step::ALL`] for `project`. Safe to run again for a
-/// project that already has some or all of its infrastructure.
+/// Runs every step of [`Step::ALL`] for `workspace`. Safe to run again for a
+/// workspace that already has some or all of its infrastructure.
 ///
 /// # Errors
 /// Stops at the first step that fails, times out or panics; earlier steps
 /// stay in place.
-pub async fn provision_project(
+pub async fn provision_workspace(
     state: &AppState,
     org: &OrgId,
-    project: &ProjectId,
+    workspace: &WorkspaceId,
 ) -> Result<(), ProvisioningFailure> {
-    run_steps(STEP_TIMEOUT, |step| run_step(state, step, org, project))
+    run_steps(STEP_TIMEOUT, |step| run_step(state, step, org, workspace))
         .await
         .map_err(|mut failure| {
-            failure.error = stored_error(&failure.error, &state.clickhouse_project_password);
+            failure.error = stored_error(&failure.error, &state.clickhouse_workspace_password);
             failure
         })
 }
@@ -240,13 +242,13 @@ fn panic_message(panic: &(dyn Any + Send)) -> String {
         .unwrap_or_else(|| "non-string panic payload".to_owned())
 }
 
-/// `error` as `provisioning_error` stores it: without the project password,
+/// `error` as `provisioning_error` stores it: without the workspace password,
 /// which a ClickHouse error may echo, and cut to a bounded length.
-fn stored_error(error: &str, project_password: &str) -> String {
-    let redacted = if project_password.is_empty() {
+fn stored_error(error: &str, workspace_password: &str) -> String {
+    let redacted = if workspace_password.is_empty() {
         error.to_owned()
     } else {
-        error.replace(project_password, "[REDACTED]")
+        error.replace(workspace_password, "[REDACTED]")
     };
     opensearch::excerpt(&redacted).to_owned()
 }
@@ -266,16 +268,16 @@ async fn run_step(
     state: &AppState,
     step: Step,
     org: &OrgId,
-    project: &ProjectId,
+    workspace: &WorkspaceId,
 ) -> Result<(), ProvisionError> {
     let config = &state.provisioning;
     let admin = ClickHouseAdmin::of(state);
     match step {
-        Step::KafkaTopic => create_topic(config, &config.topic(org, project)).await,
+        Step::KafkaTopic => create_topic(config, &config.topic(org, workspace)).await,
         Step::ClickhouseDatabase => {
-            let topic = config.topic(org, project);
+            let topic = config.topic(org, workspace);
             let client = Client::new();
-            for statement in project_statements(config, project, &topic) {
+            for statement in workspace_statements(config, workspace, &topic) {
                 clickhouse::execute_admin_query(
                     &client,
                     admin.url,
@@ -287,39 +289,39 @@ async fn run_step(
             }
             Ok(())
         }
-        Step::ClickhouseUser => Ok(clickhouse::create_project_user(
+        Step::ClickhouseUser => Ok(clickhouse::create_workspace_user(
             admin.url,
             admin.user,
             admin.password,
-            &state.clickhouse_project_password,
-            project,
+            &state.clickhouse_workspace_password,
+            workspace,
         )
         .await?),
         Step::OpensearchIndex => Ok(state
             .opensearch
-            .create_data_stream(org.as_ref(), project.as_ref())
+            .create_data_stream(org.as_ref(), workspace.as_ref())
             .await?),
     }
 }
 
-/// Drops `project`'s ClickHouse database (with its Kafka table and views),
+/// Drops `workspace`'s ClickHouse database (with its Kafka table and views),
 /// its ClickHouse user, its topic and its data stream, permanently deleting
-/// its events. Safe to run for a project that has some or none of them.
+/// its events. Safe to run for a workspace that has some or none of them.
 ///
 /// # Errors
 /// Every step is attempted even when an earlier one fails, so as much as
 /// possible is removed; the first failure is returned.
-pub async fn deprovision_project(
+pub async fn deprovision_workspace(
     state: &AppState,
     org: &OrgId,
-    project: &ProjectId,
+    workspace: &WorkspaceId,
 ) -> Result<(), ProvisionError> {
     let config = &state.provisioning;
     let admin = ClickHouseAdmin::of(state);
     // The database first: dropping its Kafka table stops ClickHouse
     // consuming before the topic disappears. The topic before the data
     // stream, so sink-opensearch has nothing left to write to it.
-    let drop_database = format!("DROP DATABASE IF EXISTS `{}` SYNC", project.as_ref());
+    let drop_database = format!("DROP DATABASE IF EXISTS `{}` SYNC", workspace.as_ref());
     let database = bounded(clickhouse::execute_admin_query(
         &Client::new(),
         admin.url,
@@ -329,18 +331,18 @@ pub async fn deprovision_project(
     ))
     .await
     .map(drop);
-    let user = bounded(clickhouse::drop_project_user(
+    let user = bounded(clickhouse::drop_workspace_user(
         admin.url,
         admin.user,
         admin.password,
-        project,
+        workspace,
     ))
     .await;
-    let topic = bounded(delete_topic(config, &config.topic(org, project))).await;
+    let topic = bounded(delete_topic(config, &config.topic(org, workspace))).await;
     let data_stream = bounded(
         state
             .opensearch
-            .delete_data_stream(org.as_ref(), project.as_ref()),
+            .delete_data_stream(org.as_ref(), workspace.as_ref()),
     )
     .await;
     database.and(user).and(topic).and(data_stream)
@@ -456,20 +458,20 @@ async fn delete_topic(config: &ProvisioningConfig, topic: &str) -> Result<(), Pr
     Ok(())
 }
 
-/// `ckh/project.sql` for `project`, one statement per element.
-fn project_statements(
+/// `ckh/workspace.sql` for `workspace`, one statement per element.
+fn workspace_statements(
     config: &ProvisioningConfig,
-    project: &ProjectId,
+    workspace: &WorkspaceId,
     topic: &str,
 ) -> Vec<String> {
-    let database = project.as_ref();
+    let database = workspace.as_ref();
     let consumer_group = format!("clickhouse.{topic}");
     // Slugs and topics are restricted to characters that are safe inside
     // backticks and quotes; the broker list comes from configuration, so it
     // is escaped.
-    let sql = strip_comments(PROJECT_SQL)
+    let sql = strip_comments(WORKSPACE_SQL)
         .replace("{database}", database)
-        .replace("{project_id}", database)
+        .replace("{workspace_id}", database)
         .replace("{topic}", topic)
         .replace("{consumer_group}", &consumer_group)
         .replace(
@@ -495,10 +497,10 @@ fn escape_sql_string(value: &str) -> String {
 }
 
 /// Mirrors the events-collector's topic rendering (`kafka_connector.rs`).
-fn render_topic(template: &str, org: &str, project: &str) -> String {
+fn render_topic(template: &str, org: &str, workspace: &str) -> String {
     template
         .replace(ORG_ID_PLACEHOLDER, org)
-        .replace(PROJECT_ID_PLACEHOLDER, project)
+        .replace(WORKSPACE_ID_PLACEHOLDER, workspace)
 }
 
 fn validate_topic(topic: &str) -> Result<(), String> {
@@ -526,33 +528,33 @@ mod tests {
         ProvisioningConfig {
             kafka_brokers: "localhost:19092".to_owned(),
             clickhouse_kafka_brokers: "redpanda:9092".to_owned(),
-            topic_template: "events.{org_id}.{project_id}".to_owned(),
+            topic_template: "events.{org_id}.{workspace_id}".to_owned(),
             topic_partitions: 1,
             topic_replication: 1,
         }
     }
 
-    fn ids() -> (OrgId, ProjectId) {
+    fn ids() -> (OrgId, WorkspaceId) {
         (
             OrgId::from_str("acme-k3x9qa").unwrap(),
-            ProjectId::from_str("web-shop-9x2k1a").unwrap(),
+            WorkspaceId::from_str("web-shop-9x2k1a").unwrap(),
         )
     }
 
     #[test]
-    fn topic_renders_org_and_project() {
-        let (org, project) = ids();
+    fn topic_renders_org_and_workspace() {
+        let (org, workspace) = ids();
         assert_eq!(
-            config().topic(&org, &project),
+            config().topic(&org, &workspace),
             "events.acme-k3x9qa.web-shop-9x2k1a"
         );
     }
 
     #[test]
     fn statements_fill_every_placeholder() {
-        let (org, project) = ids();
+        let (org, workspace) = ids();
         let config = config();
-        let statements = project_statements(&config, &project, &config.topic(&org, &project));
+        let statements = workspace_statements(&config, &workspace, &config.topic(&org, &workspace));
 
         assert_eq!(
             statements[0],
@@ -561,7 +563,7 @@ mod tests {
         assert!(statements.iter().all(|s| s.contains("IF NOT EXISTS")));
         for placeholder in [
             "{database}",
-            "{project_id}",
+            "{workspace_id}",
             "{topic}",
             "{kafka_brokers}",
             "{consumer_group}",
@@ -585,17 +587,17 @@ mod tests {
         assert!(
             statements
                 .iter()
-                .filter(|s| s.contains("WHERE project_id"))
-                .all(|s| s.contains("WHERE project_id = 'web-shop-9x2k1a'"))
+                .filter(|s| s.contains("WHERE workspace_id"))
+                .all(|s| s.contains("WHERE workspace_id = 'web-shop-9x2k1a'"))
         );
     }
 
     #[test]
     fn broker_list_is_escaped() {
-        let (org, project) = ids();
+        let (org, workspace) = ids();
         let mut config = config();
         config.clickhouse_kafka_brokers = "evil', x='y".to_owned();
-        let statements = project_statements(&config, &project, &config.topic(&org, &project));
+        let statements = workspace_statements(&config, &workspace, &config.topic(&org, &workspace));
         assert!(statements.iter().any(|s| s.contains(r"'evil\', x=\'y'")));
     }
 
@@ -694,7 +696,7 @@ mod tests {
     }
 
     #[test]
-    fn stored_errors_hide_the_project_password_and_are_bounded() {
+    fn stored_errors_hide_the_workspace_password_and_are_bounded() {
         let error = "Code: 62. Syntax error: ... BY 'hunter2' ...";
         assert_eq!(
             stored_error(error, "hunter2"),

@@ -1,5 +1,5 @@
 use axum::response::sse::Event;
-use canonical_event::ProjectId;
+use canonical_event::WorkspaceId;
 use chrono::{Datelike, Utc};
 use once_cell::sync::Lazy;
 use serde_json::{Value, json};
@@ -22,7 +22,7 @@ pub async fn execute_tool(
     name: &str,
     arguments: &str,
     state: &AppState,
-    project_id: &ProjectId,
+    workspace_id: &WorkspaceId,
     tx: &tokio::sync::mpsc::Sender<Result<Event, Infallible>>,
     tool_call_id: &str,
 ) -> Option<Value> {
@@ -46,10 +46,10 @@ pub async fn execute_tool(
             if query.is_empty() {
                 return Some(json!({"error": "No query provided"}));
             }
-            match clickhouse::execute_project_query(
+            match clickhouse::execute_workspace_query(
                 &state.clickhouse_url,
-                project_id,
-                &state.clickhouse_project_password,
+                workspace_id,
+                &state.clickhouse_workspace_password,
                 query,
             )
             .await
@@ -81,10 +81,10 @@ pub async fn execute_tool(
                         "SELECT event_name, property, type FROM event_schema_catalog WHERE event_name = '{}'",
                         name
                     );
-                    match clickhouse::execute_project_query(
+                    match clickhouse::execute_workspace_query(
                         &state.clickhouse_url,
-                        project_id,
-                        &state.clickhouse_project_password,
+                        workspace_id,
+                        &state.clickhouse_workspace_password,
                         &query,
                     )
                     .await
@@ -95,10 +95,10 @@ pub async fn execute_tool(
                 }
                 None => {
                     let query = "SELECT DISTINCT event_name FROM event_schema_catalog LIMIT 100";
-                    match clickhouse::execute_project_query(
+                    match clickhouse::execute_workspace_query(
                         &state.clickhouse_url,
-                        project_id,
-                        &state.clickhouse_project_password,
+                        workspace_id,
+                        &state.clickhouse_workspace_password,
                         query,
                     )
                     .await
@@ -113,7 +113,7 @@ pub async fn execute_tool(
         "list_golden_queries" => Some(golden_queries::list_golden_queries()),
 
         "list_live_dashboards" => {
-            match live_dashboard::list_dashboards_summary(&state.db_pool, project_id).await {
+            match live_dashboard::list_dashboards_summary(&state.db_pool, workspace_id).await {
                 Ok(dashboards) => {
                     let list: Vec<Value> = dashboards
                         .into_iter()

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Typography, Button, Chip, CircularProgress, Paper, Alert } from '@mui/material';
 import { Check as CheckIcon, Loader2 } from 'lucide-react';
 import { useOrganization } from '../contexts/OrganizationContext';
-import { useProject } from '../contexts/ProjectContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { invitationService, type Invitation } from '../services/invitationService';
 import { OnboardingProgressStepper } from '../components/Onboarding/OnboardingProgressStepper';
 import { fontFamilyDisplay } from '../theme/tokens';
@@ -11,7 +11,7 @@ import { fontFamilyDisplay } from '../theme/tokens';
 export default function OnboardingInvitationsPage() {
   const navigate = useNavigate();
   const { refreshOrganizations } = useOrganization();
-  const { refreshProjects } = useProject();
+  const { refreshWorkspaces } = useWorkspace();
   const [invitations, setInvitations] = useState<Invitation[]>([]);
   const [loading, setLoading] = useState(true);
   const [acceptingId, setAcceptingId] = useState<string | null>(null);
@@ -44,7 +44,7 @@ export default function OnboardingInvitationsPage() {
     try {
       await invitationService.acceptInvitation(invitationId);
       await refreshOrganizations();
-      await refreshProjects();
+      await refreshWorkspaces();
       navigate('/app/chat', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to accept invitation');
@@ -57,8 +57,8 @@ export default function OnboardingInvitationsPage() {
     const roleMap: Record<string, string> = {
       org_admin: 'Organization Admin',
       org_user: 'Organization Member',
-      project_admin: 'Project Admin',
-      project_user: 'Project Member',
+      workspace_admin: 'Workspace Admin',
+      workspace_user: 'Workspace Member',
     };
     return roleMap[role] || role;
   };

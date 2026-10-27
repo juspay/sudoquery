@@ -13,7 +13,7 @@ function IconCheck({ size = 10 }: { size?: number }) {
 const STEPS = [
   { label: 'Invitations', path: '/onboarding/invitations' },
   { label: 'Organization', path: '/onboarding/org' },
-  { label: 'Project', path: '/onboarding/project' },
+  { label: 'Workspace', path: '/onboarding/workspace' },
 ];
 
 export function OnboardingProgressStepper() {

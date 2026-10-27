@@ -18,7 +18,7 @@ All configuration is done through the \`init()\` method:
 <tr><td><code>flushInterval</code></td><td><code>number | undefined</code></td><td><code>undefined</code></td><td>Interval in milliseconds for periodic auto-flush. If not set, periodic flush is disabled.</td></tr>
 <tr><td><code>batchSize</code></td><td><code>number | undefined</code></td><td><code>10</code></td><td>Number of events to accumulate before auto-flushing.</td></tr>
 <tr><td><code>endpoint</code></td><td><code>string | undefined</code></td><td><code>"http://localhost:3000/push_batch"</code></td><td>URL where events are sent.</td></tr>
-<tr><td><code>token</code></td><td><code>string | undefined</code></td><td><code>undefined</code></td><td>Project token for authentication. Required for sending events.</td></tr>
+<tr><td><code>token</code></td><td><code>string | undefined</code></td><td><code>undefined</code></td><td>Workspace token for authentication. Required for sending events.</td></tr>
 </tbody>
 </table>
 

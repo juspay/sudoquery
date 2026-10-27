@@ -6,7 +6,7 @@ use uuid::Uuid;
 use crate::{
     AppState,
     db::{chat, message},
-    middleware::{ProjectAccess, auth::AuthUser},
+    middleware::{WorkspaceAccess, auth::AuthUser},
 };
 
 use super::types::{ChatMessage, ChatResponse};
@@ -65,12 +65,12 @@ const GENERATE_TITLE_TOOL: &str = r#"{
 pub async fn generate_title_handler(
     State(state): State<AppState>,
     _auth_user: AuthUser,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
     Json(req): Json<GenerateTitleRequest>,
 ) -> Result<Json<GenerateTitleResponse>, TitleGenError> {
     let chat_id = req.chat_id;
 
-    // Verify chat exists and belongs to this project
+    // Verify chat exists and belongs to this workspace
     let chat = match chat::get_chat_by_id(&state.db_pool, chat_id).await {
         Ok(Some(c)) => c,
         Ok(None) => {
@@ -81,9 +81,9 @@ pub async fn generate_title_handler(
         }
     };
 
-    if chat.project_id != project.id {
+    if chat.workspace_id != workspace.id {
         return Err(TitleGenError::Forbidden(
-            "Chat not found in this project".to_string(),
+            "Chat not found in this workspace".to_string(),
         ));
     }
 

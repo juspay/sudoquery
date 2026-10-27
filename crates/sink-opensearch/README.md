@@ -15,7 +15,7 @@ cargo xtask setup redpanda opensearch opensearch-init \
   opensearch-dashboards opensearch-dashboards-init console
 docker compose exec redpanda rpk cluster health --watch --exit-when-healthy
 docker compose exec redpanda rpk topic create dlq.events -p 3
-# Project topics (events.{org_id}.{project_id}) are created by dashboard-server.
+# Workspace topics (events.{org_id}.{workspace_id}) are created by dashboard-server.
 
 SINK_CONFIG=crates/sink-opensearch/cac.toml LOG_FORMAT=pretty \
   cargo run -p sink-opensearch
@@ -39,7 +39,7 @@ The differences from the collector's file:
 
 - **One key per setting,** named `section.name`: `"batch.max_docs"`, `"opensearch.index"`, and so on. That way an override can change one setting without repeating a whole section.
 - **Unknown or misspelled keys** stop the sink at startup.
-- **Only `opensearch.index` is resolved per org,** for each event's `org_id` and `project_id`, so `[[overrides]]` on those dimensions change where an org's events go. Everything else is resolved once at startup with no org, and org overrides of it are ignored.
+- **Only `opensearch.index` is resolved per org,** for each event's `org_id` and `workspace_id`, so `[[overrides]]` on those dimensions change where an org's events go. Everything else is resolved once at startup with no org, and org overrides of it are ignored.
 - **Org overrides apply live.** The sink re-reads the file every 30 seconds and re-resolves each org's index at most every 30 seconds, so an org override applies within about a minute without a restart. Other settings need a restart.
 
 Every key can also be set from the environment, and **the environment wins over the file.** The variable is the key in upper case with `.` replaced by `_`. Empty values count as unset.
@@ -79,7 +79,7 @@ Other variables:
 
 With `"opensearch.index" = "events-{org_id}"`, each org's events go to their own index (`events-merchant-1`, `events-merchant-2`, …). Orgs can't collide on field types, and each org's data can be kept, sized or deleted on its own.
 
-CAC overrides change the index for one org, or for one of its projects:
+CAC overrides change the index for one org, or for one of its workspaces:
 
 ```toml
 # A dedicated index for a big org.

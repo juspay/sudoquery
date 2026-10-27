@@ -3,15 +3,15 @@ use axum::{
     http::StatusCode,
     response::Json,
 };
-use canonical_event::{OrgId, ProjectId};
+use canonical_event::{OrgId, WorkspaceId};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 use uuid::Uuid;
 
 use crate::{
     AppState,
-    db::{self, Invitation, InvitationStatus, InvitationType, OrgRole, ProjectRole},
-    middleware::{AuthUser, OrgAdmin, OrgContext, ProjectAccess},
+    db::{self, Invitation, InvitationStatus, InvitationType, OrgRole, WorkspaceRole},
+    middleware::{AuthUser, OrgAdmin, OrgContext, WorkspaceAccess},
 };
 
 // ============ Create Invitation ============
@@ -19,7 +19,7 @@ use crate::{
 #[derive(Deserialize)]
 pub struct CreateInvitationRequest {
     pub email: String,
-    pub role: String, // "org_admin", "org_user", "project_admin", "project_user"
+    pub role: String, // "org_admin", "org_user", "workspace_admin", "workspace_user"
 }
 
 #[derive(Serialize)]
@@ -41,7 +41,7 @@ impl From<Invitation> for InvitationResponse {
             email: inv.email,
             invitation_type: match inv.invitation_type {
                 InvitationType::Organization => "organization".to_string(),
-                InvitationType::Project => "project".to_string(),
+                InvitationType::Workspace => "workspace".to_string(),
             },
             target_id: inv.target_id.to_string(),
             role: inv.role,
@@ -93,13 +93,15 @@ pub async fn create_organization_invitation(
     Ok((StatusCode::CREATED, Json(invitation.into())))
 }
 
-// ============ Create Project Invitation ============
+// ============ Create Workspace Invitation ============
 
-pub async fn create_project_invitation(
+pub async fn create_workspace_invitation(
     State(state): State<AppState>,
-    ProjectAccess {
-        auth_user, project, ..
-    }: ProjectAccess,
+    WorkspaceAccess {
+        auth_user,
+        workspace,
+        ..
+    }: WorkspaceAccess,
     Json(req): Json<CreateInvitationRequest>,
 ) -> Result<(StatusCode, Json<InvitationResponse>), InvitationError> {
     // Prevent self-invite
@@ -107,18 +109,18 @@ pub async fn create_project_invitation(
         return Err(InvitationError::CannotInviteSelf);
     }
 
-    // Validate role for project
+    // Validate role for workspace
     let role = match req.role.as_str() {
-        "project_admin" => "project_admin",
-        "project_user" => "project_user",
+        "workspace_admin" => "workspace_admin",
+        "workspace_user" => "workspace_user",
         _ => return Err(InvitationError::InvalidRole),
     };
 
     let invitation = db::create_invitation(
         &state.db_pool,
         &req.email,
-        InvitationType::Project,
-        project.id.as_ref(),
+        InvitationType::Workspace,
+        workspace.id.as_ref(),
         role,
         auth_user.user.id,
     )
@@ -174,16 +176,16 @@ pub async fn list_organization_invitations(
     Ok(Json(response))
 }
 
-// ============ List Project Invitations ============
+// ============ List Workspace Invitations ============
 
-pub async fn list_project_invitations(
+pub async fn list_workspace_invitations(
     State(state): State<AppState>,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
 ) -> Result<Json<Vec<InvitationResponse>>, InvitationError> {
     let invitations = db::list_invitations_for_target(
         &state.db_pool,
-        project.id.as_ref(),
-        InvitationType::Project,
+        workspace.id.as_ref(),
+        InvitationType::Workspace,
     )
     .await
     .map_err(|e| InvitationError::Database(e.to_string()))?;
@@ -232,7 +234,7 @@ pub async fn accept_invitation(
         .await
         .map_err(|e| InvitationError::Database(e.to_string()))?;
 
-    // Add user to organization or project based on invitation type
+    // Add user to organization or workspace based on invitation type
     match invitation.invitation_type {
         InvitationType::Organization => {
             let role = match invitation.role.as_str() {
@@ -245,14 +247,14 @@ pub async fn accept_invitation(
                 .await
                 .map_err(|e| InvitationError::Database(e.to_string()))?;
         }
-        InvitationType::Project => {
+        InvitationType::Workspace => {
             let role = match invitation.role.as_str() {
-                "project_admin" => ProjectRole::ProjectAdmin,
-                _ => ProjectRole::ProjectUser,
+                "workspace_admin" => WorkspaceRole::WorkspaceAdmin,
+                _ => WorkspaceRole::WorkspaceUser,
             };
-            let project_id = ProjectId::from_str(&invitation.target_id)
+            let workspace_id = WorkspaceId::from_str(&invitation.target_id)
                 .map_err(|_| InvitationError::InvalidTargetId)?;
-            db::add_user_to_project(&state.db_pool, user.id, &project_id, &role)
+            db::add_user_to_workspace(&state.db_pool, user.id, &workspace_id, &role)
                 .await
                 .map_err(|e| InvitationError::Database(e.to_string()))?;
         }
@@ -290,7 +292,7 @@ pub async fn revoke_invitation(
 
     // Only the inviter or an admin can revoke
     // For simplicity, we'll check if the user is the inviter
-    // In a real app, you'd also check if user is org/project admin
+    // In a real app, you'd also check if user is org/workspace admin
     if invitation.invited_by != user.id {
         return Err(InvitationError::Forbidden);
     }

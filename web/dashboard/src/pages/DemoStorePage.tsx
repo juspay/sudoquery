@@ -3,7 +3,7 @@ import { Box, Button, Container, Divider, IconButton, Paper, TextField, Typograp
 import { ArrowLeft, CheckCircle2, Minus, Pencil, Plus, Send, ShoppingBag, Trash2 } from 'lucide-react';
 import { DEMO_CONFIG } from '../config/api';
 import { useOrganization } from '../contexts/OrganizationContext';
-import { useProject } from '../contexts/ProjectContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { CURRENCY, PRODUCTS, formatPrice, type Product } from '../demo/catalog';
 import { isSlug, loadDestination, saveDestination, type Destination } from '../demo/destination';
 import {
@@ -564,8 +564,8 @@ function DestinationPanel({ destination }: { destination: Destination }) {
           <dd>{DEMO_CONFIG.COLLECTOR_URL}</dd>
           <dt>Organization</dt>
           <dd>{destination.orgId}</dd>
-          <dt>Project</dt>
-          <dd>{destination.projectId}</dd>
+          <dt>Workspace</dt>
+          <dd>{destination.workspaceId}</dd>
         </Box>
       )}
     </Panel>
@@ -583,7 +583,7 @@ function DestinationSetup({ onStart }: { onStart: (destination: Destination) => 
           Where should the events go?
         </Typography>
         <Typography color="text.secondary" sx={{ mb: 3 }}>
-          The demo store files its events under a Sudoquery organization and project. You can change them later.
+          The demo store files its events under a Sudoquery organization and workspace. You can change them later.
         </Typography>
         <DestinationForm submitLabel="Open the store" onSubmit={onStart} />
       </Paper>
@@ -603,37 +603,37 @@ function DestinationForm({
   onCancel?: () => void;
 }) {
   const { currentOrganization } = useOrganization();
-  // Projects are only loaded for the current organization, so this one
+  // Workspaces are only loaded for the current organization, so this one
   // belongs to it.
-  const { currentProject } = useProject();
+  const { currentWorkspace } = useWorkspace();
   const [orgInput, setOrgInput] = useState(initial?.orgId ?? '');
-  const [projectInput, setProjectInput] = useState(initial?.projectId ?? '');
+  const [workspaceInput, setWorkspaceInput] = useState(initial?.workspaceId ?? '');
 
   const orgId = orgInput.trim().toLowerCase();
-  const projectId = projectInput.trim().toLowerCase();
+  const workspaceId = workspaceInput.trim().toLowerCase();
   const orgInvalid = orgId !== '' && !isSlug(orgId);
-  const projectInvalid = projectId !== '' && !isSlug(projectId);
+  const workspaceInvalid = workspaceId !== '' && !isSlug(workspaceId);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
-    onSubmit({ orgId, projectId });
+    onSubmit({ orgId, workspaceId });
   };
 
   const idInputProps = { htmlInput: { spellCheck: false, autoComplete: 'off', style: { fontFamily: fontFamilyMono } } };
 
   return (
     <Box component="form" onSubmit={submit} sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-      {currentOrganization && currentProject && (
+      {currentOrganization && currentWorkspace && (
         <Button
           variant="outlined"
           size="small"
           onClick={() => {
             setOrgInput(currentOrganization.id);
-            setProjectInput(currentProject.id);
+            setWorkspaceInput(currentWorkspace.id);
           }}
           sx={{ alignSelf: 'flex-start', textTransform: 'none' }}
         >
-          Use {currentOrganization.name} / {currentProject.name}
+          Use {currentOrganization.name} / {currentWorkspace.name}
         </Button>
       )}
       <TextField
@@ -647,18 +647,18 @@ function DestinationForm({
         slotProps={idInputProps}
       />
       <TextField
-        label="Project ID"
+        label="Workspace ID"
         size="small"
         required
-        value={projectInput}
-        onChange={(event) => setProjectInput(event.target.value)}
-        error={projectInvalid}
-        helperText={projectInvalid ? 'Must be a project slug, e.g. web-shop-9x2k1a.' : 'Sent as x-project-id (project_id).'}
+        value={workspaceInput}
+        onChange={(event) => setWorkspaceInput(event.target.value)}
+        error={workspaceInvalid}
+        helperText={workspaceInvalid ? 'Must be a workspace slug, e.g. web-shop-9x2k1a.' : 'Sent as x-workspace-id (workspace_id).'}
         slotProps={idInputProps}
       />
       <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1 }}>
         {onCancel && <Button onClick={onCancel}>Cancel</Button>}
-        <Button type="submit" variant="contained" disabled={!orgId || !projectId || orgInvalid || projectInvalid}>
+        <Button type="submit" variant="contained" disabled={!orgId || !workspaceId || orgInvalid || workspaceInvalid}>
           {submitLabel}
         </Button>
       </Box>

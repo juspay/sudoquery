@@ -14,7 +14,7 @@ export interface SudoQueryConfig {
   token?: string;
   headers?: Record<string, string>;
   orgId?: string | null;
-  projectId?: string | null;
+  workspaceId?: string | null;
   source?: string | null;
   sessionId?: string | null;
 }
@@ -53,9 +53,9 @@ class SudoQuery {
       Configuration.setOrgId(config.orgId);
     }
 
-    if (config?.projectId !== undefined) {
-      warnIfNotSlug("projectId", config.projectId);
-      Configuration.setProjectId(config.projectId);
+    if (config?.workspaceId !== undefined) {
+      warnIfNotSlug("workspaceId", config.workspaceId);
+      Configuration.setWorkspaceId(config.workspaceId);
     }
 
     if (config?.source !== undefined) {
@@ -168,9 +168,9 @@ class SudoQuery {
     if (!orgId || orgId.trim().length === 0) {
       throw new Error("orgId is required before tracking events");
     }
-    const projectId = Configuration.projectId;
-    if (!projectId || projectId.trim().length === 0) {
-      throw new Error("projectId is required before tracking events");
+    const workspaceId = Configuration.workspaceId;
+    if (!workspaceId || workspaceId.trim().length === 0) {
+      throw new Error("workspaceId is required before tracking events");
     }
 
     const superProperties = SuperProperties.getSuperProperties();
@@ -181,7 +181,7 @@ class SudoQuery {
       id: generateUuid(),
       name: eventName.toString(),
       org_id: orgId,
-      project_id: projectId,
+      workspace_id: workspaceId,
       session_id: Configuration.sessionId ?? getSessionId(),
       anon_id: AnonymousId.getOrCreate(),
       actor_id: this.currentUser,
@@ -214,11 +214,11 @@ function mergeProperties(
 const SLUG_PATTERN = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
 
 /**
- * Org and project ids are server-generated slugs (e.g. "acme-store-k3x9qa").
+ * Org and workspace ids are server-generated slugs (e.g. "acme-store-k3x9qa").
  * Warn — never throw — when a provided id deviates from that shape so the
  * misconfiguration is visible without breaking the host application.
  */
-function warnIfNotSlug(field: "orgId" | "projectId", value: string | null): void {
+function warnIfNotSlug(field: "orgId" | "workspaceId", value: string | null): void {
   if (value === null || SLUG_PATTERN.test(value)) {
     return;
   }

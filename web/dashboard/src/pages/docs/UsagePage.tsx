@@ -17,7 +17,7 @@ HyperAnalytics.init({
   flushInterval: 5000,    // Auto-flush every 5 seconds (optional)
   batchSize: 20,          // Batch 20 events before flushing (default: 10)
   endpoint: 'https://api.example.com/events',  // Custom endpoint (default: http://localhost:3000/push_batch)
-  token: 'YOUR_PROJECT_TOKEN'  // Project token for authentication (required)
+  token: 'YOUR_WORKSPACE_TOKEN'  // Workspace token for authentication (required)
 });
 \`\`\`
 

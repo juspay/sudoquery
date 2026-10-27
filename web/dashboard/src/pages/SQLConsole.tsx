@@ -13,10 +13,10 @@ import {
 import { Plus as PlusIcon, X as CloseIcon } from 'lucide-react';
 import { consoleService } from '../services/consoleService';
 import ConsoleEditor from '../components/ConsoleEditor';
-import type { UserProjectConsole } from '../types/api';
+import type { UserWorkspaceConsole } from '../types/api';
 
 export default function SQLConsole() {
-  const [consoles, setConsoles] = useState<UserProjectConsole[]>([]);
+  const [consoles, setConsoles] = useState<UserWorkspaceConsole[]>([]);
   const [activeConsoleId, setActiveConsoleId] = useState<string>('');
   const [queryByConsole, setQueryByConsole] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);

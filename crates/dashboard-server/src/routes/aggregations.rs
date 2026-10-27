@@ -5,9 +5,9 @@ use serde_json::Value;
 
 use crate::{
     AppState,
-    middleware::ProjectAccess,
+    middleware::WorkspaceAccess,
     opensearch::{Facets, Histogram},
-    routes::search::{SearchError, project_scope},
+    routes::search::{SearchError, workspace_scope},
 };
 
 // ============ Request Types ============
@@ -38,10 +38,10 @@ pub struct FacetsRequest {
 
 pub async fn histogram(
     State(state): State<AppState>,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
     Json(req): Json<HistogramRequest>,
 ) -> Result<Json<Histogram>, SearchError> {
-    let scope = project_scope(&project)?;
+    let scope = workspace_scope(&workspace)?;
 
     let histogram = state
         .opensearch
@@ -57,10 +57,10 @@ pub async fn histogram(
 /// list: the aggregation reads every event it matches.
 pub async fn facets(
     State(state): State<AppState>,
-    ProjectAccess { project, .. }: ProjectAccess,
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
     Json(req): Json<FacetsRequest>,
 ) -> Result<Json<Facets>, SearchError> {
-    let scope = project_scope(&project)?;
+    let scope = workspace_scope(&workspace)?;
 
     let facets = state
         .opensearch

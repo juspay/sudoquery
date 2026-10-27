@@ -19,7 +19,7 @@ import { EmptyStateCard } from '../components/shared/EmptyStateCard';
 import { InlineMetric, type ActionItem } from '../components/Chat/InlineMetric';
 import { dashboardService, type Dashboard } from '../services/dashboardService';
 import { useToast } from '../contexts/ToastContext';
-import { useProject } from '../contexts/ProjectContext';
+import { useWorkspace } from '../contexts/WorkspaceContext';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { trackEvent, trackDashboardCreationOpened, trackDashboardCreationClosed} from '../utils/analytics';
 import { PageHeader } from '../components/shared/PageHeader';
@@ -27,7 +27,7 @@ import { PageHeader } from '../components/shared/PageHeader';
 export default function DashboardPage() {
   const navigate = useNavigate();
   const { currentOrganization } = useOrganization();
-  const { currentProject } = useProject();
+  const { currentWorkspace } = useWorkspace();
   const { showSuccess, showError } = useToast();
   const [dashboards, setDashboards] = useState<Dashboard[]>([]);
   const [loading, setLoading] = useState(true);
@@ -38,7 +38,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     fetchDashboards();
-  }, [currentOrganization, currentProject]);
+  }, [currentOrganization, currentWorkspace]);
 
   useEffect(() => {
     trackEvent('page_view', { page: 'dashboard' });
@@ -57,20 +57,20 @@ export default function DashboardPage() {
   };
 
   const fetchDashboards = async () => {
-    if (!currentOrganization || !currentProject) {
+    if (!currentOrganization || !currentWorkspace) {
       setLoading(false);
       return;
     }
     setLoading(true);
     try {
-      const response = await dashboardService.list(currentOrganization.id, currentProject.id);
+      const response = await dashboardService.list(currentOrganization.id, currentWorkspace.id);
       setDashboards(response);
 
       // Fetch fresh data for each dashboard, preserving order by index
       const updates = await Promise.all(
         response.map(async (dashboard) => {
           try {
-            return await dashboardService.get(currentOrganization.id, currentProject.id, dashboard.id);
+            return await dashboardService.get(currentOrganization.id, currentWorkspace.id, dashboard.id);
           } catch (err) {
             console.error(`Failed to refresh dashboard ${dashboard.id}:`, err);
             return dashboard; // Return cached data if refresh fails
@@ -89,16 +89,16 @@ export default function DashboardPage() {
   };
 
   const handleCreate = async () => {
-    if (!description.trim() || !currentOrganization || !currentProject) return;
+    if (!description.trim() || !currentOrganization || !currentWorkspace) return;
 
     setCreating(true);
     try {
-      await dashboardService.create(currentOrganization.id, currentProject.id, {
+      await dashboardService.create(currentOrganization.id, currentWorkspace.id, {
         description: description.trim(),
         query: '', // Placeholder for now
       });
       showSuccess('Dashboard created successfully.');
-      trackEvent('dashboard_created', { project_id: currentProject.id });
+      trackEvent('dashboard_created', { workspace_id: currentWorkspace.id });
       setCreateDialogOpen(false);
       setDescription('');
       fetchDashboards();
@@ -116,11 +116,11 @@ export default function DashboardPage() {
   };
 
   const handleRefreshStandalone = async (dashboard: Dashboard) => {
-    if (!currentOrganization || !currentProject) return;
+    if (!currentOrganization || !currentWorkspace) return;
 
     setRefreshingId(dashboard.id);
     try {
-      const updated = await dashboardService.get(currentOrganization.id, currentProject.id, dashboard.id);
+      const updated = await dashboardService.get(currentOrganization.id, currentWorkspace.id, dashboard.id);
       setDashboards((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to refresh dashboard';
@@ -131,10 +131,10 @@ export default function DashboardPage() {
   };
 
   const handleDeleteStandalone = async (dashboard: Dashboard) => {
-    if (!currentOrganization || !currentProject) return;
+    if (!currentOrganization || !currentWorkspace) return;
 
     try {
-      await dashboardService.delete(currentOrganization.id, currentProject.id, dashboard.id);
+      await dashboardService.delete(currentOrganization.id, currentWorkspace.id, dashboard.id);
       setDashboards((prev) => prev.filter((d) => d.id !== dashboard.id));
       showSuccess('Dashboard deleted.');
     } catch (err) {

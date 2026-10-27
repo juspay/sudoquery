@@ -67,7 +67,7 @@ describe("Pusher", () => {
           headers: {
             "Content-Type": "application/json",
             "x-org-id": "acme-org-1",
-            "x-project-id": "acme-project-1",
+            "x-workspace-id": "acme-workspace-1",
           },
         })
       );
@@ -287,7 +287,7 @@ describe("Pusher", () => {
             "X-Api-Key": "test-api-key",
             "X-Request-Id": "12345",
             "x-org-id": "acme-org-1",
-            "x-project-id": "acme-project-1",
+            "x-workspace-id": "acme-workspace-1",
           },
         })
       );
@@ -315,19 +315,19 @@ describe("Pusher", () => {
             "Content-Type": "application/json",
             "X-Custom-Header": "custom-value",
             "x-org-id": "acme-org-1",
-            "x-project-id": "acme-project-1",
+            "x-workspace-id": "acme-workspace-1",
             "Authorization": "Bearer my-auth-token",
           },
         })
       );
     });
 
-    it("should include project header when projectId is set", async () => {
+    it("should include workspace header when workspaceId is set", async () => {
       Configuration.setBatchSize(2);
-      Configuration.setProjectId("acme-project-1");
+      Configuration.setWorkspaceId("acme-workspace-1");
 
       for (let i = 1; i <= 2; i++) {
-        Batcher.addToBatch(createMockEvent(i, { project_id: "acme-project-1" }));
+        Batcher.addToBatch(createMockEvent(i, { workspace_id: "acme-workspace-1" }));
       }
 
       await Pusher.pushLogs();
@@ -337,7 +337,7 @@ describe("Pusher", () => {
         expect.objectContaining({
           headers: expect.objectContaining({
             "x-org-id": "acme-org-1",
-            "x-project-id": "acme-project-1",
+            "x-workspace-id": "acme-workspace-1",
           }),
         })
       );
@@ -363,10 +363,10 @@ describe("Pusher", () => {
       consoleErrorSpy.mockRestore();
     });
 
-    it("should not upload without projectId", async () => {
+    it("should not upload without workspaceId", async () => {
       const consoleErrorSpy = jest.spyOn(console, "error").mockImplementation(() => undefined);
-      Configuration.setProjectId(null);
-      Batcher.addToBatch(createMockEvent(1, { project_id: "" }));
+      Configuration.setWorkspaceId(null);
+      Batcher.addToBatch(createMockEvent(1, { workspace_id: "" }));
 
       const result = await Pusher.pushLogs();
 

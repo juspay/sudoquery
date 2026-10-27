@@ -6,7 +6,7 @@ describe('SudoQuery', () => {
   beforeEach(() => {
     Configuration.reset();
     Configuration.setOrgId('acme-org-1');
-    Configuration.setProjectId('acme-project-1');
+    Configuration.setWorkspaceId('acme-workspace-1');
     Batcher.reset();
     SudoQuery['didInit'] = false;
     SudoQuery.removeUser();
@@ -44,13 +44,13 @@ describe('SudoQuery', () => {
         warnSpy.mockRestore();
       });
 
-      it('should warn naming projectId when projectId does not match the slug shape', () => {
+      it('should warn naming workspaceId when workspaceId does not match the slug shape', () => {
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-        SudoQuery.init({ orgId: 'acme-store-k3x9qa', projectId: 'NOT_A_SLUG' });
+        SudoQuery.init({ orgId: 'acme-store-k3x9qa', workspaceId: 'NOT_A_SLUG' });
 
         expect(warnSpy).toHaveBeenCalledTimes(1);
-        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('projectId'));
+        expect(warnSpy).toHaveBeenCalledWith(expect.stringContaining('workspaceId'));
 
         warnSpy.mockRestore();
       });
@@ -70,7 +70,7 @@ describe('SudoQuery', () => {
 
         SudoQuery.init({
           orgId: 'acme-store-k3x9qa',
-          projectId: 'acme-store-web-q8r2zt',
+          workspaceId: 'acme-store-web-q8r2zt',
         });
 
         expect(warnSpy).not.toHaveBeenCalled();
@@ -91,7 +91,7 @@ describe('SudoQuery', () => {
       it('should not warn for explicitly nulled ids', () => {
         const warnSpy = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
-        SudoQuery.init({ orgId: null, projectId: null });
+        SudoQuery.init({ orgId: null, workspaceId: null });
 
         expect(warnSpy).not.toHaveBeenCalled();
 
@@ -228,12 +228,12 @@ describe('SudoQuery', () => {
         }).toThrow('orgId is required before tracking events');
       });
 
-      it('should throw when projectId is missing', () => {
-        Configuration.setProjectId(null);
+      it('should throw when workspaceId is missing', () => {
+        Configuration.setWorkspaceId(null);
 
         expect(() => {
           SudoQuery.track('event_name', {});
-        }).toThrow('projectId is required before tracking events');
+        }).toThrow('workspaceId is required before tracking events');
       });
     });
 

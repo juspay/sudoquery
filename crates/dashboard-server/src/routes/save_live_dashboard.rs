@@ -9,7 +9,7 @@ use uuid::Uuid;
 use crate::{
     AppState,
     db::{self, message},
-    middleware::ProjectAdmin,
+    middleware::WorkspaceAdmin,
 };
 
 // ============ Request/Response Types ============
@@ -29,7 +29,7 @@ pub struct SaveLiveDashboardResponse {
 
 pub async fn save_live_dashboard_from_tool_call(
     State(state): State<AppState>,
-    ProjectAdmin { project, .. }: ProjectAdmin,
+    WorkspaceAdmin { workspace, .. }: WorkspaceAdmin,
     Path(chat_id): Path<Uuid>,
     Json(req): Json<SaveLiveDashboardRequest>,
 ) -> Result<(StatusCode, Json<SaveLiveDashboardResponse>), SaveDashboardError> {
@@ -105,7 +105,7 @@ pub async fn save_live_dashboard_from_tool_call(
     // 9. Check if dashboard already exists with this creation_source
     let creation_source = format!("{}-{}", req.message_id, req.tool_call_id);
     if let Some(existing) =
-        db::live_dashboard::get_dashboard_by_source(&state.db_pool, &project.id, &creation_source)
+        db::live_dashboard::get_dashboard_by_source(&state.db_pool, &workspace.id, &creation_source)
             .await
             .map_err(|e| SaveDashboardError::Database(e.to_string()))?
     {
@@ -115,7 +115,7 @@ pub async fn save_live_dashboard_from_tool_call(
     // 10. Create the dashboard
     let dashboard = db::live_dashboard::create_dashboard(
         &state.db_pool,
-        &project.id,
+        &workspace.id,
         &query,
         description,
         title,

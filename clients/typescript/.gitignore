@@ -43,7 +43,7 @@ Thumbs.db
 *.swp
 *.swo
 *~
-.project
+.workspace
 .classpath
 .settings/
 

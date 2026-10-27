@@ -77,8 +77,8 @@ export default function SettingsLayout() {
             isAdmin={isAdmin}
           />
           <SettingsNavItem
-            to="/app/settings/project"
-            label="Project"
+            to="/app/settings/workspace"
+            label="Workspace"
             adminOnly
             isAdmin={isAdmin}
           />

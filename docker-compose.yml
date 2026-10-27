@@ -90,8 +90,8 @@ services:
       REDPANDA_BROKER_LIST: "redpanda:9092"
       CLICKHOUSE_USER: "default"
       CLICKHOUSE_PASSWORD: "OeTMIwYfwg7qwa1idy4cO3Is"
-      # dashboard-server creates each project's database and user
-      # (ckh/project.sql), which needs access management.
+      # dashboard-server creates each workspace's database and user
+      # (ckh/workspace.sql), which needs access management.
       CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "1"
     ports:
       - "8123:8123"

@@ -3,7 +3,7 @@ import type { JsonValue } from '../types/funnel';
 
 export interface Dashboard {
   id: string;
-  project_id: string;
+  workspace_id: string;
   query: string;
   description: string;
   chart_config: string | null;
@@ -30,42 +30,42 @@ interface ListDashboardsResponse {
   dashboards: Dashboard[];
 }
 
-function headers(organizationId: string, projectId: string): Record<string, string> {
+function headers(organizationId: string, workspaceId: string): Record<string, string> {
   return {
     'X-Organization-Id': organizationId,
-    'X-Project-Id': projectId,
+    'X-Workspace-Id': workspaceId,
   };
 }
 
 export const dashboardService = {
-  async list(organizationId: string, projectId: string): Promise<Dashboard[]> {
-    const response = await apiClient.get<ListDashboardsResponse>('/project/live-dashboards', {}, {
-      headers: headers(organizationId, projectId),
+  async list(organizationId: string, workspaceId: string): Promise<Dashboard[]> {
+    const response = await apiClient.get<ListDashboardsResponse>('/workspace/live-dashboards', {}, {
+      headers: headers(organizationId, workspaceId),
     });
     return response.dashboards;
   },
 
-  async get(organizationId: string, projectId: string, dashboardId: string): Promise<Dashboard> {
+  async get(organizationId: string, workspaceId: string, dashboardId: string): Promise<Dashboard> {
     return apiClient.get<Dashboard>('/live-dashboard', { dashboard_id: dashboardId }, {
-      headers: headers(organizationId, projectId),
+      headers: headers(organizationId, workspaceId),
     });
   },
 
-  async create(organizationId: string, projectId: string, data: CreateDashboardRequest): Promise<Dashboard> {
-    return apiClient.post<Dashboard>('/project/live-dashboards', data, {
-      headers: headers(organizationId, projectId),
+  async create(organizationId: string, workspaceId: string, data: CreateDashboardRequest): Promise<Dashboard> {
+    return apiClient.post<Dashboard>('/workspace/live-dashboards', data, {
+      headers: headers(organizationId, workspaceId),
     });
   },
 
-  async update(organizationId: string, projectId: string, data: UpdateDashboardRequest): Promise<Dashboard> {
+  async update(organizationId: string, workspaceId: string, data: UpdateDashboardRequest): Promise<Dashboard> {
     return apiClient.patch<Dashboard>('/live-dashboard', data, {
-      headers: headers(organizationId, projectId),
+      headers: headers(organizationId, workspaceId),
     });
   },
 
-  async delete(organizationId: string, projectId: string, dashboardId: string): Promise<void> {
+  async delete(organizationId: string, workspaceId: string, dashboardId: string): Promise<void> {
     await apiClient.delete('/live-dashboard', {
-      headers: headers(organizationId, projectId),
+      headers: headers(organizationId, workspaceId),
       params: { dashboard_id: dashboardId },
     });
   },
@@ -75,7 +75,7 @@ export const dashboardService = {
     messageId: string,
     toolCallId: string
   ): Promise<{ dashboard_id: string }> {
-    return apiClient.post<{ dashboard_id: string }>(`/project/chat/${chatId}/save-dashboard`, {
+    return apiClient.post<{ dashboard_id: string }>(`/workspace/chat/${chatId}/save-dashboard`, {
       message_id: messageId,
       tool_call_id: toolCallId,
     });

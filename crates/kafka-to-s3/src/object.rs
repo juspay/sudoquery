@@ -34,11 +34,11 @@ pub fn compress(body: &[u8]) -> std::io::Result<Vec<u8>> {
     zstd::stream::encode_all(body, ZSTD_LEVEL)
 }
 
-/// `{S3_PREFIX?}/{org}/{project_id}/dt=YYYY-MM-DD/hour=HH/{hash}.jsonl.zst` (D4).
+/// `{S3_PREFIX?}/{org}/{workspace_id}/dt=YYYY-MM-DD/hour=HH/{hash}.jsonl.zst` (D4).
 pub fn group_object_key(prefix: Option<&str>, group: &GroupKey, hash16: &str) -> String {
     let path = format!(
         "{}/{}/dt={}/hour={:02}/{}.jsonl.zst",
-        group.org, group.project_id, group.dt, group.hour, hash16
+        group.org, group.workspace_id, group.dt, group.hour, hash16
     );
     match prefix {
         Some(prefix) => format!("{prefix}/{path}"),
@@ -114,10 +114,10 @@ mod tests {
         }
     }
 
-    fn group(org: &str, project_id: &str, dt: &str, hour: u32) -> GroupKey {
+    fn group(org: &str, workspace_id: &str, dt: &str, hour: u32) -> GroupKey {
         GroupKey {
             org: org.to_string(),
-            project_id: project_id.to_string(),
+            workspace_id: workspace_id.to_string(),
             dt: dt.to_string(),
             hour,
         }
@@ -155,12 +155,12 @@ mod tests {
     fn group_key_includes_prefix_when_present() {
         let key = group_object_key(
             Some("env=prod"),
-            &group("org-a", "proj-b", "2026-09-24", 3),
+            &group("org-a", "workspace-b", "2026-09-24", 3),
             "0123456789abcdef",
         );
         assert_eq!(
             key,
-            "env=prod/org-a/proj-b/dt=2026-09-24/hour=03/0123456789abcdef.jsonl.zst"
+            "env=prod/org-a/workspace-b/dt=2026-09-24/hour=03/0123456789abcdef.jsonl.zst"
         );
     }
 

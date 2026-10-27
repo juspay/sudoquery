@@ -17,7 +17,7 @@ use crate::result;
 /// over the values resolved from `cac.toml`:
 ///
 /// - `KAFKA_TOPIC`: overrides `kafka_connector.topic` (may use the same
-///   `{org_id}` / `{project_id}` placeholders)
+///   `{org_id}` / `{workspace_id}` placeholders)
 /// - `KAFKA_BOOTSTRAP_SERVERS`: overrides `kafka_connector.client_config["bootstrap.servers"]`
 /// - `KAFKA_CLIENT_CONFIG`: JSON object merged into `kafka_connector.client_config`
 ///   using the same keys as `cac.toml` (e.g. `{"message.timeout.ms": "10000"}`);
@@ -210,9 +210,9 @@ fn config_path() -> PathBuf {
 
 pub async fn get_config_from_local_file(
     org_id: String,
-    project_id: String,
+    workspace_id: String,
 ) -> result::Result<Config> {
-    get_config_from_file(config_path(), org_id, project_id).await
+    get_config_from_file(config_path(), org_id, workspace_id).await
 }
 
 pub async fn get_default_config_from_local_file() -> result::Result<Config> {
@@ -222,15 +222,15 @@ pub async fn get_default_config_from_local_file() -> result::Result<Config> {
 async fn get_config_from_file(
     file_path: PathBuf,
     org_id: String,
-    project_id: String,
+    workspace_id: String,
 ) -> result::Result<Config> {
     let mut evaluation_context = EvaluationContext::default();
     evaluation_context.add_custom_field("org_id", org_id.clone());
-    evaluation_context.add_custom_field("project_id", project_id.clone());
+    evaluation_context.add_custom_field("workspace_id", workspace_id.clone());
 
     let mut config = get_config_from_file_for_context(file_path, evaluation_context).await?;
     config.kafka_connector.topic =
-        render_topic(&config.kafka_connector.topic, &org_id, &project_id)?;
+        render_topic(&config.kafka_connector.topic, &org_id, &workspace_id)?;
     Ok(config)
 }
 
@@ -292,7 +292,10 @@ mod tests {
                 .await
                 .unwrap();
 
-        assert_eq!(config.kafka_connector.topic, "events.{org_id}.{project_id}");
+        assert_eq!(
+            config.kafka_connector.topic,
+            "events.{org_id}.{workspace_id}"
+        );
         assert!(config.allowed_events.is_none());
         assert!(
             config

@@ -2,7 +2,7 @@ import { Chip, Box } from '@mui/material';
 import { ShieldAlert, ShieldCheck, User } from 'lucide-react';
 import { colorBluePale, colorBlueLight, colorRosePale, colorRoseDark, colorCream3, colorInk60 } from '../../theme/tokens';
 
-export type RoleType = 'super_admin' | 'org_admin' | 'org_user' | 'project_admin' | 'project_user';
+export type RoleType = 'super_admin' | 'org_admin' | 'org_user' | 'workspace_admin' | 'workspace_user';
 
 interface RoleBadgeProps {
   role: RoleType;
@@ -13,8 +13,8 @@ const roleConfig: Record<RoleType, { label: string; bg: string; color: string; i
   super_admin: { label: 'Super Admin', bg: colorRosePale, color: colorRoseDark, icon: <ShieldAlert size={14} /> },
   org_admin: { label: 'Org Admin', bg: colorBluePale, color: colorBlueLight, icon: <ShieldCheck size={14} /> },
   org_user: { label: 'Org Member', bg: colorCream3, color: colorInk60, icon: <User size={14} /> },
-  project_admin: { label: 'Project Admin', bg: colorBluePale, color: colorBlueLight, icon: <ShieldCheck size={14} /> },
-  project_user: { label: 'Project Member', bg: colorCream3, color: colorInk60, icon: <User size={14} /> },
+  workspace_admin: { label: 'Workspace Admin', bg: colorBluePale, color: colorBlueLight, icon: <ShieldCheck size={14} /> },
+  workspace_user: { label: 'Workspace Member', bg: colorCream3, color: colorInk60, icon: <User size={14} /> },
 };
 
 export function RoleBadge({ role, size = 'small' }: RoleBadgeProps) {

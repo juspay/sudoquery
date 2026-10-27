@@ -1,97 +1,97 @@
 use axum::{extract::State, http::StatusCode, response::Json};
-use canonical_event::ProjectId;
+use canonical_event::WorkspaceId;
 use sea_orm::{ActiveModelTrait, Set};
 use serde::{Deserialize, Serialize};
 use std::str::FromStr;
 
 use crate::{
     AppState,
-    db::{self, DeletionStart, ProjectStatus},
+    db::{self, DeletionStart, WorkspaceStatus},
     entities,
-    middleware::{AuthUser, OrgAdmin, OrgContext, ProjectAccess, ProjectAdminOrOrgAdmin},
+    middleware::{AuthUser, OrgAdmin, OrgContext, WorkspaceAccess, WorkspaceAdminOrOrgAdmin},
     provisioning,
 };
 
-// ============ Create Project ============
+// ============ Create Workspace ============
 
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields)]
-pub struct CreateProjectRequest {
+pub struct CreateWorkspaceRequest {
     pub name: String,
 }
 
 #[derive(Serialize)]
-pub struct CreateProjectResponse {
+pub struct CreateWorkspaceResponse {
     pub id: String,
     pub organization_id: Option<String>,
     pub name: String,
-    pub status: ProjectStatus,
-    pub project_token: String,
+    pub status: WorkspaceStatus,
+    pub workspace_token: String,
     pub created_at: String,
 }
 
-pub async fn create_project(
+pub async fn create_workspace(
     State(state): State<AppState>,
     OrgAdmin {
         organization,
         auth_user,
     }: OrgAdmin,
-    Json(req): Json<CreateProjectRequest>,
-) -> Result<(StatusCode, Json<CreateProjectResponse>), ProjectError> {
-    // The project starts PENDING: its topic, ClickHouse database and user,
+    Json(req): Json<CreateWorkspaceRequest>,
+) -> Result<(StatusCode, Json<CreateWorkspaceResponse>), WorkspaceError> {
+    // The workspace starts PENDING: its topic, ClickHouse database and user,
     // and OpenSearch data stream are provisioned through the admin API.
-    let project = db::create_project(&state.db_pool, Some(&organization.id), &req.name)
+    let workspace = db::create_workspace(&state.db_pool, Some(&organization.id), &req.name)
         .await
-        .map_err(|e| ProjectError::Database(e.to_string()))?;
+        .map_err(|e| WorkspaceError::Database(e.to_string()))?;
 
-    // Add the creator as project admin
-    db::add_user_to_project(
+    // Add the creator as workspace admin
+    db::add_user_to_workspace(
         &state.db_pool,
         auth_user.user.id,
-        &project.id,
-        &db::ProjectRole::ProjectAdmin,
+        &workspace.id,
+        &db::WorkspaceRole::WorkspaceAdmin,
     )
     .await
-    .map_err(|e| ProjectError::Database(e.to_string()))?;
+    .map_err(|e| WorkspaceError::Database(e.to_string()))?;
 
     Ok((
         StatusCode::CREATED,
-        Json(CreateProjectResponse {
-            id: project.id.to_string(),
-            organization_id: project.organization_id.map(|id| id.to_string()),
-            name: project.name,
-            status: project.status,
-            project_token: project.project_token.to_string(),
-            created_at: project.created_at.to_rfc3339(),
+        Json(CreateWorkspaceResponse {
+            id: workspace.id.to_string(),
+            organization_id: workspace.organization_id.map(|id| id.to_string()),
+            name: workspace.name,
+            status: workspace.status,
+            workspace_token: workspace.workspace_token.to_string(),
+            created_at: workspace.created_at.to_rfc3339(),
         }),
     ))
 }
 
-// ============ List Projects (by Organization) ============
+// ============ List Workspaces (by Organization) ============
 
 #[derive(Serialize)]
-pub struct ProjectResponse {
+pub struct WorkspaceResponse {
     pub id: String,
     pub organization_id: Option<String>,
     pub name: String,
     pub timezone: Option<String>,
-    pub status: ProjectStatus,
+    pub status: WorkspaceStatus,
     pub created_at: String,
 }
 
-pub async fn list_projects(
+pub async fn list_workspaces(
     State(state): State<AppState>,
     OrgContext { organization, .. }: OrgContext,
     AuthUser { user, .. }: AuthUser,
-) -> Result<Json<Vec<ProjectResponse>>, ProjectError> {
-    let projects =
-        db::list_user_projects_in_organization(&state.db_pool, user.id, &organization.id)
+) -> Result<Json<Vec<WorkspaceResponse>>, WorkspaceError> {
+    let workspaces =
+        db::list_user_workspaces_in_organization(&state.db_pool, user.id, &organization.id)
             .await
-            .map_err(|e| ProjectError::Database(e.to_string()))?;
+            .map_err(|e| WorkspaceError::Database(e.to_string()))?;
 
-    let response: Vec<ProjectResponse> = projects
+    let response: Vec<WorkspaceResponse> = workspaces
         .into_iter()
-        .map(|p| ProjectResponse {
+        .map(|p| WorkspaceResponse {
             id: p.id.to_string(),
             organization_id: p.organization_id.map(|id| id.to_string()),
             name: p.name,
@@ -104,102 +104,102 @@ pub async fn list_projects(
     Ok(Json(response))
 }
 
-// ============ List My Projects ============
+// ============ List My Workspaces ============
 
-pub async fn list_my_projects(
+pub async fn list_my_workspaces(
     State(state): State<AppState>,
     auth_user: crate::middleware::AuthUser,
-) -> Result<Json<Vec<ProjectResponse>>, ProjectError> {
-    let project_ids = db::list_user_projects(&state.db_pool, auth_user.user.id)
+) -> Result<Json<Vec<WorkspaceResponse>>, WorkspaceError> {
+    let workspace_ids = db::list_user_workspaces(&state.db_pool, auth_user.user.id)
         .await
-        .map_err(|e| ProjectError::Database(e.to_string()))?;
+        .map_err(|e| WorkspaceError::Database(e.to_string()))?;
 
-    let mut projects = Vec::new();
-    for project_id in project_ids {
-        if let Some(project) = db::get_project_by_id(&state.db_pool, &project_id)
+    let mut workspaces = Vec::new();
+    for workspace_id in workspace_ids {
+        if let Some(workspace) = db::get_workspace_by_id(&state.db_pool, &workspace_id)
             .await
-            .map_err(|e| ProjectError::Database(e.to_string()))?
+            .map_err(|e| WorkspaceError::Database(e.to_string()))?
         {
-            projects.push(ProjectResponse {
-                id: project.id.to_string(),
-                organization_id: project.organization_id.map(|id| id.to_string()),
-                name: project.name,
-                timezone: project.timezone,
-                status: project.status,
-                created_at: project.created_at.to_rfc3339(),
+            workspaces.push(WorkspaceResponse {
+                id: workspace.id.to_string(),
+                organization_id: workspace.organization_id.map(|id| id.to_string()),
+                name: workspace.name,
+                timezone: workspace.timezone,
+                status: workspace.status,
+                created_at: workspace.created_at.to_rfc3339(),
             });
         }
     }
 
-    Ok(Json(projects))
+    Ok(Json(workspaces))
 }
 
-// ============ Get Project ============
+// ============ Get Workspace ============
 
-pub async fn get_project(
-    ProjectAccess { project, .. }: ProjectAccess,
-) -> Result<Json<ProjectResponse>, ProjectError> {
-    Ok(Json(ProjectResponse {
-        id: project.id.to_string(),
-        organization_id: project.organization_id.map(|id| id.to_string()),
-        name: project.name,
-        timezone: project.timezone,
-        status: project.status,
-        created_at: project.created_at.to_rfc3339(),
+pub async fn get_workspace(
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
+) -> Result<Json<WorkspaceResponse>, WorkspaceError> {
+    Ok(Json(WorkspaceResponse {
+        id: workspace.id.to_string(),
+        organization_id: workspace.organization_id.map(|id| id.to_string()),
+        name: workspace.name,
+        timezone: workspace.timezone,
+        status: workspace.status,
+        created_at: workspace.created_at.to_rfc3339(),
     }))
 }
 
-// ============ Update Project Name ============
+// ============ Update Workspace Name ============
 
 #[derive(Deserialize)]
-pub struct UpdateProjectRequest {
+pub struct UpdateWorkspaceRequest {
     pub name: Option<String>,
     pub timezone: Option<String>,
 }
 
-pub async fn update_project(
+pub async fn update_workspace(
     State(state): State<AppState>,
-    ProjectAdminOrOrgAdmin { project, .. }: ProjectAdminOrOrgAdmin,
-    Json(req): Json<UpdateProjectRequest>,
-) -> Result<Json<ProjectResponse>, ProjectError> {
+    WorkspaceAdminOrOrgAdmin { workspace, .. }: WorkspaceAdminOrOrgAdmin,
+    Json(req): Json<UpdateWorkspaceRequest>,
+) -> Result<Json<WorkspaceResponse>, WorkspaceError> {
     use sea_orm::EntityTrait;
 
     // Validate timezone if provided
     if let Some(ref tz) = req.timezone {
         if !AvailableTimezones.contains(&tz.as_str()) {
-            return Err(ProjectError::InvalidTimezone);
+            return Err(WorkspaceError::InvalidTimezone);
         }
     }
 
     // Fetch the SeaORM entity
-    let proj = entities::project::Entity::find_by_id(project.id)
+    let existing = entities::workspace::Entity::find_by_id(workspace.id)
         .one(&state.db_conn)
         .await
-        .map_err(|e| ProjectError::Database(e.to_string()))?
-        .ok_or(ProjectError::NotFound)?;
+        .map_err(|e| WorkspaceError::Database(e.to_string()))?
+        .ok_or(WorkspaceError::NotFound)?;
 
-    let mut project_active: entities::project::ActiveModel = proj.into();
+    let mut workspace_active: entities::workspace::ActiveModel = existing.into();
 
     if let Some(name) = req.name {
-        project_active.name = Set(name);
+        workspace_active.name = Set(name);
     }
     if let Some(timezone) = req.timezone {
-        project_active.timezone = Set(Some(timezone));
+        workspace_active.timezone = Set(Some(timezone));
     }
-    project_active.updated_at = Set(chrono::Utc::now().into());
+    workspace_active.updated_at = Set(chrono::Utc::now().into());
 
-    let updated = project_active
+    let updated = workspace_active
         .update(&state.db_conn)
         .await
-        .map_err(|e| ProjectError::Database(e.to_string()))?;
+        .map_err(|e| WorkspaceError::Database(e.to_string()))?;
 
-    Ok(Json(ProjectResponse {
+    Ok(Json(WorkspaceResponse {
         id: updated.id.to_string(),
         organization_id: updated.organization_id.map(|id| id.to_string()),
         name: updated.name,
         timezone: updated.timezone,
         // The update leaves the status alone.
-        status: project.status,
+        status: workspace.status,
         created_at: updated.created_at.to_rfc3339(),
     }))
 }
@@ -210,10 +210,10 @@ pub async fn get_timezones() -> Json<Vec<&'static str>> {
     Json(AvailableTimezones.to_vec())
 }
 
-// ============ Get Project Tokens ============
+// ============ Get Workspace Tokens ============
 
 #[derive(Serialize)]
-pub struct ProjectTokenResponse {
+pub struct WorkspaceTokenResponse {
     pub id: String,
     pub token: String,
     pub name: Option<String>,
@@ -221,17 +221,17 @@ pub struct ProjectTokenResponse {
     pub created_at: String,
 }
 
-pub async fn get_project_tokens(
+pub async fn get_workspace_tokens(
     State(state): State<AppState>,
-    ProjectAccess { project, .. }: ProjectAccess,
-) -> Result<Json<Vec<ProjectTokenResponse>>, ProjectError> {
-    let tokens = db::list_tokens_by_project(&state.db_pool, &project.id)
+    WorkspaceAccess { workspace, .. }: WorkspaceAccess,
+) -> Result<Json<Vec<WorkspaceTokenResponse>>, WorkspaceError> {
+    let tokens = db::list_tokens_by_workspace(&state.db_pool, &workspace.id)
         .await
-        .map_err(|e| ProjectError::Database(e.to_string()))?;
+        .map_err(|e| WorkspaceError::Database(e.to_string()))?;
 
-    let response: Vec<ProjectTokenResponse> = tokens
+    let response: Vec<WorkspaceTokenResponse> = tokens
         .into_iter()
-        .map(|t| ProjectTokenResponse {
+        .map(|t| WorkspaceTokenResponse {
             id: t.id.to_string(),
             token: t.token.to_string(),
             name: t.name,
@@ -243,45 +243,47 @@ pub async fn get_project_tokens(
     Ok(Json(response))
 }
 
-// ============ Delete Project ============
+// ============ Delete Workspace ============
 
-pub async fn delete_project(
+pub async fn delete_workspace(
     State(state): State<AppState>,
     OrgAdmin { organization, .. }: OrgAdmin,
     headers: axum::http::HeaderMap,
-) -> Result<StatusCode, ProjectError> {
-    let project_id_str = headers
-        .get("X-Project-Id")
+) -> Result<StatusCode, WorkspaceError> {
+    let workspace_id_str = headers
+        .get("X-Workspace-Id")
         .and_then(|v| v.to_str().ok())
-        .ok_or(ProjectError::InvalidProjectId)?;
+        .ok_or(WorkspaceError::InvalidWorkspaceId)?;
 
-    let project_id =
-        ProjectId::from_str(project_id_str).map_err(|_| ProjectError::InvalidProjectId)?;
+    let workspace_id =
+        WorkspaceId::from_str(workspace_id_str).map_err(|_| WorkspaceError::InvalidWorkspaceId)?;
 
     // DELETING keeps provisioning away while the infrastructure is dropped.
     let start = db::start_deleting(
         &state.db_pool,
-        &project_id,
+        &workspace_id,
         &organization.id,
         provisioning::STALE_CREATING_AFTER,
     )
     .await
-    .map_err(|e| ProjectError::Database(e.to_string()))?;
+    .map_err(|e| WorkspaceError::Database(e.to_string()))?;
     match start {
         DeletionStart::Started => {}
-        DeletionStart::NotFound => return Err(ProjectError::NotFound),
-        DeletionStart::BeingProvisioned => return Err(ProjectError::BeingProvisioned),
+        DeletionStart::NotFound => return Err(WorkspaceError::NotFound),
+        DeletionStart::BeingProvisioned => return Err(WorkspaceError::BeingProvisioned),
     }
 
-    // Drop the project's infrastructure before the row, so a failed drop
-    // leaves the project DELETING, to delete again.
-    provisioning::deprovision_project(&state, &organization.id, &project_id)
+    // Drop the workspace's infrastructure before the row, so a failed drop
+    // leaves the workspace DELETING, to delete again.
+    provisioning::deprovision_workspace(&state, &organization.id, &workspace_id)
         .await
-        .map_err(|e| ProjectError::Deprovision(format!("Failed to delete project data: {e}")))?;
+        .map_err(|e| {
+            WorkspaceError::Deprovision(format!("Failed to delete workspace data: {e}"))
+        })?;
 
-    db::soft_delete_project(&state.db_pool, &project_id)
+    db::soft_delete_workspace(&state.db_pool, &workspace_id)
         .await
-        .map_err(|e| ProjectError::Database(e.to_string()))?;
+        .map_err(|e| WorkspaceError::Database(e.to_string()))?;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -289,14 +291,14 @@ pub async fn delete_project(
 // ============ Error Types ============
 
 #[derive(Debug, thiserror::Error)]
-pub enum ProjectError {
-    #[error("Invalid project ID")]
-    InvalidProjectId,
+pub enum WorkspaceError {
+    #[error("Invalid workspace ID")]
+    InvalidWorkspaceId,
     #[error("Invalid timezone")]
     InvalidTimezone,
-    #[error("Project not found")]
+    #[error("Workspace not found")]
     NotFound,
-    #[error("Project is being provisioned")]
+    #[error("Workspace is being provisioned")]
     BeingProvisioned,
     #[error("Database error: {0}")]
     Database(String),
@@ -306,25 +308,25 @@ pub enum ProjectError {
     Auth(#[from] crate::middleware::AuthError),
 }
 
-impl axum::response::IntoResponse for ProjectError {
+impl axum::response::IntoResponse for WorkspaceError {
     fn into_response(self) -> axum::response::Response {
         use axum::http::StatusCode;
 
         let (status, message): (StatusCode, String) = match self {
-            ProjectError::InvalidProjectId => {
-                (StatusCode::BAD_REQUEST, "Invalid project ID".to_string())
+            WorkspaceError::InvalidWorkspaceId => {
+                (StatusCode::BAD_REQUEST, "Invalid workspace ID".to_string())
             }
-            ProjectError::InvalidTimezone => {
+            WorkspaceError::InvalidTimezone => {
                 (StatusCode::BAD_REQUEST, "Invalid timezone".to_string())
             }
-            ProjectError::NotFound => (StatusCode::NOT_FOUND, "Project not found".to_string()),
-            ProjectError::BeingProvisioned => (
+            WorkspaceError::NotFound => (StatusCode::NOT_FOUND, "Workspace not found".to_string()),
+            WorkspaceError::BeingProvisioned => (
                 StatusCode::CONFLICT,
-                "Project is being provisioned; try again in a few minutes".to_string(),
+                "Workspace is being provisioned; try again in a few minutes".to_string(),
             ),
-            ProjectError::Database(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
-            ProjectError::Deprovision(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
-            ProjectError::Auth(e) => return e.into_response(),
+            WorkspaceError::Database(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
+            WorkspaceError::Deprovision(e) => (StatusCode::INTERNAL_SERVER_ERROR, e),
+            WorkspaceError::Auth(e) => return e.into_response(),
         };
         (status, Json(serde_json::json!({ "error": message }))).into_response()
     }

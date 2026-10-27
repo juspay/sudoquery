@@ -9,7 +9,7 @@ export interface EventSchemaProperty {
 
 export interface EventDescription {
   id: string;
-  project_id: string;
+  workspace_id: string;
   event_name: string;
   description: string;
   created_at: string;
@@ -18,7 +18,7 @@ export interface EventDescription {
 
 export interface PropertyDescription {
   id: string;
-  project_id: string;
+  workspace_id: string;
   event_name: string;
   property_name: string;
   property_type: string;
@@ -32,9 +32,9 @@ function orgHeader(organizationId: string): Record<string, string> {
 }
 
 export const eventService = {
-  async getEventNames(organizationId: string, projectId: string): Promise<string[]> {
+  async getEventNames(organizationId: string, workspaceId: string): Promise<string[]> {
     return apiClient.get('/events', {}, {
-      headers: { ...orgHeader(organizationId), 'X-Project-Id': projectId },
+      headers: { ...orgHeader(organizationId), 'X-Workspace-Id': workspaceId },
     });
   },
 
@@ -75,45 +75,45 @@ export const eventService = {
     return deduped;
   },
 
-  async getEventDescriptions(projectId: string): Promise<EventDescription[]> {
+  async getEventDescriptions(workspaceId: string): Promise<EventDescription[]> {
     const response = await apiClient.get<{ event_descriptions: EventDescription[] }>(
       '/event-descriptions',
       {},
-      { headers: { 'X-Project-Id': projectId } }
+      { headers: { 'X-Workspace-Id': workspaceId } }
     );
     return response.event_descriptions || [];
   },
 
-  async upsertEventDescription(projectId: string, eventName: string, description: string): Promise<EventDescription> {
-    return apiClient.post('/project/event-description', { event_name: eventName, description }, {
-      headers: { 'X-Project-Id': projectId },
+  async upsertEventDescription(workspaceId: string, eventName: string, description: string): Promise<EventDescription> {
+    return apiClient.post('/workspace/event-description', { event_name: eventName, description }, {
+      headers: { 'X-Workspace-Id': workspaceId },
     });
   },
 
-  async getPropertyDescriptions(projectId: string, eventName?: string): Promise<PropertyDescription[]> {
+  async getPropertyDescriptions(workspaceId: string, eventName?: string): Promise<PropertyDescription[]> {
     const params = eventName ? { event_name: eventName } : {};
     const response = await apiClient.get<{ property_descriptions: PropertyDescription[] }>(
       '/property-descriptions',
       params,
-      { headers: { 'X-Project-Id': projectId } }
+      { headers: { 'X-Workspace-Id': workspaceId } }
     );
     return response.property_descriptions || [];
   },
 
   async upsertPropertyDescription(
-    projectId: string,
+    workspaceId: string,
     eventName: string,
     propertyName: string,
     propertyType: string,
     description: string
   ): Promise<PropertyDescription> {
-    return apiClient.post('/project/property-description', {
+    return apiClient.post('/workspace/property-description', {
       event_name: eventName,
       property_name: propertyName,
       property_type: propertyType,
       description,
     }, {
-      headers: { 'X-Project-Id': projectId },
+      headers: { 'X-Workspace-Id': workspaceId },
     });
   },
 };

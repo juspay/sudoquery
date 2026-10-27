@@ -1,6 +1,6 @@
 import { authService } from './authService';
 import { API_CONFIG } from '../config/api';
-import { ORG_STORAGE_KEY, PROJECT_STORAGE_KEY } from '../config/storage';
+import { ORG_STORAGE_KEY, WORKSPACE_STORAGE_KEY } from '../config/storage';
 
 export class ApiError extends Error {
   constructor(
@@ -51,18 +51,18 @@ class ApiClient {
   }
 
   /**
-   * Get project ID from localStorage
+   * Get workspace ID from localStorage
    */
-  private getProjectId(): string | null {
+  private getWorkspaceId(): string | null {
     try {
-      return localStorage.getItem(PROJECT_STORAGE_KEY);
+      return localStorage.getItem(WORKSPACE_STORAGE_KEY);
     } catch {
       return null;
     }
   }
 
   /**
-   * Get organization/project headers
+   * Get organization/workspace headers
    */
   private getScopeHeaders(): Record<string, string> {
     const headers: Record<string, string> = {};
@@ -72,9 +72,9 @@ class ApiClient {
       headers['X-Organization-Id'] = orgId;
     }
 
-    const projectId = this.getProjectId();
-    if (projectId) {
-      headers['X-Project-Id'] = projectId;
+    const workspaceId = this.getWorkspaceId();
+    if (workspaceId) {
+      headers['X-Workspace-Id'] = workspaceId;
     }
 
     return headers;
@@ -140,7 +140,7 @@ class ApiClient {
 	console.log("~~ ", endpoint, options);
     const url = this.buildUrl(endpoint, params);
 
-    // Merge headers: default < org/project headers < auth headers < custom headers
+    // Merge headers: default < org/workspace headers < auth headers < custom headers
     const finalHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
       ...this.getScopeHeaders(),
@@ -278,7 +278,7 @@ class ApiClient {
 
     const url = this.buildUrl(endpoint, params);
 
-    // Merge headers: default < org/project headers < auth headers < custom headers
+    // Merge headers: default < org/workspace headers < auth headers < custom headers
     const finalHeaders: Record<string, string> = {
       'Content-Type': 'application/json',
       ...this.getScopeHeaders(),

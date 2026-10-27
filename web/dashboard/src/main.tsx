@@ -8,7 +8,7 @@ import './index.css'
 import App from './App.tsx'
 import { AuthProvider } from './contexts/AuthContext'
 import { OrganizationProvider } from './contexts/OrganizationContext'
-import { ProjectProvider } from './contexts/ProjectContext'
+import { WorkspaceProvider } from './contexts/WorkspaceContext'
 import { ToastProvider } from './contexts/ToastContext'
 import { ChatProvider } from './contexts/ChatContext'
 import { SchemaProvider } from './contexts/SchemaContext'
@@ -49,13 +49,13 @@ createRoot(document.getElementById('root')!).render(
             <CssBaseline />
             <ToastProvider>
               <OrganizationProvider>
-                <ProjectProvider>
+                <WorkspaceProvider>
                   <SchemaProvider>
                     <ChatProvider>
                       <App />
                     </ChatProvider>
                   </SchemaProvider>
-                </ProjectProvider>
+                </WorkspaceProvider>
               </OrganizationProvider>
             </ToastProvider>
           </ThemeProvider>

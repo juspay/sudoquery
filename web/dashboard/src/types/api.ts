@@ -25,12 +25,12 @@ export interface QueryResponse {
   status?: number;
 }
 
-export interface UserProjectConsole {
+export interface UserWorkspaceConsole {
   id: string;
   name: string | null;
   created_at: string;
   updated_at: string;
   user_id?: string;
-  project_id?: string;
+  workspace_id?: string;
   console?: string | null;
 }

@@ -27,7 +27,7 @@ import { SudoQuery } from 'sudo-query';
 // Initialize the SDK
 SudoQuery.init({
   orgId: 'acme-store-k3x9qa',
-  projectId: 'acme-store-web-9t2r4m'
+  workspaceId: 'acme-store-web-9t2r4m'
 });
 
 // Track an event
@@ -51,10 +51,10 @@ SudoQuery.init({
   batchSize: 20,          // Batch 20 events before flushing (default: 10)
   endpoint: 'https://api.example.com/batch',  // Custom endpoint (default: http://localhost:3000/batch)
   orgId: 'acme-store-k3x9qa',    // Required: org id (server-generated slug)
-  projectId: 'acme-store-web-9t2r4m', // Required: project id (server-generated slug)
+  workspaceId: 'acme-store-web-9t2r4m', // Required: workspace id (server-generated slug)
   source: 'checkout-web',  // Optional source label (default: typescript)
   sessionId: 'session-1',  // Optional session id; generated if omitted
-  token: 'YOUR_PROJECT_TOKEN',  // Optional bearer token for proxies/gateways
+  token: 'YOUR_WORKSPACE_TOKEN',  // Optional bearer token for proxies/gateways
   headers: {              // Custom headers to send with requests (optional)
     'X-Api-Key': 'your-api-key',
     'X-Custom-Header': 'custom-value'
@@ -62,7 +62,7 @@ SudoQuery.init({
 });
 ```
 
-**Important:** `orgId` and `projectId` must be set before tracking events because the collector requires the `org_id` / `project_id` event fields and the `x-org-id` / `x-project-id` request headers.
+**Important:** `orgId` and `workspaceId` must be set before tracking events because the collector requires the `org_id` / `workspace_id` event fields and the `x-org-id` / `x-workspace-id` request headers.
 
 This sets up:
 - A page visibility listener to automatically flush events when the user navigates away
@@ -137,7 +137,7 @@ All configuration is done through the `init()` method:
 | `batchSize` | `number \| undefined` | `10` | Number of events to accumulate before auto-flushing. |
 | `endpoint` | `string \| undefined` | `"http://localhost:3000/batch"` | URL where events are sent. |
 | `orgId` | `string \| null \| undefined` | `undefined` | Organization id (server-generated slug). Required before `track()`; sent as the event's `org_id` and the `x-org-id` header. |
-| `projectId` | `string \| null \| undefined` | `undefined` | Project id (server-generated slug). Required before `track()`; sent as the event's `project_id` and the `x-project-id` header. |
+| `workspaceId` | `string \| null \| undefined` | `undefined` | Workspace id (server-generated slug). Required before `track()`; sent as the event's `workspace_id` and the `x-workspace-id` header. |
 | `source` | `string \| null \| undefined` | `"typescript"` | Optional source value written to each event. |
 | `sessionId` | `string \| null \| undefined` | generated | Optional session id written to each event. |
 | `token` | `string \| undefined` | `undefined` | Optional bearer token for proxies/gateways. |
@@ -147,7 +147,7 @@ All configuration is done through the `init()` method:
 
 **Default configuration:**
 ```typescript
-SudoQuery.init({ orgId: 'acme-store-k3x9qa', projectId: 'acme-store-web-9t2r4m' });
+SudoQuery.init({ orgId: 'acme-store-k3x9qa', workspaceId: 'acme-store-web-9t2r4m' });
 // Uses: batchSize=10, endpoint="http://localhost:3000/batch", source="typescript", no periodic flush
 ```
 
@@ -155,7 +155,7 @@ SudoQuery.init({ orgId: 'acme-store-k3x9qa', projectId: 'acme-store-web-9t2r4m' 
 ```typescript
 SudoQuery.init({
   orgId: 'acme-store-k3x9qa',
-  projectId: 'acme-store-web-9t2r4m',
+  workspaceId: 'acme-store-web-9t2r4m',
   flushInterval: 2000,   // Flush every 2 seconds
   batchSize: 50,         // Larger batches
   endpoint: 'https://analytics.example.com/batch'
@@ -166,7 +166,7 @@ SudoQuery.init({
 ```typescript
 SudoQuery.init({
   orgId: 'acme-store-k3x9qa',
-  projectId: 'acme-store-web-9t2r4m',
+  workspaceId: 'acme-store-web-9t2r4m',
   flushInterval: 1000,   // Flush every second
   batchSize: 5            // Small batches
 });
@@ -200,7 +200,7 @@ type Event = {
   id: string;
   name: string;
   org_id: string;
-  project_id: string;
+  workspace_id: string;
   session_id: string | null;
   anon_id: string;
   actor_id: string | null;

@@ -50,8 +50,8 @@ export const DEMO_CONFIG = {
   get ORG_ID() {
     return getEnv('VITE_DEMO_ORG_ID');
   },
-  /** Default project slug (`project_id`); the page can change it. */
-  get PROJECT_ID() {
-    return getEnv('VITE_DEMO_PROJECT_ID');
+  /** Default workspace slug (`workspace_id`); the page can change it. */
+  get WORKSPACE_ID() {
+    return getEnv('VITE_DEMO_WORKSPACE_ID');
   },
 };
