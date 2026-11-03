@@ -11,6 +11,8 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { organizationService, type Organization } from '../../services/organizationService';
+import { slugError, slugify } from '../../utils/slug';
+import { SlugInput } from '../shared/SlugInput';
 
 interface CreateOrganizationDialogProps {
   open: boolean;
@@ -20,11 +22,15 @@ interface CreateOrganizationDialogProps {
 
 export function CreateOrganizationDialog({ open, onClose, onSuccess }: CreateOrganizationDialogProps) {
   const [name, setName] = useState('');
+  // Follows the name until edited.
+  const [slug, setSlug] = useState('');
+  const [slugEdited, setSlugEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const handleNameChange = (value: string) => {
     setName(value);
+    if (!slugEdited) setSlug(slugify(value));
   };
 
   const handleSubmit = async () => {
@@ -32,12 +38,17 @@ export function CreateOrganizationDialog({ open, onClose, onSuccess }: CreateOrg
       setError('Organization name is required');
       return;
     }
+    const invalid = slugError(slug);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
-      const org = await organizationService.create({ name: name.trim() });
+      const org = await organizationService.create({ name: name.trim(), slug });
       onSuccess(org);
       handleClose();
     } catch (err) {
@@ -49,6 +60,8 @@ export function CreateOrganizationDialog({ open, onClose, onSuccess }: CreateOrg
 
   const handleClose = () => {
     setName('');
+    setSlug('');
+    setSlugEdited(false);
     setError(null);
     onClose();
   };
@@ -70,6 +83,15 @@ export function CreateOrganizationDialog({ open, onClose, onSuccess }: CreateOrg
             disabled={loading}
             autoFocus
           />
+          <SlugInput
+            label="Organization Slug"
+            value={slug}
+            onChange={(value) => {
+              setSlug(value);
+              setSlugEdited(true);
+            }}
+            disabled={loading}
+          />
         </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -79,7 +101,7 @@ export function CreateOrganizationDialog({ open, onClose, onSuccess }: CreateOrg
         <Button
           variant="contained"
           onClick={handleSubmit}
-          disabled={loading || !name.trim()}
+          disabled={loading || !name.trim() || !!slugError(slug)}
           startIcon={loading ? <CircularProgress size={16} /> : null}
         >
           Create

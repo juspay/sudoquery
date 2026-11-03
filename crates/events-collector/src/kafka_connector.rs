@@ -154,7 +154,7 @@ mod tests {
     #[test]
     fn plain_topics_are_unchanged() {
         assert_eq!(
-            render_topic("events.generic", "acme-k3x9qa", "web-shop-9x2k1a").unwrap(),
+            render_topic("events.generic", "acme_retail", "acme_retail-web_shop").unwrap(),
             "events.generic"
         );
     }
@@ -164,19 +164,19 @@ mod tests {
         assert_eq!(
             render_topic(
                 "events.{org_id}.{workspace_id}",
-                "acme-k3x9qa",
-                "web-shop-9x2k1a"
+                "acme_retail",
+                "acme_retail-web_shop"
             )
             .unwrap(),
-            "events.acme-k3x9qa.web-shop-9x2k1a"
+            "events.acme_retail.acme_retail-web_shop"
         );
         assert_eq!(
-            render_topic("events.{workspace_id}", "acme-k3x9qa", "web-shop-9x2k1a").unwrap(),
-            "events.web-shop-9x2k1a"
+            render_topic("events.{workspace_id}", "acme_retail", "acme_retail-web_shop").unwrap(),
+            "events.acme_retail-web_shop"
         );
         assert_eq!(
-            render_topic("{org_id}-{org_id}", "acme-k3x9qa", "web-shop-9x2k1a").unwrap(),
-            "acme-k3x9qa-acme-k3x9qa"
+            render_topic("{org_id}-{org_id}", "acme_retail", "acme_retail-web_shop").unwrap(),
+            "acme_retail-acme_retail"
         );
     }
 
@@ -185,7 +185,7 @@ mod tests {
         for template in ["events.{tenant_id}", "events.{org_id", "events.org_id}"] {
             assert!(
                 matches!(
-                    render_topic(template, "acme-k3x9qa", "web-shop-9x2k1a"),
+                    render_topic(template, "acme_retail", "acme_retail-web_shop"),
                     Err(result::AppError::Config(_))
                 ),
                 "{template:?} should be rejected"
@@ -206,7 +206,7 @@ mod tests {
         ] {
             assert!(
                 matches!(
-                    render_topic(template, "acme-k3x9qa", "web-shop-9x2k1a"),
+                    render_topic(template, "acme_retail", "acme_retail-web_shop"),
                     Err(result::AppError::Config(_))
                 ),
                 "{template:?} should be rejected"

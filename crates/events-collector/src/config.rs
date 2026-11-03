@@ -265,16 +265,13 @@ mod tests {
     async fn loads_config_from_cac_toml() {
         let config = get_config_from_file(
             shipped_config(),
-            "acme-k3x9qa".to_string(),
-            "blue-ocean-7".to_string(),
+            "acme_retail".to_string(),
+            "acme_retail-web_shop".to_string(),
         )
         .await
         .unwrap();
 
-        assert_eq!(
-            config.kafka_connector.topic,
-            "events.acme-k3x9qa.blue-ocean-7"
-        );
+        assert_eq!(config.kafka_connector.topic, "events.acme_retail-web_shop");
         assert_eq!(
             config
                 .kafka_connector
@@ -292,10 +289,7 @@ mod tests {
                 .await
                 .unwrap();
 
-        assert_eq!(
-            config.kafka_connector.topic,
-            "events.{org_id}.{workspace_id}"
-        );
+        assert_eq!(config.kafka_connector.topic, "events.{workspace_id}");
         assert!(config.allowed_events.is_none());
         assert!(
             config

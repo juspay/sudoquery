@@ -81,7 +81,7 @@ const GOLDEN_QUERIES: &[GoldenQuery] = &[
         query: r#"SELECT
     toDate(event_timestamp) AS date,
     count() AS event_count
-FROM events_v2
+FROM events
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
 GROUP BY date
@@ -113,7 +113,7 @@ ORDER BY date"#,
         query: r#"SELECT
     event_name,
     count() AS count
-FROM events_v2
+FROM events
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
 GROUP BY event_name
@@ -146,7 +146,7 @@ LIMIT 20"#,
         query: r#"SELECT
     toString(properties.platform) AS platform,
     count() AS event_count
-FROM events_v2
+FROM events
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
     AND platform != ''
@@ -179,7 +179,7 @@ ORDER BY event_count DESC"#,
         query: r#"SELECT
     toString(properties.device_type) AS device_type,
     count() AS event_count
-FROM events_v2
+FROM events
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
     AND device_type != ''
@@ -212,7 +212,7 @@ ORDER BY event_count DESC"#,
         query: r#"SELECT
     toString(properties.browser) AS browser,
     count() AS event_count
-FROM events_v2
+FROM events
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
     AND browser != ''
@@ -246,7 +246,7 @@ LIMIT 10"#,
         query: r#"SELECT
     country,
     count() AS event_count
-FROM events_v2
+FROM events
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
     AND country IS NOT NULL
@@ -276,7 +276,7 @@ LIMIT 20"#,
         query: r#"SELECT
     toHour(event_timestamp) AS hour,
     count() AS event_count
-FROM events_v2
+FROM events
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
 GROUP BY hour
@@ -308,7 +308,7 @@ ORDER BY hour"#,
         query: r#"SELECT
     toStartOfWeek(event_timestamp) AS week,
     count() AS event_count
-FROM events_v2
+FROM events
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
 GROUP BY week
@@ -340,7 +340,7 @@ ORDER BY week"#,
         query: r#"SELECT
     formatDateTime(event_timestamp, '%Y-%m') AS month,
     count() AS event_count
-FROM events_v2
+FROM events
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
 GROUP BY month
@@ -371,7 +371,7 @@ ORDER BY month"#,
         use_case: "When user asks about a specific event count, how many times an event occurred",
         query: r#"SELECT
     count() AS event_count
-FROM events_v2
+FROM events
 WHERE event_name = '{event_name}'
     AND event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'"#,
@@ -385,7 +385,7 @@ WHERE event_name = '{event_name}'
         use_case: "When user asks for unique users, distinct users, or how many users",
         query: r#"SELECT
     uniqExact(actor_id) AS unique_users
-FROM user_events_v2
+FROM user_events
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
     AND actor_id != ''"#,
@@ -400,7 +400,7 @@ WHERE event_timestamp >= '{start_date}'
         query: r#"SELECT
     toDate(event_timestamp) AS date,
     uniqExact(actor_id) AS unique_users
-FROM user_events_v2
+FROM user_events
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
     AND actor_id != ''
@@ -449,7 +449,7 @@ WITH
                     event_name = 'add_to_cart',
                     event_name = 'purchase'
                 ) AS level
-            FROM user_events_v2
+            FROM user_events
             GROUP BY actor_id
         )
         WHERE level > 0
@@ -483,7 +483,7 @@ ORDER BY level ASC;
         query: r#"SELECT
     toString(properties.city) AS city,
     count() AS event_count
-FROM events_v2
+FROM events
 WHERE event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
     AND city != ''
@@ -510,7 +510,7 @@ LIMIT 20"#,
         description: "List of distinct event names in the database",
         use_case: "When user wants to know what events are available, event types, or event catalog",
         query: r#"SELECT DISTINCT event_name
-FROM events_v2
+FROM events
 ORDER BY event_name
 LIMIT 100"#,
         tags: &["events", "catalog", "list", "available"],
@@ -524,7 +524,7 @@ LIMIT 100"#,
         query: r#"SELECT
     toString(properties.{property_name}) AS property_value,
     count() AS count
-FROM events_v2
+FROM events
 WHERE event_name = '{event_name}'
     AND event_timestamp >= '{start_date}'
     AND event_timestamp <= '{end_date}'
@@ -562,7 +562,7 @@ LIMIT 30"#,
         name: "Mean Reciprocal Rank",
         description: "Calculate reciprocal rank for a specific event",
         use_case: "When user asks about ranking, reciprocal rank, or position of an event in a ranking",
-        query: r#"SELECT avg(1.0 / properties.{property_name}::Float64) AS mrr FROM events_v2 WHERE event_name = '{event_name}' AND properties.{property_name} IS NOT NULL AND event_timestamp >= '{start_date}' AND event_timestamp <= '{end_date}'"#,
+        query: r#"SELECT avg(1.0 / properties.{property_name}::Float64) AS mrr FROM events WHERE event_name = '{event_name}' AND properties.{property_name} IS NOT NULL AND event_timestamp >= '{start_date}' AND event_timestamp <= '{end_date}'"#,
         tags: &["ranking", "reciprocal-rank"],
         chart_config: None,
     },
@@ -583,7 +583,7 @@ LIMIT 30"#,
 FROM (
     SELECT
         (lead(event_timestamp) OVER w) - event_timestamp AS time_gap
-    FROM user_events_v2
+    FROM user_events
     WHERE event_name = '{event_name}' AND workspace_id = '{workspace_id}'
     WINDOW w AS (PARTITION BY actor_id ORDER BY event_timestamp)
 )
@@ -633,7 +633,7 @@ ORDER BY gap_bucket"#,
 FROM (
     SELECT
         editDistance(properties.{property_name}, lead(properties.{property_name}) OVER w) AS edit_dist
-    FROM user_events_v2
+    FROM user_events
     WHERE event_name = '{event_name}' AND workspace_id = '{workspace_id}'
     WINDOW w AS (PARTITION BY actor_id ORDER BY event_timestamp)
 )
@@ -683,7 +683,7 @@ ORDER BY similarity_bucket"#,
     count() AS event_count
 FROM (
     SELECT 1 / properties.{property_name} AS inv_position
-    FROM user_events_v2
+    FROM user_events
     WHERE event_name = '{event_name}' AND workspace_id = '{workspace_id}'
         AND properties.{property_name} IS NOT NULL
 )

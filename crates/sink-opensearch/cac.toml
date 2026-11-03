@@ -23,7 +23,7 @@
 [default-configs]
 # Topics to consume. Every payload must be a canonical event. An entry starting
 # with `^` is a regex: every workspace has its own topic,
-# `events.{org_id}.{workspace_id}`, created while the sink runs.
+# `events.{workspace_id}`, created while the sink runs.
 "kafka.topics" = { value = ["^events\\..*"], schema = { type = "array", items = { type = "string" } } }
 "kafka.group_id" = { value = "sink-opensearch", schema = { type = "string" } }
 # Raw librdkafka properties: brokers, security, timeouts. The sink always sets

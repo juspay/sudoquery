@@ -1,106 +1,202 @@
-mod aws;
-mod gcp;
+//! Collector keys: the authenticated endpoint's credentials.
+//!
+//! A request carries `Authorization: Bearer sk_<kid>_<secret>`, where `kid`
+//! is a public key id (16 lowercase hex characters) and `secret` 32 random
+//! bytes as 64 lowercase hex characters. Keys are created outside the
+//! collector, which only reads them from `collector_keys`
+//! (`collector_keys.sql`): a row per key, holding `sha256` of the secret's
+//! bytes and the org and workspace the key is for.
+//!
+//! Authenticating a request:
+//! 1. parse the key, or 401
+//! 2. look its `kid` up, in the cache and then the database
+//! 3. 401 unless the row exists and `sha256(secret)` matches its hash
+//!    (compared in constant time)
+//! 4. 401 if the key is revoked or has expired
+//! 5. the request's org and workspace are the key's
+//!
+//! Lookups are cached per `kid` for `COLLECTOR_KEYS_CACHE_SECS` (default
+//! 30s) — misses too, so a flood of unknown keys doesn't reach the
+//! database. Revoking a key therefore takes effect within that time; expiry
+//! is checked against the clock on every request.
 
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+
+use chrono::{DateTime, Utc};
+use sha2::{Digest, Sha256};
+use sqlx::PgPool;
+use sqlx::postgres::PgPoolOptions;
 use subtle::ConstantTimeEq;
-use tokio::sync::OnceCell;
+use tokio::sync::RwLock;
 
-use crate::result;
+use crate::result::{AppError, Result};
 
-const TOKEN_PROVIDER_ENV: &str = "TOKEN_PROVIDER";
+const DATABASE_URL_ENV: &str = "COLLECTOR_KEYS_DATABASE_URL";
+const CACHE_SECS_ENV: &str = "COLLECTOR_KEYS_CACHE_SECS";
+const DEFAULT_CACHE: Duration = Duration::from_secs(30);
+/// Cached lookups are dropped wholesale beyond this; plenty for real keys,
+/// and a bound on what a stream of made-up kids can make us hold.
+const MAX_CACHED: usize = 10_000;
+
 const AUTHORIZATION_HEADER: &str = "authorization";
-const BEARER_PREFIX: &str = "Bearer ";
+const KEY_PREFIX: &str = "sk_";
+const KID_LEN: usize = 16;
+const SECRET_LEN: usize = 32;
 
-static TOKEN: OnceCell<String> = OnceCell::const_new();
+/// The org and workspace a key is for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct KeyScope {
+    pub org_id: String,
+    pub workspace_id: String,
+}
 
-/// Validates that the `Authorization` header carries a Bearer token matching the
-/// expected value, which is fetched by decrypting a cloud KMS ciphertext.
-///
-/// The cloud provider is selected via the `TOKEN_PROVIDER` environment variable
-/// (`aws` or `gcp`, case-insensitive):
-///
-/// - `aws`: decrypts the base64 ciphertext from `KMS_CIPHERTEXT` via the AWS KMS
-///   `Decrypt` API, with an encryption context parsed from `KMS_ENCRYPTION_CONTEXT`
-///   (a JSON object of key-value pairs)
-/// - `gcp`: decrypts the base64 ciphertext from `GCP_KMS_CIPHERTEXT` via the GCP
-///   Cloud KMS `decrypt` API, using the key resource name from `GCP_KMS_KEY`
-///   (`projects/P/locations/L/keyRings/R/cryptoKeys/K/cryptoKeyVersions/V`) and
-///   optional additional authenticated data from `GCP_KMS_AAD` (plain string)
-///
-/// GCP credentials are resolved via Application Default Credentials
-/// (`GOOGLE_APPLICATION_CREDENTIALS` or the metadata server). The token is
-/// fetched once and cached for the lifetime of the process; failed fetches are
-/// retried on the next request.
-pub async fn validate_bearer_token(headers: &axum::http::HeaderMap) -> result::Result<()> {
-    let provided = extract_bearer_token(headers).ok_or(result::AppError::MissingCredentials)?;
+#[derive(Debug, Clone, sqlx::FromRow)]
+struct KeyRow {
+    org_id: String,
+    workspace_id: String,
+    hashed_secret: Vec<u8>,
+    expires_at: Option<DateTime<Utc>>,
+    revoked_at: Option<DateTime<Utc>>,
+}
 
-    let token = TOKEN.get_or_try_init(fetch_expected_token).await?;
+struct Cached {
+    fetched: Instant,
+    row: Option<KeyRow>,
+}
 
-    if constant_time_eq(provided.as_bytes(), token.as_bytes()) {
-        Ok(())
-    } else {
-        Err(result::AppError::InvalidToken)
+pub struct Authenticator {
+    pool: PgPool,
+    ttl: Duration,
+    cache: RwLock<HashMap<String, Cached>>,
+}
+
+impl Authenticator {
+    /// From `COLLECTOR_KEYS_DATABASE_URL` (and `COLLECTOR_KEYS_CACHE_SECS`);
+    /// `None` when the URL is unset, which leaves the authenticated endpoint
+    /// unavailable. Connects lazily, so the collector starts even while the
+    /// database is down.
+    pub fn from_env() -> Result<Option<Self>> {
+        let Some(url) = non_empty_env(DATABASE_URL_ENV) else {
+            return Ok(None);
+        };
+        let ttl = match non_empty_env(CACHE_SECS_ENV) {
+            None => DEFAULT_CACHE,
+            Some(raw) => Duration::from_secs(raw.parse().map_err(|_| {
+                AppError::Config(format!(
+                    "`{CACHE_SECS_ENV}` must be a number of seconds, got `{raw}`"
+                ))
+            })?),
+        };
+        let pool = PgPoolOptions::new()
+            .max_connections(5)
+            .acquire_timeout(Duration::from_secs(3))
+            .connect_lazy(&url)
+            .map_err(|e| AppError::Config(format!("`{DATABASE_URL_ENV}`: {e}")))?;
+        Ok(Some(Self::new(pool, ttl)))
+    }
+
+    pub fn new(pool: PgPool, ttl: Duration) -> Self {
+        Self {
+            pool,
+            ttl,
+            cache: RwLock::new(HashMap::new()),
+        }
+    }
+
+    /// The scope of the request's key, or why it has none.
+    pub async fn authenticate(&self, headers: &axum::http::HeaderMap) -> Result<KeyScope> {
+        let token = bearer_token(headers).ok_or(AppError::MissingCredentials)?;
+        let (kid, secret) = parse_key(token).ok_or(AppError::InvalidToken)?;
+        let row = self.lookup(kid).await?.ok_or(AppError::InvalidToken)?;
+        verify(&row, &secret, Utc::now())?;
+        Ok(KeyScope {
+            org_id: row.org_id,
+            workspace_id: row.workspace_id,
+        })
+    }
+
+    /// Whether `collector_keys` can be read.
+    pub async fn health_check(&self) -> Result<()> {
+        sqlx::query("SELECT 1 FROM collector_keys LIMIT 1")
+            .execute(&self.pool)
+            .await
+            .map(drop)
+            .map_err(key_store_error)
+    }
+
+    async fn lookup(&self, kid: &str) -> Result<Option<KeyRow>> {
+        if let Some(cached) = self.cache.read().await.get(kid)
+            && cached.fetched.elapsed() < self.ttl
+        {
+            return Ok(cached.row.clone());
+        }
+        let row = sqlx::query_as::<_, KeyRow>(
+            "SELECT org_id, workspace_id, hashed_secret, expires_at, revoked_at
+             FROM collector_keys WHERE kid = $1",
+        )
+        .bind(kid)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(key_store_error)?;
+
+        let mut cache = self.cache.write().await;
+        if cache.len() >= MAX_CACHED {
+            cache.clear();
+        }
+        cache.insert(
+            kid.to_owned(),
+            Cached {
+                fetched: Instant::now(),
+                row: row.clone(),
+            },
+        );
+        Ok(row)
     }
 }
 
-/// Resolves the expected bearer token for health reporting on the authenticated
-/// endpoint: `Ok(())` when the token source is configured and the ciphertext
-/// decrypts, or the configuration/decryption error otherwise.
-///
-/// This warms the same cache used by `validate_bearer_token`, so a successful
-/// check makes the next authenticated request skip the KMS call. No request
-/// credentials are compared.
-pub async fn health_check() -> result::Result<()> {
-    TOKEN
-        .get_or_try_init(fetch_expected_token)
-        .await
-        .map(|_| ())
+fn key_store_error(error: sqlx::Error) -> AppError {
+    AppError::KeyStore(error.to_string())
 }
 
-/// Compares two byte slices in constant time using the `subtle` crate, so that
-/// response timing does not reveal anything about the token or its length.
-fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
-    a.ct_eq(b).into()
+/// The secret matches, and the key is neither revoked nor expired at `now`.
+fn verify(row: &KeyRow, secret: &[u8; SECRET_LEN], now: DateTime<Utc>) -> Result<()> {
+    let hash = Sha256::digest(secret);
+    let matches: bool = hash.as_slice().ct_eq(&row.hashed_secret).into();
+    if !matches {
+        return Err(AppError::InvalidToken);
+    }
+    if row.revoked_at.is_some() || row.expires_at.is_some_and(|at| at <= now) {
+        return Err(AppError::InvalidToken);
+    }
+    Ok(())
 }
 
-fn extract_bearer_token(headers: &axum::http::HeaderMap) -> Option<String> {
-    let value = headers.get(AUTHORIZATION_HEADER)?.to_str().ok()?;
-    let value = value.trim();
-    let (scheme, token) = value.split_once(' ')?;
-    if !scheme.eq_ignore_ascii_case(BEARER_PREFIX.trim()) {
+/// `sk_<kid>_<secret>` → the kid and the secret's bytes, if well-formed.
+fn parse_key(token: &str) -> Option<(&str, [u8; SECRET_LEN])> {
+    let rest = token.strip_prefix(KEY_PREFIX)?;
+    let (kid, secret_hex) = rest.split_once('_')?;
+    let lower_hex = |s: &str| {
+        s.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    };
+    if kid.len() != KID_LEN
+        || !lower_hex(kid)
+        || secret_hex.len() != SECRET_LEN * 2
+        || !lower_hex(secret_hex)
+    {
         return None;
     }
+    let mut secret = [0u8; SECRET_LEN];
+    hex::decode_to_slice(secret_hex, &mut secret).ok()?;
+    Some((kid, secret))
+}
+
+fn bearer_token(headers: &axum::http::HeaderMap) -> Option<&str> {
+    let value = headers.get(AUTHORIZATION_HEADER)?.to_str().ok()?.trim();
+    let (scheme, token) = value.split_once(' ')?;
     let token = token.trim();
-    (!token.is_empty()).then(|| token.to_owned())
-}
-
-enum TokenProvider {
-    Aws,
-    Gcp,
-}
-
-async fn fetch_expected_token() -> result::Result<String> {
-    match token_provider_from(non_empty_env(TOKEN_PROVIDER_ENV).as_deref())? {
-        TokenProvider::Aws => aws::decrypt_token().await,
-        TokenProvider::Gcp => gcp::decrypt_token().await,
-    }
-}
-
-fn token_provider_from(raw: Option<&str>) -> result::Result<TokenProvider> {
-    if raw.is_some_and(|value| value.eq_ignore_ascii_case("aws")) {
-        Ok(TokenProvider::Aws)
-    } else if raw.is_some_and(|value| value.eq_ignore_ascii_case("gcp")) {
-        Ok(TokenProvider::Gcp)
-    } else if let Some(value) = raw {
-        Err(result::AppError::Config(format!(
-            "`{}` must be `aws` or `gcp`, got `{}`",
-            TOKEN_PROVIDER_ENV, value
-        )))
-    } else {
-        Err(result::AppError::Config(format!(
-            "`{}` environment variable must be set to `aws` or `gcp`",
-            TOKEN_PROVIDER_ENV
-        )))
-    }
+    (scheme.eq_ignore_ascii_case("bearer") && !token.is_empty()).then_some(token)
 }
 
 fn non_empty_env(key: &str) -> Option<String> {
@@ -114,75 +210,110 @@ fn non_empty_env(key: &str) -> Option<String> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn extracts_bearer_token() {
+    const KID: &str = "0123456789abcdef";
+    const SECRET_HEX: &str = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
+
+    fn key() -> String {
+        format!("sk_{KID}_{SECRET_HEX}")
+    }
+
+    fn row(secret: &[u8; SECRET_LEN]) -> KeyRow {
+        KeyRow {
+            org_id: "acme-retail".into(),
+            workspace_id: "web-shop".into(),
+            hashed_secret: Sha256::digest(secret).to_vec(),
+            expires_at: None,
+            revoked_at: None,
+        }
+    }
+
+    fn headers(value: &str) -> axum::http::HeaderMap {
         let mut headers = axum::http::HeaderMap::new();
-        headers.insert(AUTHORIZATION_HEADER, "Bearer abc123".parse().unwrap());
-        assert_eq!(extract_bearer_token(&headers), Some("abc123".to_string()));
+        headers.insert(AUTHORIZATION_HEADER, value.parse().unwrap());
+        headers
     }
 
     #[test]
-    fn bearer_token_can_be_empty() {
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert(AUTHORIZATION_HEADER, "Bearer   ".parse().unwrap());
-        assert_eq!(extract_bearer_token(&headers), None);
+    fn parses_a_well_formed_key() {
+        let key = key();
+        let (kid, secret) = parse_key(&key).unwrap();
+        assert_eq!(kid, KID);
+        assert_eq!(hex::encode(secret), SECRET_HEX);
     }
 
     #[test]
-    fn bearer_scheme_is_case_insensitive() {
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert(AUTHORIZATION_HEADER, "bEaReR abc123".parse().unwrap());
-        assert_eq!(extract_bearer_token(&headers), Some("abc123".to_string()));
+    fn rejects_malformed_keys() {
+        let short_secret = &SECRET_HEX[2..];
+        for bad in [
+            String::new(),
+            format!("pk_{KID}_{SECRET_HEX}"),
+            format!("sk{KID}_{SECRET_HEX}"),
+            format!("sk_{KID}{SECRET_HEX}"),
+            format!("sk_{}_{SECRET_HEX}", &KID[1..]),
+            format!("sk_{KID}_{short_secret}"),
+            format!("sk_{KID}_{SECRET_HEX}00"),
+            format!("sk_{}_{SECRET_HEX}", KID.to_uppercase()),
+            format!("sk_{KID}_{}", SECRET_HEX.to_uppercase()),
+            format!("sk_{KID}_{}g", &SECRET_HEX[1..]),
+            format!("sk_{KID}_{SECRET_HEX}_x"),
+        ] {
+            assert!(parse_key(&bad).is_none(), "{bad:?}");
+        }
     }
 
     #[test]
-    fn non_bearer_scheme_returns_none() {
-        let mut headers = axum::http::HeaderMap::new();
-        headers.insert(AUTHORIZATION_HEADER, "Basic dXNlcjpwYXNz".parse().unwrap());
-        assert_eq!(extract_bearer_token(&headers), None);
+    fn reads_a_bearer_token_case_insensitively() {
+        assert_eq!(bearer_token(&headers("Bearer abc")), Some("abc"));
+        assert_eq!(bearer_token(&headers("bEaReR  abc ")), Some("abc"));
+        assert_eq!(bearer_token(&headers("Basic abc")), None);
+        assert_eq!(bearer_token(&headers("Bearer   ")), None);
+        assert_eq!(bearer_token(&axum::http::HeaderMap::new()), None);
     }
 
     #[test]
-    fn missing_authorization_header_returns_none() {
-        assert_eq!(extract_bearer_token(&axum::http::HeaderMap::new()), None);
+    fn accepts_the_matching_secret() {
+        let (_, secret) = parse_key(&key()).unwrap();
+        assert!(verify(&row(&secret), &secret, Utc::now()).is_ok());
     }
 
     #[test]
-    fn constant_time_eq_matches_equal_values() {
-        assert!(constant_time_eq(b"token", b"token"));
-        assert!(!constant_time_eq(b"token", b"tok3n"));
-        assert!(!constant_time_eq(b"token", b"token-longer"));
-    }
-
-    #[test]
-    fn selects_aws_provider() {
+    fn refuses_another_secret() {
+        let (_, secret) = parse_key(&key()).unwrap();
+        let mut other = secret;
+        other[0] ^= 1;
         assert!(matches!(
-            token_provider_from(Some("aws")),
-            Ok(TokenProvider::Aws)
+            verify(&row(&secret), &other, Utc::now()),
+            Err(AppError::InvalidToken)
         ));
     }
 
     #[test]
-    fn selects_gcp_provider_case_insensitively() {
-        assert!(matches!(
-            token_provider_from(Some("GCP")),
-            Ok(TokenProvider::Gcp)
-        ));
-    }
+    fn refuses_revoked_and_expired_keys() {
+        let (_, secret) = parse_key(&key()).unwrap();
+        let now = Utc::now();
 
-    #[test]
-    fn unknown_provider_is_error() {
+        let revoked = KeyRow {
+            revoked_at: Some(now),
+            ..row(&secret)
+        };
         assert!(matches!(
-            token_provider_from(Some("azure")),
-            Err(result::AppError::Config(_))
+            verify(&revoked, &secret, now),
+            Err(AppError::InvalidToken)
         ));
-    }
 
-    #[test]
-    fn missing_provider_is_error() {
+        let expired = KeyRow {
+            expires_at: Some(now),
+            ..row(&secret)
+        };
         assert!(matches!(
-            token_provider_from(None),
-            Err(result::AppError::Config(_))
+            verify(&expired, &secret, now),
+            Err(AppError::InvalidToken)
         ));
+
+        let expiring = KeyRow {
+            expires_at: Some(now + chrono::Duration::hours(1)),
+            ..row(&secret)
+        };
+        assert!(verify(&expiring, &secret, now).is_ok());
     }
 }

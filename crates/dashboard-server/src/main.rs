@@ -12,23 +12,24 @@ use serde_json::json;
 use tower_http::cors::{Any, CorsLayer};
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
-mod clickhouse;
+mod clickhouse_relay;
 mod db;
 mod entities;
-mod ids;
 mod keycloak;
 mod middleware;
 mod models;
-mod opensearch;
 mod provisioning;
 mod routes;
+mod search_proxy;
 mod state;
 
+use clickhouse_proxy::client::ClickHouseProxy;
 use keycloak::KeycloakAdmin;
 use middleware::auth::{AuthUser, WorkspaceAccess};
 use models::ChatCompletionRequest;
-use opensearch::OpenSearch;
+use opensearch_proxy::OpenSearch;
 use sea_orm::Database;
+use search_proxy::SearchProxy;
 use sqlx::postgres::PgPoolOptions;
 use state::AppState;
 
@@ -42,21 +43,12 @@ async fn health_check(State(s): State<AppState>) -> impl IntoResponse {
         }
     };
 
-    // Test ClickHouse connection (using admin URL)
-    let ch_status = match clickhouse::execute_admin_query(
-        &Client::new(),
-        &s.clickhouse_admin_url,
-        &s.clickhouse_admin_user,
-        &s.clickhouse_admin_password,
-        "SELECT 1",
-    )
-    .await
-    {
-        Ok(_) => "connected",
-        Err(e) => {
-            tracing::error!("Health check: ClickHouse connection failed: {}", e);
-            "disconnected"
-        }
+    // ClickHouse, as clickhouse-proxy reaches it
+    let ch_status = if s.clickhouse.clickhouse_connected().await {
+        "connected"
+    } else {
+        tracing::error!("Health check: ClickHouse (through clickhouse-proxy) is unreachable");
+        "disconnected"
     };
 
     // Test Redpanda (Kafka) connection
@@ -89,26 +81,12 @@ async fn get_events_today_count(
     WorkspaceAccess { workspace, .. }: WorkspaceAccess,
 ) -> impl IntoResponse {
     let timezone = workspace.timezone.as_deref().unwrap_or("Asia/Kolkata");
-    let query = format!(
-        "SELECT count() as count FROM events_v2 WHERE toDate(event_timestamp, '{}') = toDate(now('{}'))",
-        timezone, timezone
-    );
-    match clickhouse::execute_workspace_query(
-        &s.clickhouse_url,
-        &workspace.id,
-        &s.clickhouse_workspace_password,
-        &query,
-    )
-    .await
+    match s
+        .clickhouse
+        .today_count(workspace.id.as_ref(), timezone)
+        .await
     {
-        Ok(result) => {
-            let count = result["data"]
-                .as_array()
-                .and_then(|arr| arr.first())
-                .and_then(|row| row["count"].as_u64())
-                .unwrap_or(0);
-            Json(json!({ "count": count }))
-        }
+        Ok(count) => Json(json!({ "count": count })),
         Err(e) => {
             tracing::error!("Failed to fetch today's event count: {}", e);
             Json(json!({ "count": 0, "error": "Failed to fetch event count" }))
@@ -120,26 +98,8 @@ async fn get_events(
     State(s): State<AppState>,
     WorkspaceAccess { workspace, .. }: WorkspaceAccess,
 ) -> impl IntoResponse {
-    let query = "SELECT event_name FROM events_v2 GROUP BY event_name";
-    match clickhouse::execute_workspace_query(
-        &s.clickhouse_url,
-        &workspace.id,
-        &s.clickhouse_workspace_password,
-        query,
-    )
-    .await
-    {
-        Ok(result) => {
-            let event_names: Vec<String> = result["data"]
-                .as_array()
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|row| row["event_name"].as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default();
-            Json(json!(event_names))
-        }
+    match s.clickhouse.event_names(workspace.id.as_ref()).await {
+        Ok(event_names) => Json(json!(event_names)),
         Err(e) => {
             tracing::error!("Failed to fetch events: {}", e);
             Json(json!({"error": "Failed to fetch events"}))
@@ -157,38 +117,12 @@ async fn get_event_props(
         None => return Json(json!({"error": "Missing event_name parameter"})),
     };
 
-    let query = format!(
-        "SELECT DISTINCT key \
-        FROM \
-        ( \
-            SELECT * \
-            FROM events_v2 \
-            WHERE event_name = '{}' \
-        ) \
-        ARRAY JOIN JSONAllPaths(properties) AS key",
-        event_name
-    );
-
-    match clickhouse::execute_workspace_query(
-        &s.clickhouse_url,
-        &workspace.id,
-        &s.clickhouse_workspace_password,
-        &query,
-    )
-    .await
+    match s
+        .clickhouse
+        .event_properties(workspace.id.as_ref(), event_name)
+        .await
     {
-        Ok(result) => {
-            let mut keys: Vec<String> = result["data"]
-                .as_array()
-                .map(|arr| {
-                    arr.iter()
-                        .filter_map(|row| row["key"].as_str().map(|s| s.to_string()))
-                        .collect()
-                })
-                .unwrap_or_default();
-            keys.sort();
-            Json(json!(keys))
-        }
+        Ok(keys) => Json(json!(keys)),
         Err(e) => {
             tracing::error!("Failed to fetch event properties: {}", e);
             Json(json!({"error": "Failed to fetch event properties"}))
@@ -212,37 +146,38 @@ async fn run_raw_query(
         return Json(json!({"error": "Empty query"}));
     }
 
-    match clickhouse::execute_workspace_query(
-        &s.clickhouse_url,
-        &workspace.id,
-        &s.clickhouse_workspace_password,
-        trimmed_query,
-    )
-    .await
+    match s
+        .clickhouse
+        .query(workspace.id.as_ref(), trimmed_query)
+        .await
     {
         Ok(response) => Json(json!({"success": true, "response": response})),
         Err(e) => Json(json!({"success": false, "error": e.public_message()})),
     }
 }
 
-fn get_clickhouse_url() -> String {
-    std::env::var("CLICKHOUSE_URL").unwrap_or_else(|_| "http://localhost:8123".to_string())
+// clickhouse-proxy, which runs every ClickHouse query and provisions each
+// workspace's ClickHouse database and user.
+fn get_clickhouse_proxy_url() -> String {
+    std::env::var("CLICKHOUSE_PROXY_URL").unwrap_or_else(|_| "http://localhost:3003".to_string())
 }
 
-fn get_clickhouse_admin_url() -> String {
-    std::env::var("CLICKHOUSE_ADMIN_URL").unwrap_or_else(|_| "http://localhost:8123".to_string())
+fn get_clickhouse_proxy_token() -> Option<String> {
+    std::env::var("CLICKHOUSE_PROXY_TOKEN")
+        .ok()
+        .map(|token| token.trim().to_owned())
+        .filter(|token| !token.is_empty())
 }
 
-fn get_clickhouse_admin_user() -> String {
-    std::env::var("CLICKHOUSE_ADMIN_USER").unwrap_or_else(|_| "default".to_string())
-}
-
-fn get_clickhouse_admin_password() -> String {
-    std::env::var("CLICKHOUSE_ADMIN_PASSWORD").unwrap_or_default()
-}
-
-fn get_clickhouse_workspace_password() -> String {
-    std::env::var("CLICKHOUSE_WORKSPACE_PASSWORD").unwrap_or_default()
+// Long enough for a heavy analytics query and for provisioning a database.
+fn get_clickhouse_proxy_timeout() -> std::time::Duration {
+    let millis = match std::env::var("CLICKHOUSE_PROXY_TIMEOUT_MS") {
+        Ok(value) => value
+            .parse()
+            .expect("CLICKHOUSE_PROXY_TIMEOUT_MS must be a number of milliseconds"),
+        Err(_) => 120_000,
+    };
+    std::time::Duration::from_millis(millis)
 }
 
 fn get_bind_addr() -> String {
@@ -297,6 +232,30 @@ fn credentials_from_env(username_var: &str, password_var: &str) -> Option<(Strin
         (None, None) => None,
         _ => panic!("{username_var} and {password_var} must be set together"),
     }
+}
+
+// opensearch-proxy, which runs event searches for the Discover routes.
+fn get_opensearch_proxy_url() -> String {
+    std::env::var("OPENSEARCH_PROXY_URL").unwrap_or_else(|_| "http://localhost:3002".to_string())
+}
+
+fn get_opensearch_proxy_token() -> Option<String> {
+    std::env::var("OPENSEARCH_PROXY_TOKEN")
+        .ok()
+        .map(|token| token.trim().to_owned())
+        .filter(|token| !token.is_empty())
+}
+
+// A search is a validation then the search itself, each up to the proxy's
+// own OpenSearch timeout, so this allows for both.
+fn get_opensearch_proxy_timeout() -> std::time::Duration {
+    let millis = match std::env::var("OPENSEARCH_PROXY_TIMEOUT_MS") {
+        Ok(value) => value
+            .parse()
+            .expect("OPENSEARCH_PROXY_TIMEOUT_MS must be a number of milliseconds"),
+        Err(_) => 65_000,
+    };
+    std::time::Duration::from_millis(millis)
 }
 
 fn get_opensearch_request_timeout() -> std::time::Duration {
@@ -368,11 +327,12 @@ async fn main() {
 
     dotenvy::dotenv().ok();
 
-    let clickhouse_url = get_clickhouse_url();
-    let clickhouse_admin_url = get_clickhouse_admin_url();
-    let clickhouse_admin_user = get_clickhouse_admin_user();
-    let clickhouse_admin_password = get_clickhouse_admin_password();
-    let clickhouse_workspace_password = get_clickhouse_workspace_password();
+    let clickhouse = ClickHouseProxy::new(
+        &get_clickhouse_proxy_url(),
+        get_clickhouse_proxy_token(),
+        get_clickhouse_proxy_timeout(),
+    )
+    .expect("Failed to create the clickhouse-proxy client");
     let provisioning = provisioning::ProvisioningConfig::from_env(get_kafka_broker_url())
         .unwrap_or_else(|e| panic!("invalid workspace provisioning configuration: {e}"));
 
@@ -414,6 +374,13 @@ async fn main() {
     .expect("Failed to create OpenSearch client")
     .with_admin_credentials(get_opensearch_admin_credentials());
 
+    let search_proxy = SearchProxy::new(
+        &get_opensearch_proxy_url(),
+        get_opensearch_proxy_token(),
+        get_opensearch_proxy_timeout(),
+    )
+    .expect("Failed to create the opensearch-proxy client");
+
     let admin_api_token = get_admin_api_token();
     if admin_api_token.is_none() {
         tracing::warn!("ADMIN_API_TOKEN is not set; the admin API is disabled");
@@ -428,12 +395,9 @@ async fn main() {
         keycloak,
         keycloak_url,
         keycloak_realm,
-        clickhouse_url,
-        clickhouse_admin_url,
-        clickhouse_admin_user,
-        clickhouse_admin_password,
-        clickhouse_workspace_password,
+        clickhouse,
         opensearch,
+        search_proxy,
         provisioning,
         admin_api_token,
     };

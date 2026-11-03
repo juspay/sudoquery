@@ -4,7 +4,9 @@ import { Box, Typography, Button, TextField, Alert, Paper } from '@mui/material'
 import { useOrganization } from '../contexts/OrganizationContext';
 import { useWorkspace } from '../contexts/WorkspaceContext';
 import { OnboardingProgressStepper } from '../components/Onboarding/OnboardingProgressStepper';
+import { SlugInput } from '../components/shared/SlugInput';
 import { fontFamilyDisplay } from '../theme/tokens';
+import { slugError, slugify, workspaceId } from '../utils/slug';
 
 export default function OnboardingWorkspacePage() {
   const navigate = useNavigate();
@@ -12,6 +14,9 @@ export default function OnboardingWorkspacePage() {
   const { createWorkspace } = useWorkspace();
 
   const [name, setName] = useState('');
+  // Follows the name until edited.
+  const [slug, setSlug] = useState('');
+  const [slugEdited, setSlugEdited] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -24,12 +29,17 @@ export default function OnboardingWorkspacePage() {
       setError('Organization not found. Please try again.');
       return;
     }
+    const invalid = slugError(slug);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
-      await createWorkspace(name.trim());
+      await createWorkspace(name.trim(), slug);
       navigate('/app/chat', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create workspace.');
@@ -39,7 +49,7 @@ export default function OnboardingWorkspacePage() {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && name.trim()) {
+    if (e.key === 'Enter' && name.trim() && !slugError(slug)) {
       handleSubmit();
     }
   };
@@ -67,6 +77,7 @@ export default function OnboardingWorkspacePage() {
           value={name}
           onChange={(e) => {
             setName(e.target.value);
+            if (!slugEdited) setSlug(slugify(e.target.value));
             setError(null);
           }}
           onKeyDown={handleKeyDown}
@@ -77,13 +88,27 @@ export default function OnboardingWorkspacePage() {
           helperText="You can create more workspaces later."
           inputProps={{ maxLength: 60 }}
         />
+        <Box sx={{ mt: 2.5 }}>
+          <SlugInput
+            label="Workspace slug"
+            value={slug}
+            onChange={(newSlug) => {
+              setSlug(newSlug);
+              setSlugEdited(true);
+              setError(null);
+            }}
+            idPreview={currentOrganization ? (s) => workspaceId(currentOrganization.id, s) : undefined}
+            onKeyDown={handleKeyDown}
+            disabled={loading}
+          />
+        </Box>
 
         <Button
           variant="contained"
           fullWidth
           size="large"
           onClick={handleSubmit}
-          disabled={!name.trim() || loading}
+          disabled={!name.trim() || !!slugError(slug) || loading}
           sx={{ mt: 3, py: 1.5 }}
         >
           {loading ? 'Creating…' : 'Continue'}

@@ -264,8 +264,8 @@ const adminService = {
     await apiClient.delete(`/users/${userId}`);
   },
 
-  async createWorkspace(name: string): Promise<Workspace> {
-    return apiClient.post('/workspaces', { name });
+  async createWorkspace(name: string, slug: string): Promise<Workspace> {
+    return apiClient.post('/workspaces', { name, slug });
   },
 
   async listWorkspaces(): Promise<Workspace[]> {

@@ -4,3 +4,6 @@ notes.org
 .omo
 **__pycache__
 .DS_Store
+
+# Local env files (secrets)
+/crates/*/.env

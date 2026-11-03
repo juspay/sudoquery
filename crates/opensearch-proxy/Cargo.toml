@@ -1,0 +1,24 @@
+[package]
+name = "opensearch-proxy"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+axum = { workspace = true }
+base64 = "0.22"
+canonical-event = { path = "../canonical-event" }
+chrono = { workspace = true }
+dotenvy = { workspace = true }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { workspace = true }
+serde_json = { workspace = true }
+subtle = "2.6"
+thiserror = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+uuid = { workspace = true }
+wiremock = "0.6"

@@ -9,7 +9,7 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use crate::{
-    AppState, clickhouse, db,
+    AppState, db,
     middleware::{WorkspaceAdmin, WorkspaceContext},
 };
 
@@ -159,13 +159,10 @@ pub async fn get_dashboard(
 
     if should_run {
         // Execute query against ClickHouse
-        match clickhouse::execute_workspace_query(
-            &state.clickhouse_url,
-            &workspace.id,
-            &state.clickhouse_workspace_password,
-            &dashboard.query,
-        )
-        .await
+        match state
+            .clickhouse
+            .query(workspace.id.as_ref(), &dashboard.query)
+            .await
         {
             Ok(response) => {
                 // Update dashboard with new response
@@ -260,13 +257,10 @@ pub async fn test_run_dashboard(
     Json(req): Json<TestRunDashboardRequest>,
 ) -> Result<Json<DashboardResponse>, DashboardError> {
     // Execute query against ClickHouse
-    let response = clickhouse::execute_workspace_query(
-        &state.clickhouse_url,
-        &workspace.id,
-        &state.clickhouse_workspace_password,
-        &req.query,
-    )
-    .await;
+    let response = state
+        .clickhouse
+        .query(workspace.id.as_ref(), &req.query)
+        .await;
 
     // Build response with query result or error
     let now = Utc::now();

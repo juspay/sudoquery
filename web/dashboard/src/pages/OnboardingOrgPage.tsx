@@ -3,18 +3,30 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Typography, Button, Alert, Paper } from '@mui/material';
 import { useOrganization } from '../contexts/OrganizationContext';
 import { OrgNameInput } from '../components/Onboarding/OrgNameInput';
+import { SlugInput } from '../components/shared/SlugInput';
 import { OnboardingProgressStepper } from '../components/Onboarding/OnboardingProgressStepper';
 import { fontFamilyDisplay } from '../theme/tokens';
+import { slugError, slugify } from '../utils/slug';
 
 export default function OnboardingOrgPage() {
   const navigate = useNavigate();
   const { createOrganization } = useOrganization();
   const [name, setName] = useState('');
+  // Follows the name until edited.
+  const [slug, setSlug] = useState('');
+  const [slugEdited, setSlugEdited] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleChange = (newName: string) => {
     setName(newName);
+    if (!slugEdited) setSlug(slugify(newName));
+    setError(null);
+  };
+
+  const handleSlugChange = (newSlug: string) => {
+    setSlug(newSlug);
+    setSlugEdited(true);
     setError(null);
   };
 
@@ -23,10 +35,15 @@ export default function OnboardingOrgPage() {
       setError('Please enter an organization name.');
       return;
     }
+    const invalid = slugError(slug);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
     setLoading(true);
     setError(null);
     try {
-      await createOrganization(name.trim());
+      await createOrganization(name.trim(), slug);
       navigate('/onboarding/workspace', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create organization. Please try again.');
@@ -35,7 +52,7 @@ export default function OnboardingOrgPage() {
     }
   };
 
-  const canSubmit = name.trim().length > 0 && !loading;
+  const canSubmit = name.trim().length > 0 && !slugError(slug) && !loading;
 
   return (
     <Box>
@@ -48,7 +65,7 @@ export default function OnboardingOrgPage() {
           Create your organization
         </Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 3.5 }}>
-          An organization groups your workspaces and team members. You can change the name later.
+          An organization groups your workspaces and team members. You can change the name later; the slug is its permanent ID.
         </Typography>
 
         {error && (
@@ -56,6 +73,9 @@ export default function OnboardingOrgPage() {
         )}
 
         <OrgNameInput value={name} onChange={handleChange} disabled={loading} />
+        <Box sx={{ mt: 2.5 }}>
+          <SlugInput label="Organization slug" value={slug} onChange={handleSlugChange} disabled={loading} />
+        </Box>
 
         <Button
           variant="contained"

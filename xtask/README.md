@@ -71,7 +71,7 @@ on first boot), `redpanda` (19092), `minio` (9000, console 9001), `keycloak`
 dashboard-server creates a database per workspace from `ckh/workspace.sql`) and
 `chproxy` (9090).
 
-Every workspace gets its own Kafka topic (`events.{org_id}.{workspace_id}`),
+Every workspace gets its own Kafka topic (`events.{workspace_id}`),
 ClickHouse database and user, and OpenSearch data stream
 (`events-{org_id}-{workspace_id}`). Creating a workspace from the dashboard
 only records it as `PENDING`; dashboard-server's admin API provisions it:
@@ -210,15 +210,18 @@ postgres redpanda clickhouse opensearch opensearch-init`):
   `CLICKHOUSE_PASSWORD`, `CLICKHOUSE_KAFKA_BROKERS` and `OPENSEARCH_URL`
   override the compose defaults.
 - **Server:** runs from a scratch directory (`DASHBOARD_BIND_ADDR` sets the
-  port), so a repo `.env` is not loaded.
+  port), so a repo `.env` is not loaded. It reaches ClickHouse through a
+  `clickhouse-proxy` started alongside it (`CLICKHOUSE_PROXY_ADDR`), which
+  keeps its tables in the throwaway database; the broken server gets a proxy
+  with the wrong admin password.
 
 ### `e2e collector`
 
 Event ingestion through `events-collector` into Kafka. Needs the compose
-redpanda and localstack (`cargo xtask setup redpanda localstack`), or any
-brokers in `KAFKA_BOOTSTRAP_SERVERS` and any KMS at `LOCALSTACK_URL`:
+postgres and redpanda (`cargo xtask setup postgres redpanda`), or any
+database in `DATABASE_URL` and brokers in `KAFKA_BOOTSTRAP_SERVERS`:
 
-- **Topics:** the collector runs with `KAFKA_TOPIC=e2e-collector-<run>.{org_id}.{workspace_id}`,
+- **Topics:** the collector runs with `KAFKA_TOPIC=e2e-collector-<run>.{workspace_id}`,
   so every test org/workspace publishes to its own topic. Cases create those
   topics up front and the run deletes them at the end.
 - **Checks:** events are read back from Kafka and checked for ids, org and
@@ -226,10 +229,15 @@ brokers in `KAFKA_BOOTSTRAP_SERVERS` and any KMS at `LOCALSTACK_URL`:
   properties, the record key, per-workspace topic isolation, and that rejected
   requests (header/body mismatch, missing or invalid ids, no bearer token)
   publish nothing.
-- **Authenticated endpoint:** its bearer token is a KMS ciphertext. Cases
-  start their own collector with a token encrypted by a fresh localstack
-  KMS key: the right token publishes and a wrong one gets 401; a ciphertext
-  KMS cannot decrypt is reported by `/v1/health` and refused with 500.
+- **Authenticated endpoint:** collector keys live in a throwaway database
+  (`collector_e2e_<uuid>`, with `collector_keys.sql` applied) that the
+  collector reads as a role allowed only `SELECT` on `collector_keys`; both
+  are dropped at the end. Cases check that a key publishes events marked
+  authenticated without the request naming its scope; a wrong secret or a
+  malformed key gets 401; headers or events for another workspace get 400;
+  expired keys, and revoked ones once the 1s cache lapses, get 401; and an
+  unreachable or unconfigured key store is reported by `/v1/health` and
+  answered with 503.
 - **Server:** reads the real `crates/events-collector/cac.toml` (via
   `COLLECTOR_CONFIG`).
 

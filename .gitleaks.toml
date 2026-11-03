@@ -1,0 +1,21 @@
+# gitleaks reads this from the scanned directory, in `gitleaks git` and
+# `gitleaks dir` alike. .gitleaksignore pins findings in commits; this covers
+# what holds in any mode.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Build output and dependencies: test keys and certificates compiled in from crates (rustls, rsa, pkcs8, librdkafka, ...)"
+paths = [
+  '''(^|/)target/''',
+  '''(^|/)node_modules/''',
+]
+
+[[allowlists]]
+description = "Not secrets: the dev admin token in docs examples, and the local Keycloak JDBC URL (no credential)"
+regexTarget = "line"
+regexes = [
+  '''X-Admin-Token: dev-admin-token''',
+  '''KC_DB_URL: jdbc:postgresql://keycloak-db:5432/keycloak''',
+]

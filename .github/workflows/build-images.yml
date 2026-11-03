@@ -29,5 +29,11 @@ jobs:
   sink-opensearch:
     uses: ./.github/workflows/image-sink-opensearch.yml
 
+  opensearch-proxy:
+    uses: ./.github/workflows/image-opensearch-proxy.yml
+
+  clickhouse-proxy:
+    uses: ./.github/workflows/image-clickhouse-proxy.yml
+
   web-dashboard:
     uses: ./.github/workflows/image-web-dashboard.yml

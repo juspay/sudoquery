@@ -1,14 +1,15 @@
 use std::net::SocketAddr;
 use std::str;
+use std::sync::Arc;
 
 use axum::body::Bytes;
-use axum::extract::ConnectInfo;
+use axum::extract::{ConnectInfo, State};
 use axum::http::{HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
-use canonical_event::is_valid_slug;
-use event_collector::auth;
+use canonical_event::{WorkspaceId, is_valid_slug};
+use event_collector::auth::{Authenticator, KeyScope};
 use event_collector::config::{
     ServerConfig, get_config_from_local_file, get_default_config_from_local_file,
 };
@@ -31,23 +32,33 @@ const ROUTE_PREFIX: &str = "/v1";
 async fn main() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let server_config = ServerConfig::from_env()?;
     let addr = server_config.addr;
+    let state = Arc::new(AppState {
+        auth: Authenticator::from_env()?,
+    });
     let listener = TcpListener::bind(&addr).await?;
 
     println!("listening on http://{}", addr);
     axum::serve(
         listener,
-        app(server_config.accept_cors).into_make_service_with_connect_info::<SocketAddr>(),
+        app(server_config.accept_cors, state).into_make_service_with_connect_info::<SocketAddr>(),
     )
     .await?;
     Ok(())
 }
 
-fn app(accept_cors: bool) -> Router {
+struct AppState {
+    /// The authenticated endpoint's key store; `None` when unconfigured,
+    /// and the endpoint then answers 503.
+    auth: Option<Authenticator>,
+}
+
+fn app(accept_cors: bool, state: Arc<AppState>) -> Router {
     let routes = Router::new()
         .route("/health", get(health))
         .route("/events/batch", post(push_batch))
         .route("/events", post(push_events))
-        .route("/events/authenticated", post(push_events_authenticated));
+        .route("/events/authenticated", post(push_events_authenticated))
+        .with_state(state);
 
     let router = Router::new().nest(ROUTE_PREFIX, routes);
 
@@ -58,7 +69,7 @@ fn app(accept_cors: bool) -> Router {
     }
 }
 
-async fn health() -> Result<Json<HealthResponse>, ApiError> {
+async fn health(State(state): State<Arc<AppState>>) -> Result<Json<HealthResponse>, ApiError> {
     let config = get_default_config_from_local_file().await?;
     let kafka_connector = config.kafka_connector;
 
@@ -71,9 +82,12 @@ async fn health() -> Result<Json<HealthResponse>, ApiError> {
             ApiError::service_unavailable(format!("kafka connection check failed: {}", error))
         })?;
 
-    let authenticated_endpoint = match auth::health_check().await {
-        Ok(()) => "ok".to_string(),
-        Err(error) => error.to_string(),
+    let authenticated_endpoint = match &state.auth {
+        None => AppError::AuthNotConfigured.to_string(),
+        Some(auth) => match auth.health_check().await {
+            Ok(()) => "ok".to_string(),
+            Err(error) => error.to_string(),
+        },
     };
 
     Ok(Json(HealthResponse {
@@ -122,13 +136,17 @@ async fn push_events(
     Ok(Json(status))
 }
 
+/// Like `push_events`, but the request is scoped by its collector key
+/// (`Authorization: Bearer sk_…`), and its events are marked authenticated.
 async fn push_events_authenticated(
+    State(state): State<Arc<AppState>>,
     ConnectInfo(peer_addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     body: Bytes,
 ) -> Result<Json<CollectionStatus>, ApiError> {
-    auth::validate_bearer_token(&headers).await?;
-    let context = RequestContext::from_headers(&headers, Some(peer_addr))?;
+    let auth = state.auth.as_ref().ok_or(AppError::AuthNotConfigured)?;
+    let key = auth.authenticate(&headers).await?;
+    let context = RequestContext::for_key(&headers, Some(peer_addr), key)?;
     let config =
         get_config_from_local_file(context.org_id.clone(), context.workspace_id.clone()).await?;
     let body = request_body_as_str(&body)?;
@@ -162,14 +180,46 @@ impl RequestContext {
     }
 
     fn from_headers(headers: &HeaderMap, peer_addr: Option<SocketAddr>) -> Result<Self, ApiError> {
-        let org_id = required_slug_header(headers, ORG_ID_HEADER)?;
-        let workspace_id = required_slug_header(headers, WORKSPACE_ID_HEADER)?;
+        let org_id = required_header(headers, ORG_ID_HEADER)?;
+        let workspace_id = required_header(headers, WORKSPACE_ID_HEADER)?;
+        validate_scope_headers(&org_id, &workspace_id)?;
         let ip_address =
             forwarded_ip(headers)?.or_else(|| peer_addr.map(|addr| addr.ip().to_string()));
 
         Ok(Self {
             org_id,
             workspace_id,
+            ip_address,
+        })
+    }
+
+    /// The scope of an authenticated request: its key's org and workspace.
+    /// `x-org-id` / `x-workspace-id` are optional then, but must name the
+    /// key's scope when sent.
+    fn for_key(
+        headers: &HeaderMap,
+        peer_addr: Option<SocketAddr>,
+        key: KeyScope,
+    ) -> Result<Self, ApiError> {
+        for (name, expected) in [
+            (ORG_ID_HEADER, &key.org_id),
+            (WORKSPACE_ID_HEADER, &key.workspace_id),
+        ] {
+            if let Some(sent) = optional_header(headers, name)?
+                && sent != *expected
+            {
+                return Err(AppError::ScopeMismatch(format!(
+                    "the `{name}` header is {sent:?}, but the key is for {expected:?}"
+                ))
+                .into());
+            }
+        }
+        let ip_address =
+            forwarded_ip(headers)?.or_else(|| peer_addr.map(|addr| addr.ip().to_string()));
+
+        Ok(Self {
+            org_id: key.org_id,
+            workspace_id: key.workspace_id,
             ip_address,
         })
     }
@@ -193,25 +243,30 @@ fn optional_header(headers: &HeaderMap, name: &'static str) -> Result<Option<Str
     Ok((!value.is_empty()).then(|| value.to_string()))
 }
 
-/// Reads a required header whose value must be a valid slug
-/// ([`is_valid_slug`]). The org/workspace ids select the CAC config for the
-/// request, so malformed values are rejected here, before any processing.
-fn required_slug_header(headers: &HeaderMap, name: &'static str) -> Result<String, ApiError> {
-    let value = required_header(headers, name)?;
-    validate_slug_header(name, &value)?;
-    Ok(value)
-}
-
-fn validate_slug_header(name: &'static str, value: &str) -> Result<(), ApiError> {
-    if is_valid_slug(value) {
-        Ok(())
-    } else {
-        Err(ApiError::bad_request(format!(
-            "`{}` header must be a valid slug: 6-30 characters of lowercase letters, digits, and \
-             hyphens, starting with a lowercase letter and ending with a lowercase letter or digit",
-            name
-        )))
+/// Checks the `x-org-id` and `x-workspace-id` headers: an org slug, and a
+/// workspace id (`{org_id}-{workspace slug}`) of that org. They select the
+/// CAC config and the topic for the request, so malformed values are
+/// rejected here, before any processing.
+fn validate_scope_headers(org_id: &str, workspace_id: &str) -> Result<(), ApiError> {
+    if !is_valid_slug(org_id) {
+        return Err(ApiError::bad_request(format!(
+            "`{ORG_ID_HEADER}` header must be a valid slug: 3-30 characters of lowercase \
+             letters, digits, and underscores, starting with a lowercase letter and ending with \
+             a lowercase letter or digit"
+        )));
     }
+    let workspace_id: WorkspaceId = workspace_id.parse().map_err(|_| {
+        ApiError::bad_request(format!(
+            "`{WORKSPACE_ID_HEADER}` header must be a workspace id: the org's slug and the \
+             workspace's slug joined by `-`, e.g. `{org_id}-web_shop`"
+        ))
+    })?;
+    if workspace_id.org_slug() != org_id {
+        return Err(ApiError::bad_request(format!(
+            "workspace `{workspace_id}` is not in org `{org_id}`"
+        )));
+    }
+    Ok(())
 }
 
 fn forwarded_ip(headers: &HeaderMap) -> Result<Option<String>, ApiError> {
@@ -283,6 +338,9 @@ impl IntoResponse for ApiError {
                 "missing bearer token".to_string(),
                 true,
             ),
+            Self::App(error @ (AppError::KeyStore(_) | AppError::AuthNotConfigured)) => {
+                (StatusCode::SERVICE_UNAVAILABLE, error.to_string(), false)
+            }
             Self::App(error) => (StatusCode::INTERNAL_SERVER_ERROR, error.to_string(), false),
         };
 
@@ -303,8 +361,8 @@ mod tests {
     #[test]
     fn request_context_reads_headers() {
         let mut headers = HeaderMap::new();
-        headers.insert(ORG_ID_HEADER, "acme-k3x9qa".parse().unwrap());
-        headers.insert(WORKSPACE_ID_HEADER, "blue-ocean-7".parse().unwrap());
+        headers.insert(ORG_ID_HEADER, "acme_retail".parse().unwrap());
+        headers.insert(WORKSPACE_ID_HEADER, "acme_retail-web_shop".parse().unwrap());
         headers.insert(
             FORWARDED_FOR_HEADER,
             "203.0.113.1, 203.0.113.2".parse().unwrap(),
@@ -313,16 +371,16 @@ mod tests {
         let peer_addr = "127.0.0.1:51000".parse().unwrap();
         let context = RequestContext::from_headers(&headers, Some(peer_addr)).unwrap();
 
-        assert_eq!(context.org_id, "acme-k3x9qa");
-        assert_eq!(context.workspace_id, "blue-ocean-7");
+        assert_eq!(context.org_id, "acme_retail");
+        assert_eq!(context.workspace_id, "acme_retail-web_shop");
         assert_eq!(context.ip_address.as_deref(), Some("203.0.113.1"));
     }
 
     #[test]
     fn request_context_falls_back_to_peer_ip() {
         let mut headers = HeaderMap::new();
-        headers.insert(ORG_ID_HEADER, "acme-k3x9qa".parse().unwrap());
-        headers.insert(WORKSPACE_ID_HEADER, "blue-ocean-7".parse().unwrap());
+        headers.insert(ORG_ID_HEADER, "acme_retail".parse().unwrap());
+        headers.insert(WORKSPACE_ID_HEADER, "acme_retail-web_shop".parse().unwrap());
         let peer_addr = "127.0.0.1:51000".parse().unwrap();
 
         let context = RequestContext::from_headers(&headers, Some(peer_addr)).unwrap();
@@ -333,7 +391,7 @@ mod tests {
     #[test]
     fn request_context_requires_org_id() {
         let mut headers = HeaderMap::new();
-        headers.insert(WORKSPACE_ID_HEADER, "blue-ocean-7".parse().unwrap());
+        headers.insert(WORKSPACE_ID_HEADER, "acme_retail-web_shop".parse().unwrap());
 
         assert!(matches!(
             RequestContext::from_headers(&headers, None),
@@ -344,7 +402,7 @@ mod tests {
     #[test]
     fn request_context_requires_workspace_id() {
         let mut headers = HeaderMap::new();
-        headers.insert(ORG_ID_HEADER, "acme-k3x9qa".parse().unwrap());
+        headers.insert(ORG_ID_HEADER, "acme_retail".parse().unwrap());
 
         assert!(matches!(
             RequestContext::from_headers(&headers, None),
@@ -353,30 +411,87 @@ mod tests {
     }
 
     #[test]
-    fn request_context_rejects_invalid_slugs() {
-        for invalid in [
-            "acme",
-            "acme-store-k3x9qa-with-a-very-long-suffix",
-            "Acme-k3x9qa",
-            "9acme-k3x9qa",
-            "acme_k3x9qa",
+    fn request_context_rejects_invalid_ids() {
+        for (org_id, workspace_id) in [
+            // Invalid org slugs.
+            ("ac", "ac-web_shop"),
+            ("acme-retail", "acme-retail-web_shop"),
+            ("Acme_retail", "Acme_retail-web_shop"),
+            ("9acme", "9acme-web_shop"),
+            ("acme_retail_with_a_very_long_name", "acme_retail_with_a_very_long_name-web_shop"),
+            // Invalid workspace ids.
+            ("acme_retail", "web_shop"),
+            ("acme_retail", "acme_retail-"),
+            ("acme_retail", "acme_retail-web-shop"),
+            ("acme_retail", "acme_retail/web_shop"),
+            // Another org's workspace.
+            ("acme_retail", "north_star-web_shop"),
         ] {
-            for (header, other) in [
-                (ORG_ID_HEADER, WORKSPACE_ID_HEADER),
-                (WORKSPACE_ID_HEADER, ORG_ID_HEADER),
-            ] {
-                let mut headers = HeaderMap::new();
-                headers.insert(header, invalid.parse().unwrap());
-                headers.insert(other, "blue-ocean-7".parse().unwrap());
+            let mut headers = HeaderMap::new();
+            headers.insert(ORG_ID_HEADER, org_id.parse().unwrap());
+            headers.insert(WORKSPACE_ID_HEADER, workspace_id.parse().unwrap());
 
-                assert!(
-                    matches!(
-                        RequestContext::from_headers(&headers, None),
-                        Err(ApiError::BadRequest(_))
-                    ),
-                    "`{invalid}` should be rejected in `{header}`"
-                );
-            }
+            assert!(
+                matches!(
+                    RequestContext::from_headers(&headers, None),
+                    Err(ApiError::BadRequest(_))
+                ),
+                "`{org_id}` / `{workspace_id}` should be rejected"
+            );
+        }
+    }
+
+    fn key_scope() -> KeyScope {
+        KeyScope {
+            org_id: "acme_retail".into(),
+            workspace_id: "acme_retail-web_shop".into(),
+        }
+    }
+
+    #[test]
+    fn authenticated_requests_take_the_keys_scope() {
+        let context = RequestContext::for_key(&HeaderMap::new(), None, key_scope()).unwrap();
+
+        assert_eq!(context.org_id, "acme_retail");
+        assert_eq!(context.workspace_id, "acme_retail-web_shop");
+    }
+
+    #[test]
+    fn authenticated_requests_accept_headers_naming_the_keys_scope() {
+        let mut headers = HeaderMap::new();
+        headers.insert(ORG_ID_HEADER, "acme_retail".parse().unwrap());
+        headers.insert(WORKSPACE_ID_HEADER, "acme_retail-web_shop".parse().unwrap());
+
+        assert!(RequestContext::for_key(&headers, None, key_scope()).is_ok());
+    }
+
+    #[test]
+    fn authenticated_requests_refuse_headers_for_another_scope() {
+        for (header, value) in [
+            (ORG_ID_HEADER, "other_org"),
+            (WORKSPACE_ID_HEADER, "acme_retail-other"),
+        ] {
+            let mut headers = HeaderMap::new();
+            headers.insert(header, value.parse().unwrap());
+
+            assert!(
+                matches!(
+                    RequestContext::for_key(&headers, None, key_scope()),
+                    Err(ApiError::App(AppError::ScopeMismatch(_)))
+                ),
+                "{header}: {value}"
+            );
+        }
+    }
+
+    #[test]
+    fn an_unavailable_key_store_is_service_unavailable() {
+        for error in [
+            AppError::KeyStore("down".into()),
+            AppError::AuthNotConfigured,
+        ] {
+            let response = ApiError::from(error).into_response();
+            assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE);
         }
     }
 
