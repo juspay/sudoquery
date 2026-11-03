@@ -18,6 +18,8 @@ export interface Workspace {
 
 interface CreateWorkspaceRequest {
   name: string;
+  /** Unique in the org; the workspace's id is `{org id}-{slug}` (see utils/slug). */
+  slug: string;
 }
 
 interface UpdateWorkspaceRequest {

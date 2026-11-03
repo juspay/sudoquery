@@ -4,7 +4,10 @@ use serde_with::skip_serializing_none;
 
 pub mod ids;
 
-pub use ids::{InvalidSlugError, OrgId, WorkspaceId, is_valid_slug};
+pub use ids::{
+    InvalidSlugError, OrgId, WORKSPACE_ID_SEPARATOR, WorkspaceId, is_valid_slug,
+    is_valid_workspace_id,
+};
 
 #[derive(Clone, Default, Deserialize, Serialize)]
 pub struct Geo {

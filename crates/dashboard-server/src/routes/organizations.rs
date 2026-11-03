@@ -1,4 +1,5 @@
 use axum::{extract::State, http::StatusCode, response::Json};
+use canonical_event::{InvalidSlugError, OrgId};
 use sea_orm::{ActiveModelTrait, Set};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -16,6 +17,9 @@ use crate::{
 #[serde(deny_unknown_fields)]
 pub struct CreateOrganizationRequest {
     pub name: String,
+    /// The organization's id, e.g. `north_star` for "North Star"; see
+    /// `canonical_event::is_valid_slug`.
+    pub slug: String,
 }
 
 #[derive(Serialize)]
@@ -30,9 +34,19 @@ pub async fn create_organization(
     AuthUser { user, .. }: AuthUser,
     Json(req): Json<CreateOrganizationRequest>,
 ) -> Result<(StatusCode, Json<OrganizationResponse>), OrganizationError> {
-    let org = db::create_organization(&state.db_pool, &req.name)
+    let id: OrgId = req
+        .slug
+        .parse()
+        .map_err(|e: InvalidSlugError| OrganizationError::InvalidSlug(e.message.to_owned()))?;
+    let org = db::create_organization(&state.db_pool, &id, &req.name)
         .await
-        .map_err(|e| OrganizationError::Database(e.to_string()))?;
+        .map_err(|e| {
+            if db::is_unique_violation(&e) {
+                OrganizationError::SlugTaken(id.to_string())
+            } else {
+                OrganizationError::Database(e.to_string())
+            }
+        })?;
 
     // Add creator as org_admin
     db::add_user_to_organization(&state.db_pool, user.id, &org.id, &OrgRole::OrgAdmin)
@@ -289,6 +303,10 @@ pub enum OrganizationError {
     NotFound,
     #[error("Cannot remove yourself")]
     CannotRemoveSelf,
+    #[error("Invalid slug: {0}")]
+    InvalidSlug(String),
+    #[error("Slug {0} is taken")]
+    SlugTaken(String),
     #[error("Database error: {0}")]
     Database(String),
     #[error("Auth error: {0}")]
@@ -313,6 +331,13 @@ impl axum::response::IntoResponse for OrganizationError {
             OrganizationError::CannotRemoveSelf => (
                 StatusCode::BAD_REQUEST,
                 "Cannot remove yourself".to_string(),
+            ),
+            OrganizationError::InvalidSlug(rules) => {
+                (StatusCode::BAD_REQUEST, format!("Invalid slug: {rules}"))
+            }
+            OrganizationError::SlugTaken(slug) => (
+                StatusCode::CONFLICT,
+                format!("An organization with the slug {slug:?} already exists"),
             ),
             OrganizationError::Database(e) => {
                 tracing::error!("Database error: {}", e);

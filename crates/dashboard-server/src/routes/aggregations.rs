@@ -1,54 +1,22 @@
-use axum::{extract::State, response::Json};
-use chrono::{DateTime, Utc};
-use serde::Deserialize;
-use serde_json::Value;
+//! Event histogram and field facets, served by opensearch-proxy (see
+//! `search_proxy`).
 
-use crate::{
-    AppState,
-    middleware::WorkspaceAccess,
-    opensearch::{Facets, Histogram},
-    routes::search::{SearchError, workspace_scope},
-};
+use axum::{body::Bytes, extract::State, response::Response};
+use reqwest::Method;
 
-// ============ Request Types ============
-
-#[derive(Deserialize)]
-pub struct HistogramRequest {
-    #[serde(default)]
-    pub query: Option<Value>,
-    /// Start of the time range, inclusive.
-    pub from: DateTime<Utc>,
-    /// End of the time range, exclusive.
-    pub to: DateTime<Utc>,
-}
-
-#[derive(Deserialize)]
-pub struct FacetsRequest {
-    #[serde(default)]
-    pub query: Option<Value>,
-    pub field: String,
-    #[serde(default)]
-    pub size: Option<usize>,
-    /// Only count values starting with this text.
-    #[serde(default)]
-    pub prefix: Option<String>,
-}
+use crate::{AppState, middleware::WorkspaceAccess};
 
 // ============ Event Histogram ============
 
 pub async fn histogram(
     State(state): State<AppState>,
     WorkspaceAccess { workspace, .. }: WorkspaceAccess,
-    Json(req): Json<HistogramRequest>,
-) -> Result<Json<Histogram>, SearchError> {
-    let scope = workspace_scope(&workspace)?;
-
-    let histogram = state
-        .opensearch
-        .histogram(&scope, req.query.as_ref(), req.from, req.to)
-        .await?;
-
-    Ok(Json(histogram))
+    body: Bytes,
+) -> Response {
+    state
+        .search_proxy
+        .forward(Method::POST, &workspace, &["histogram"], Some(body))
+        .await
 }
 
 // ============ Field Facets ============
@@ -58,20 +26,10 @@ pub async fn histogram(
 pub async fn facets(
     State(state): State<AppState>,
     WorkspaceAccess { workspace, .. }: WorkspaceAccess,
-    Json(req): Json<FacetsRequest>,
-) -> Result<Json<Facets>, SearchError> {
-    let scope = workspace_scope(&workspace)?;
-
-    let facets = state
-        .opensearch
-        .facets(
-            &scope,
-            req.query.as_ref(),
-            &req.field,
-            req.size,
-            req.prefix.as_deref(),
-        )
-        .await?;
-
-    Ok(Json(facets))
+    body: Bytes,
+) -> Response {
+    state
+        .search_proxy
+        .forward(Method::POST, &workspace, &["facets"], Some(body))
+        .await
 }

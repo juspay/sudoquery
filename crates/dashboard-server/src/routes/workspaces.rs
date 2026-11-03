@@ -18,6 +18,9 @@ use crate::{
 #[serde(deny_unknown_fields)]
 pub struct CreateWorkspaceRequest {
     pub name: String,
+    /// The workspace's slug, unique in its org, e.g. `web_shop`; its id is
+    /// `{org_id}-{slug}`. See `canonical_event::is_valid_slug`.
+    pub slug: String,
 }
 
 #[derive(Serialize)]
@@ -40,9 +43,17 @@ pub async fn create_workspace(
 ) -> Result<(StatusCode, Json<CreateWorkspaceResponse>), WorkspaceError> {
     // The workspace starts PENDING: its topic, ClickHouse database and user,
     // and OpenSearch data stream are provisioned through the admin API.
-    let workspace = db::create_workspace(&state.db_pool, Some(&organization.id), &req.name)
+    let id = WorkspaceId::new(&organization.id, &req.slug)
+        .map_err(|e| WorkspaceError::InvalidSlug(e.message.to_owned()))?;
+    let workspace = db::create_workspace(&state.db_pool, &id, &organization.id, &req.name)
         .await
-        .map_err(|e| WorkspaceError::Database(e.to_string()))?;
+        .map_err(|e| {
+            if db::is_unique_violation(&e) {
+                WorkspaceError::SlugTaken(req.slug.clone())
+            } else {
+                WorkspaceError::Database(e.to_string())
+            }
+        })?;
 
     // Add the creator as workspace admin
     db::add_user_to_workspace(
@@ -296,6 +307,10 @@ pub enum WorkspaceError {
     InvalidWorkspaceId,
     #[error("Invalid timezone")]
     InvalidTimezone,
+    #[error("Invalid slug: {0}")]
+    InvalidSlug(String),
+    #[error("Slug {0} is taken")]
+    SlugTaken(String),
     #[error("Workspace not found")]
     NotFound,
     #[error("Workspace is being provisioned")]
@@ -319,6 +334,13 @@ impl axum::response::IntoResponse for WorkspaceError {
             WorkspaceError::InvalidTimezone => {
                 (StatusCode::BAD_REQUEST, "Invalid timezone".to_string())
             }
+            WorkspaceError::InvalidSlug(rules) => {
+                (StatusCode::BAD_REQUEST, format!("Invalid slug: {rules}"))
+            }
+            WorkspaceError::SlugTaken(slug) => (
+                StatusCode::CONFLICT,
+                format!("A workspace with the slug {slug:?} already exists in this organization"),
+            ),
             WorkspaceError::NotFound => (StatusCode::NOT_FOUND, "Workspace not found".to_string()),
             WorkspaceError::BeingProvisioned => (
                 StatusCode::CONFLICT,

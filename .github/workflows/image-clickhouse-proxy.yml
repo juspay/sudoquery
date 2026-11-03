@@ -1,0 +1,43 @@
+name: Image clickhouse-proxy
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  build:
+    name: Build and push clickhouse-proxy (${{ matrix.platform }})
+    strategy:
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/build-push-image
+        with:
+          image: clickhouse-proxy
+          platform: ${{ matrix.platform }}
+          dockerfile: crates/clickhouse-proxy/Dockerfile
+          context: .
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  merge:
+    name: Push clickhouse-proxy manifest
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: ./.github/actions/merge-image
+        with:
+          image: clickhouse-proxy
+          github-token: ${{ secrets.GITHUB_TOKEN }}

@@ -64,7 +64,7 @@ impl TestDb {
 }
 
 /// `url` with its database name replaced by `name`.
-fn with_database(url: &str, name: &str) -> String {
+pub(crate) fn with_database(url: &str, name: &str) -> String {
     let (base, query) = match url.split_once('?') {
         Some((base, query)) => (base, Some(query)),
         None => (url, None),

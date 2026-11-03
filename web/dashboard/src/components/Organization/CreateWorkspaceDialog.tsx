@@ -10,8 +10,11 @@ import {
   Alert,
   CircularProgress,
 } from '@mui/material';
+import { useOrganization } from '../../contexts/OrganizationContext';
 import { useWorkspace } from '../../contexts/WorkspaceContext';
 import type { Workspace } from '../../services/workspaceService';
+import { slugError, slugify, workspaceId } from '../../utils/slug';
+import { SlugInput } from '../shared/SlugInput';
 
 interface CreateWorkspaceDialogProps {
   open: boolean;
@@ -20,8 +23,12 @@ interface CreateWorkspaceDialogProps {
 }
 
 export function CreateWorkspaceDialog({ open, onClose, onSuccess }: CreateWorkspaceDialogProps) {
+  const { currentOrganization } = useOrganization();
   const { createWorkspace } = useWorkspace();
   const [name, setName] = useState('');
+  // Follows the name until edited.
+  const [slug, setSlug] = useState('');
+  const [slugEdited, setSlugEdited] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -30,12 +37,17 @@ export function CreateWorkspaceDialog({ open, onClose, onSuccess }: CreateWorksp
       setError('Workspace name is required');
       return;
     }
+    const invalid = slugError(slug);
+    if (invalid) {
+      setError(invalid);
+      return;
+    }
 
     setLoading(true);
     setError(null);
 
     try {
-      const workspace = await createWorkspace(name.trim());
+      const workspace = await createWorkspace(name.trim(), slug);
       onSuccess(workspace);
       handleClose();
     } catch (err) {
@@ -47,6 +59,8 @@ export function CreateWorkspaceDialog({ open, onClose, onSuccess }: CreateWorksp
 
   const handleClose = () => {
     setName('');
+    setSlug('');
+    setSlugEdited(false);
     setError(null);
     onClose();
   };
@@ -60,7 +74,10 @@ export function CreateWorkspaceDialog({ open, onClose, onSuccess }: CreateWorksp
           <TextField
             label="Workspace Name"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => {
+              setName(e.target.value);
+              if (!slugEdited) setSlug(slugify(e.target.value));
+            }}
             fullWidth
             required
             placeholder="My Workspace"
@@ -68,6 +85,19 @@ export function CreateWorkspaceDialog({ open, onClose, onSuccess }: CreateWorksp
             onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
             autoFocus
           />
+          <Box sx={{ mt: 2 }}>
+            <SlugInput
+              label="Workspace Slug"
+              value={slug}
+              onChange={(newSlug) => {
+                setSlug(newSlug);
+                setSlugEdited(true);
+              }}
+              idPreview={currentOrganization ? (s) => workspaceId(currentOrganization.id, s) : undefined}
+              disabled={loading}
+              onKeyDown={(e) => e.key === 'Enter' && handleSubmit()}
+            />
+          </Box>
         </Box>
       </DialogContent>
       <DialogActions sx={{ px: 3, pb: 2 }}>
@@ -77,7 +107,7 @@ export function CreateWorkspaceDialog({ open, onClose, onSuccess }: CreateWorksp
         <Button
           variant="contained"
           onClick={handleSubmit}
-          disabled={loading || !name.trim()}
+          disabled={loading || !name.trim() || !!slugError(slug)}
           startIcon={loading ? <CircularProgress size={16} /> : null}
         >
           Create

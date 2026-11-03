@@ -33,7 +33,7 @@
 CREATE DATABASE IF NOT EXISTS `{database}`;
 
 -- Fact table, event-name-centric sort.
-CREATE TABLE IF NOT EXISTS `{database}`.events_v2
+CREATE TABLE IF NOT EXISTS `{database}`.events
 (
     `workspace_id`      LowCardinality(String),
     `org_id`          LowCardinality(String)     DEFAULT '',
@@ -62,7 +62,7 @@ ORDER BY (workspace_id, event_name, event_timestamp, event_id)
 SETTINGS index_granularity = 8192;
 
 -- Fact table, actor-centric sort (same columns, differs only in ORDER BY).
-CREATE TABLE IF NOT EXISTS `{database}`.user_events_v2
+CREATE TABLE IF NOT EXISTS `{database}`.user_events
 (
     `workspace_id`      LowCardinality(String),
     `org_id`          LowCardinality(String)     DEFAULT '',
@@ -91,7 +91,7 @@ ORDER BY (workspace_id, actor_id, event_timestamp, event_id)
 SETTINGS index_granularity = 8192;
 
 -- Property catalog: every (event, property, type) the workspace has sent,
--- derived from events_v2 by event_schema_catalog_from_events_mv. `type` is
+-- derived from events by event_schema_catalog_from_events_mv. `type` is
 -- the ClickHouse type of the stored JSON path (String, Int64, Float64, ...),
 -- the type `properties.<path>.:<Type>` reads, so a path stored with several
 -- types has one row per type.
@@ -141,8 +141,8 @@ SETTINGS
 
 -- The WHERE clauses keep another workspace's events out even if one reaches
 -- this topic.
-CREATE MATERIALIZED VIEW IF NOT EXISTS `{database}`.events_v2_mv
-TO `{database}`.events_v2
+CREATE MATERIALIZED VIEW IF NOT EXISTS `{database}`.events_mv
+TO `{database}`.events
 AS
 SELECT
     id                    AS event_id,
@@ -168,8 +168,8 @@ SELECT
 FROM `{database}`.events_kafka
 WHERE workspace_id = '{workspace_id}';
 
-CREATE MATERIALIZED VIEW IF NOT EXISTS `{database}`.user_events_v2_mv
-TO `{database}`.user_events_v2
+CREATE MATERIALIZED VIEW IF NOT EXISTS `{database}`.user_events_mv
+TO `{database}`.user_events
 AS
 SELECT
     id                    AS event_id,
@@ -203,7 +203,7 @@ SELECT
     event_name,
     property,
     type
-FROM `{database}`.events_v2
+FROM `{database}`.events
 ARRAY JOIN
     mapKeys(JSONAllPathsWithTypes(properties))   AS property,
     mapValues(JSONAllPathsWithTypes(properties)) AS type

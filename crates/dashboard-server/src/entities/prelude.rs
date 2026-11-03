@@ -1,12 +1,9 @@
 pub use super::chat::Entity as Chat;
-pub use super::event_description::Entity as EventDescription;
 pub use super::invitation::Entity as Invitation;
 pub use super::message::Entity as Message;
 pub use super::organization::Entity as Organization;
 pub use super::organization_membership::Entity as OrganizationMembership;
-pub use super::property_description::Entity as PropertyDescription;
 pub use super::user::Entity as User;
-pub use super::user_workspace_console::Entity as UserWorkspaceConsole;
 pub use super::workspace::Entity as Workspace;
 pub use super::workspace_membership::Entity as WorkspaceMembership;
 pub use super::workspace_token::Entity as WorkspaceToken;

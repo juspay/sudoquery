@@ -5,8 +5,9 @@
 #
 # `kafka_connector.topic` may use `{org_id}` and `{workspace_id}`; the collector
 # replaces them with the request's ids before publishing. Every workspace has
-# its own topic, `events.{org_id}.{workspace_id}`, created by dashboard-server
-# with the workspace (its WORKSPACE_TOPIC_TEMPLATE must render the same name).
+# its own topic, `events.{workspace_id}` (workspace ids embed the org's, so
+# they are unique across orgs), created by dashboard-server with the workspace
+# (its WORKSPACE_TOPIC_TEMPLATE must render the same name).
 # KAFKA_TOPIC overrides the value here and may use the same placeholders.
 #
 # `bootstrap.servers` points at the local compose Redpanda; deployments set
@@ -18,7 +19,7 @@
 #   COLLECTOR_CONFIG=crates/events-collector/cac.toml cargo run -p event-collector
 
 [default-configs]
-kafka_connector = { value = { topic = "events.{org_id}.{workspace_id}", client_config = { "bootstrap.servers" = "localhost:19092", "message.timeout.ms" = "5000", "socket.timeout.ms" = "5000" } }, schema = { type = "object" } }
+kafka_connector = { value = { topic = "events.{workspace_id}", client_config = { "bootstrap.servers" = "localhost:19092", "message.timeout.ms" = "5000", "socket.timeout.ms" = "5000" } }, schema = { type = "object" } }
 enrichment = { value = { country = { override_existing = false, resolution = "IpAddress" }, arrived_at = { enabled = true, override_existing = false }, ip_address = { override_existing = false } }, schema = { type = "object" } }
 
 [dimensions]

@@ -23,7 +23,18 @@ pub enum AppError {
     #[error("Invalid bearer token")]
     InvalidToken,
 
-    /// An event's `org_id` / `workspace_id` differ from the request headers.
+    /// `collector_keys` could not be read (the authenticated endpoint's
+    /// database is down or misconfigured).
+    #[error("Collector keys unavailable: {0}")]
+    KeyStore(String),
+
+    /// The authenticated endpoint has no key store configured
+    /// (`COLLECTOR_KEYS_DATABASE_URL` unset).
+    #[error("The authenticated endpoint is not configured")]
+    AuthNotConfigured,
+
+    /// An event's `org_id` / `workspace_id` differ from the request's scope
+    /// (its headers, or its key's).
     #[error("{0}")]
     ScopeMismatch(String),
 }

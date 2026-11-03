@@ -1,6 +1,9 @@
 //! Read side of OpenSearch: queries the events `sink-opensearch` indexed.
-//! Provisioning also creates and deletes each workspace's data stream through
-//! it, with the admin credentials when they are set.
+//! The `opensearch-proxy` binary serves it over HTTP (see [`server`]) to
+//! dashboard-server and the CDP dashboard, which decide who may read which
+//! workspace. dashboard-server's provisioning also uses this library to
+//! create and delete each workspace's data stream, with the admin
+//! credentials when they are set.
 //!
 //! Every query goes through the same steps: check the client's query, wrap it
 //! in the workspace's scope, have OpenSearch validate it, then run it.
@@ -13,10 +16,9 @@ use reqwest::Method;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
 
-use crate::db;
-
 pub mod cursor;
 pub mod query;
+pub mod server;
 
 pub use cursor::{CursorPage, QueryRequest};
 pub use query::SortOrder;
@@ -33,16 +35,6 @@ const EVENT_KEY_LEN: usize = 2;
 pub struct Scope {
     pub org_id: String,
     pub workspace_id: String,
-}
-
-impl Scope {
-    /// `None` when the workspace has no organization, and therefore no `org_id`.
-    pub fn for_workspace(workspace: &db::Workspace) -> Option<Self> {
-        Some(Self {
-            org_id: workspace.organization_id.as_ref()?.to_string(),
-            workspace_id: workspace.id.to_string(),
-        })
-    }
 }
 
 /// A request the client got wrong.
@@ -685,7 +677,7 @@ fn decode_error(error: impl ToString) -> OpenSearchError {
     OpenSearchError::Decode(error.to_string())
 }
 
-pub(crate) fn excerpt(text: &str) -> &str {
+pub fn excerpt(text: &str) -> &str {
     match text.char_indices().nth(MAX_ERROR_TEXT) {
         Some((end, _)) => &text[..end],
         None => text,
@@ -1445,32 +1437,6 @@ mod tests {
             matches!(&error, OpenSearchError::Upstream { status: 400, body } if body.contains(&reason)),
             "{error}"
         );
-    }
-
-    #[test]
-    fn a_scope_needs_an_organization() {
-        let organization = canonical_event::OrgId::try_from("acme-corp".to_string()).unwrap();
-        let mut workspace = db::Workspace {
-            id: canonical_event::WorkspaceId::try_from("acme-corp-shop".to_string()).unwrap(),
-            organization_id: Some(organization.clone()),
-            name: "shop".into(),
-            timezone: None,
-            status: db::WorkspaceStatus::Active,
-            deleted_at: None,
-            created_at: Utc::now(),
-            updated_at: Utc::now(),
-        };
-
-        assert_eq!(
-            Scope::for_workspace(&workspace),
-            Some(Scope {
-                org_id: organization.to_string(),
-                workspace_id: workspace.id.to_string(),
-            })
-        );
-
-        workspace.organization_id = None;
-        assert_eq!(Scope::for_workspace(&workspace), None);
     }
 
     #[test]

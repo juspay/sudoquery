@@ -362,7 +362,7 @@ pub fn get_database_schema_value(table_name: Option<&str>) -> serde_json::Value 
     let schema = json!({
         "tables": [
             {
-                "name": "user_events_v2",
+                "name": "user_events",
                 "description": "Optimised table for user behavior analytics and run time session creations, cohorts creation",
                 "columns": [
                     { "name": "workspace_id", "type": "LowCardinality(String)" },
@@ -391,7 +391,7 @@ pub fn get_database_schema_value(table_name: Option<&str>) -> serde_json::Value 
                 "notes": "The acting user is actor_id. Property values are read from the JSON column, e.g. toString(properties.foo) or properties.foo.:String for strings and properties.foo::Float64 for numerics. Legacy v1 columns (user_id, event_date, event_hour, device_type, platform, browser, city, user_agent, version) no longer exist."
             },
             {
-                "name": "events_v2",
+                "name": "events",
                 "description": "Optimised for event analytics. Use this table for event-related queries (event names, event properties, event counts) as event_name is in the sort key.",
                 "columns": [
                     { "name": "workspace_id", "type": "LowCardinality(String)" },

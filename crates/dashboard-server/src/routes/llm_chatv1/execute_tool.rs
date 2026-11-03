@@ -9,7 +9,6 @@ use std::sync::Mutex;
 use uuid::Uuid;
 
 use crate::AppState;
-use crate::clickhouse;
 
 use super::golden_queries;
 use super::tools::get_database_schema_value;
@@ -46,14 +45,7 @@ pub async fn execute_tool(
             if query.is_empty() {
                 return Some(json!({"error": "No query provided"}));
             }
-            match clickhouse::execute_workspace_query(
-                &state.clickhouse_url,
-                workspace_id,
-                &state.clickhouse_workspace_password,
-                query,
-            )
-            .await
-            {
+            match state.clickhouse.query(workspace_id.as_ref(), query).await {
                 Ok(mut result) => {
                     // LLMs can't see transport-level tool_call_id fields; expose it in the content.
                     if let Some(obj) = result.as_object_mut() {
@@ -81,14 +73,7 @@ pub async fn execute_tool(
                         "SELECT event_name, property, type FROM event_schema_catalog WHERE event_name = '{}'",
                         name
                     );
-                    match clickhouse::execute_workspace_query(
-                        &state.clickhouse_url,
-                        workspace_id,
-                        &state.clickhouse_workspace_password,
-                        &query,
-                    )
-                    .await
-                    {
+                    match state.clickhouse.query(workspace_id.as_ref(), &query).await {
                         Ok(result) => Some(result),
                         Err(e) => {
                             tracing::error!("Failed to fetch event descriptions: {}", e);
@@ -98,14 +83,7 @@ pub async fn execute_tool(
                 }
                 None => {
                     let query = "SELECT DISTINCT event_name FROM event_schema_catalog LIMIT 100";
-                    match clickhouse::execute_workspace_query(
-                        &state.clickhouse_url,
-                        workspace_id,
-                        &state.clickhouse_workspace_password,
-                        query,
-                    )
-                    .await
-                    {
+                    match state.clickhouse.query(workspace_id.as_ref(), query).await {
                         Ok(result) => Some(result),
                         Err(e) => {
                             tracing::error!("Failed to fetch event descriptions: {}", e);

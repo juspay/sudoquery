@@ -15,7 +15,7 @@ interface WorkspaceContextType {
   setCurrentWorkspace: (workspace: Workspace | null) => void;
   loading: boolean;
   refreshWorkspaces: () => Promise<void>;
-  createWorkspace: (name: string) => Promise<Workspace>;
+  createWorkspace: (name: string, slug: string) => Promise<Workspace>;
 }
 
 const WorkspaceContext = createContext<WorkspaceContextType | null>(null);
@@ -99,9 +99,9 @@ export function WorkspaceProvider({ children }: { children: ReactNode }) {
     pollStatus,
   );
 
-  const createWorkspace = async (name: string): Promise<Workspace> => {
+  const createWorkspace = async (name: string, slug: string): Promise<Workspace> => {
     if (!currentOrganization) throw new Error('No organization selected');
-    const workspace = await workspaceService.create(currentOrganization.id, { name });
+    const workspace = await workspaceService.create(currentOrganization.id, { name, slug });
     await refreshWorkspaces();
     handleSetCurrentWorkspace(workspace);
     return workspace;

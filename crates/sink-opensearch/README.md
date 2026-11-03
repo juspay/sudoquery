@@ -15,7 +15,7 @@ cargo xtask setup redpanda opensearch opensearch-init \
   opensearch-dashboards opensearch-dashboards-init console
 docker compose exec redpanda rpk cluster health --watch --exit-when-healthy
 docker compose exec redpanda rpk topic create dlq.events -p 3
-# Workspace topics (events.{org_id}.{workspace_id}) are created by dashboard-server.
+# Workspace topics (events.{workspace_id}) are created by dashboard-server.
 
 SINK_CONFIG=crates/sink-opensearch/cac.toml LOG_FORMAT=pretty \
   cargo run -p sink-opensearch

@@ -7,8 +7,6 @@ use serde_json::Value as JsonValue;
 use sqlx::PgPool;
 use uuid::Uuid;
 
-use super::{MAX_SLUG_INSERT_ATTEMPTS, is_unique_violation};
-use crate::ids;
 
 /// Where a workspace is in provisioning its infrastructure.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, sqlx::Type)]
@@ -59,72 +57,54 @@ pub struct WorkspaceWithToken {
     pub created_at: DateTime<Utc>,
 }
 
+/// Creates the workspace `id` in `organization_id`, with its default token;
+/// a unique violation means the workspace's slug is taken in the org.
 pub async fn create_workspace(
     pool: &PgPool,
-    organization_id: Option<&OrgId>,
+    id: &WorkspaceId,
+    organization_id: &OrgId,
     name: &str,
 ) -> Result<WorkspaceWithToken, sqlx::Error> {
-    let mut attempt = 0;
-    loop {
-        let id = ids::generate_workspace_id(name);
-        let token_id = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
-        let workspace_token = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
-        attempt += 1;
+    let token_id = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
+    let workspace_token = Uuid::from_bytes(*uuid7::uuid7().as_bytes());
 
-        let mut tx = pool.begin().await?;
+    let mut tx = pool.begin().await?;
 
-        let inserted = sqlx::query(
-            r#"
-            INSERT INTO workspaces (id, organization_id, name, status)
-            VALUES ($1, $2, $3, $4)
-            "#,
-        )
-        .bind(&id)
-        .bind(organization_id)
-        .bind(name)
-        .bind(WorkspaceStatus::Pending)
-        .execute(&mut *tx)
-        .await;
+    sqlx::query(
+        r#"
+        INSERT INTO workspaces (id, organization_id, name, status)
+        VALUES ($1, $2, $3, $4)
+        "#,
+    )
+    .bind(id)
+    .bind(organization_id)
+    .bind(name)
+    .bind(WorkspaceStatus::Pending)
+    .execute(&mut *tx)
+    .await?;
 
-        if let Err(err) = inserted {
-            // A unique violation means the random slug suffix collided with
-            // an existing workspace; dropping `tx` rolls the transaction back
-            // and the loop retries with a fresh suffix.
-            if attempt < MAX_SLUG_INSERT_ATTEMPTS && is_unique_violation(&err) {
-                tracing::warn!(
-                    "generated workspace slug '{}' collided (attempt {}/{}); regenerating suffix",
-                    id,
-                    attempt,
-                    MAX_SLUG_INSERT_ATTEMPTS
-                );
-                continue;
-            }
-            return Err(err);
-        }
+    sqlx::query(
+        r#"
+        INSERT INTO workspace_tokens (id, workspace_id, token, name)
+        VALUES ($1, $2, $3, 'default')
+        "#,
+    )
+    .bind(token_id)
+    .bind(id)
+    .bind(workspace_token)
+    .execute(&mut *tx)
+    .await?;
 
-        sqlx::query(
-            r#"
-            INSERT INTO workspace_tokens (id, workspace_id, token, name)
-            VALUES ($1, $2, $3, 'default')
-            "#,
-        )
-        .bind(token_id)
-        .bind(&id)
-        .bind(workspace_token)
-        .execute(&mut *tx)
-        .await?;
+    tx.commit().await?;
 
-        tx.commit().await?;
-
-        return Ok(WorkspaceWithToken {
-            id,
-            organization_id: organization_id.cloned(),
-            name: name.to_string(),
-            status: WorkspaceStatus::Pending,
-            workspace_token,
-            created_at: Utc::now(),
-        });
-    }
+    Ok(WorkspaceWithToken {
+        id: id.clone(),
+        organization_id: Some(organization_id.clone()),
+        name: name.to_string(),
+        status: WorkspaceStatus::Pending,
+        workspace_token,
+        created_at: Utc::now(),
+    })
 }
 
 pub async fn get_workspace_by_id(

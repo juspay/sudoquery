@@ -6,13 +6,14 @@
 //! topic, ClickHouse database and user, and OpenSearch data stream. The
 //! server runs with per-run topic and data stream templates, and every
 //! workspace database, user, topic and data stream the run created is dropped
-//! afterwards. A second server instance with a wrong ClickHouse admin
-//! password produces real provisioning failures.
+//! afterwards. The server reaches ClickHouse only through clickhouse-proxy,
+//! which runs alongside it on the same throwaway database. A second server,
+//! whose clickhouse-proxy has a wrong ClickHouse admin password, produces
+//! real provisioning failures.
 
 use std::time::Duration;
 
 use anyhow::{Context, ensure};
-use canonical_event::is_valid_slug;
 use serde_json::{Value, json};
 use sqlx::PgPool;
 
@@ -25,23 +26,24 @@ use super::server::Service;
 use super::{Http, Response, run_cases, select};
 
 const PACKAGE: &str = "hyper-analytics-dashboard-server";
+const CLICKHOUSE_PROXY: &str = "clickhouse-proxy";
 
-/// Length of the random suffix appended to every generated slug.
-const SUFFIX_LEN: usize = 6;
+/// Longest org slug.
+const MAX_SLUG_LEN: usize = 30;
 /// Password the server gives every workspace's ClickHouse user.
 const WORKSPACE_PASSWORD: &str = "e2e-workspace-password";
 /// Every object `ckh/workspace.sql` creates in a workspace's database.
 const WORKSPACE_OBJECTS: [&str; 7] = [
     "event_schema_catalog",
     "event_schema_catalog_from_events_mv",
+    "events",
     "events_kafka",
-    "events_v2",
-    "events_v2_mv",
-    "user_events_v2",
-    "user_events_v2_mv",
+    "events_mv",
+    "user_events",
+    "user_events_mv",
 ];
 /// The tables a workspace's ClickHouse user may read.
-const WORKSPACE_TABLES: [&str; 3] = ["event_schema_catalog", "events_v2", "user_events_v2"];
+const WORKSPACE_TABLES: [&str; 3] = ["event_schema_catalog", "events", "user_events"];
 /// How long an event may take from the workspace topic to its tables.
 const INGEST_TIMEOUT: Duration = Duration::from_secs(30);
 /// Token both servers require on the admin API.
@@ -64,6 +66,10 @@ pub(crate) struct Ctx {
     kafka: Kafka,
     clickhouse: ClickHouse,
     opensearch: OpenSearch,
+    /// Ends every org slug of this run (`_{run_id}`), so slugs, and the
+    /// workspace ids and ClickHouse databases built on them, never meet
+    /// another run's.
+    run_id: String,
     /// Prefix of every workspace topic the servers create in this run.
     topic_prefix: String,
     /// Prefix of every workspace data stream the servers create in this run.
@@ -100,9 +106,16 @@ impl Ctx {
         self.http.get(path, token, headers).await
     }
 
-    /// The topic the server creates for `org_id`/`workspace_id`.
-    fn topic(&self, org_id: &str, workspace_id: &str) -> String {
-        format!("{}.{org_id}.{workspace_id}", self.topic_prefix)
+    /// An org slug for `name`, unique to this run: `acme_corp_{run_id}`.
+    fn org_slug(&self, name: &str) -> String {
+        let mut base = slug(name);
+        base.truncate(MAX_SLUG_LEN - self.run_id.len() - 1);
+        format!("{}_{}", base.trim_end_matches('_'), self.run_id)
+    }
+
+    /// The topic the server creates for `workspace_id`.
+    fn topic(&self, workspace_id: &str) -> String {
+        format!("{}.{workspace_id}", self.topic_prefix)
     }
 
     /// The data stream the server creates for `org_id`/`workspace_id`.
@@ -119,6 +132,7 @@ pub(crate) async fn run(filter: Option<&str>) -> anyhow::Result<bool> {
 
     // Build first: a failed build exits the process, which must not leak a database.
     Service::build(PACKAGE);
+    Service::build(CLICKHOUSE_PROXY);
     let kafka = Kafka::connect().await?;
     let clickhouse = ClickHouse::connect().await?;
     let opensearch = OpenSearch::connect().await?;
@@ -135,20 +149,16 @@ async fn run_with_db(
     opensearch: OpenSearch,
     cases: &[&super::Case<Ctx>],
 ) -> anyhow::Result<bool> {
-    let topic_prefix = format!(
-        "e2e-dashboard-{}",
-        &uuid::Uuid::new_v4().simple().to_string()[..8]
-    );
+    let run_id = uuid::Uuid::new_v4().simple().to_string()[..8].to_owned();
+    let topic_prefix = format!("e2e-dashboard-{run_id}");
     // Under `events-*`, so the index template makes them data streams.
     let data_stream_prefix = format!("events-{topic_prefix}-");
     let mock = Mock::start().await?;
-    let env = |admin_password: &str| {
+    // clickhouse-proxy keeps its own tables in its own schema of the
+    // throwaway database, so they go with it.
+    let proxy_env = |admin_password: &str| {
         vec![
             ("DATABASE_URL", db.url.clone()),
-            ("KEYCLOAK_URL", mock.keycloak_url().to_owned()),
-            ("KEYCLOAK_REALM", super::mock::REALM.to_owned()),
-            ("KEYCLOAK_ADMIN_USER", "e2e-admin".to_owned()),
-            ("KEYCLOAK_ADMIN_PASS", "e2e-admin".to_owned()),
             ("CLICKHOUSE_URL", clickhouse.url().to_owned()),
             ("CLICKHOUSE_ADMIN_URL", clickhouse.url().to_owned()),
             ("CLICKHOUSE_ADMIN_USER", clickhouse.user().to_owned()),
@@ -161,10 +171,35 @@ async fn run_with_db(
                 "CLICKHOUSE_KAFKA_BROKERS",
                 clickhouse.kafka_brokers().to_owned(),
             ),
+            ("RUST_LOG", "warn".to_owned()),
+        ]
+    };
+    let proxy = Service::start(
+        CLICKHOUSE_PROXY,
+        "CLICKHOUSE_PROXY_ADDR",
+        None,
+        &proxy_env(clickhouse.password()),
+    )
+    .await?;
+    let broken_proxy = Service::start(
+        CLICKHOUSE_PROXY,
+        "CLICKHOUSE_PROXY_ADDR",
+        None,
+        &proxy_env("e2e-wrong-password"),
+    )
+    .await?;
+    let env = |clickhouse_proxy: &Service| {
+        vec![
+            ("DATABASE_URL", db.url.clone()),
+            ("KEYCLOAK_URL", mock.keycloak_url().to_owned()),
+            ("KEYCLOAK_REALM", super::mock::REALM.to_owned()),
+            ("KEYCLOAK_ADMIN_USER", "e2e-admin".to_owned()),
+            ("KEYCLOAK_ADMIN_PASS", "e2e-admin".to_owned()),
+            ("CLICKHOUSE_PROXY_URL", clickhouse_proxy.base_url()),
             ("KAFKA_BROKER_URL", kafka.bootstrap_servers().to_owned()),
             (
                 "WORKSPACE_TOPIC_TEMPLATE",
-                format!("{topic_prefix}.{{org_id}}.{{workspace_id}}"),
+                format!("{topic_prefix}.{{workspace_id}}"),
             ),
             ("OPENSEARCH_URL", opensearch.url().to_owned()),
             (
@@ -175,20 +210,8 @@ async fn run_with_db(
             ("RUST_LOG", "warn".to_owned()),
         ]
     };
-    let server = Service::start(
-        PACKAGE,
-        "DASHBOARD_BIND_ADDR",
-        None,
-        &env(clickhouse.password()),
-    )
-    .await?;
-    let broken = Service::start(
-        PACKAGE,
-        "DASHBOARD_BIND_ADDR",
-        None,
-        &env("e2e-wrong-password"),
-    )
-    .await?;
+    let server = Service::start(PACKAGE, "DASHBOARD_BIND_ADDR", None, &env(&proxy)).await?;
+    let broken = Service::start(PACKAGE, "DASHBOARD_BIND_ADDR", None, &env(&broken_proxy)).await?;
     let ctx = Ctx {
         http: Http::new(format!("{}/api", server.base_url())),
         broken_http: Http::new(format!("{}/api", broken.base_url())),
@@ -197,6 +220,7 @@ async fn run_with_db(
         kafka,
         clickhouse,
         opensearch,
+        run_id,
         topic_prefix,
         data_stream_prefix,
     };
@@ -207,7 +231,9 @@ async fn run_with_db(
         |_| {},
         || {
             server.print_log_tail();
+            proxy.print_log_tail();
             broken.print_log_tail();
+            broken_proxy.print_log_tail();
         },
     )
     .await;
@@ -276,14 +302,16 @@ async fn drop_workspace_databases(ctx: &Ctx) -> anyhow::Result<()> {
 
 cases![Ctx:
     org_creation_returns_slug_and_admin_membership,
-    org_ids_are_slugified_from_names,
-    org_same_name_gets_distinct_ids,
+    org_creation_validates_the_slug,
+    org_slugs_are_unique,
     org_rejects_client_supplied_id,
     org_creation_requires_valid_token,
     workspace_creation_starts_pending,
     workspace_provisioning_creates_topic_database_user_and_data_stream,
     workspace_creation_requires_org_admin,
     workspace_creation_validates_org_header,
+    workspace_creation_validates_the_slug,
+    workspace_slugs_are_unique_within_an_org,
     workspace_provisioning_records_the_failed_step,
     workspace_provisioning_requires_admin_token,
     workspace_provisioning_runs_once_at_a_time,
@@ -302,18 +330,20 @@ async fn org_creation_returns_slug_and_admin_membership(ctx: &Ctx) -> anyhow::Re
     let user = ctx.user("Alice Admin");
     let token = ctx.token(&user);
 
+    let slug = ctx.org_slug("Acme Corp");
+
     let response = ctx
         .post(
             "/organizations",
             Some(&token),
             &[],
-            json!({ "name": "Acme Corp" }),
+            json!({ "name": "Acme Corp", "slug": slug }),
         )
         .await?;
     expect_status(&response, 201)?;
     let body = response.json()?;
     let org_id = str_field(&body, "id")?;
-    expect_generated_slug(org_id, "acme-corp")?;
+    ensure!(org_id == slug, "org id is {org_id:?}, not its slug {slug:?}");
     ensure!(body["name"] == "Acme Corp", "unexpected name in {body}");
 
     let name: String = sqlx::query_scalar("SELECT name FROM organizations WHERE id = $1")
@@ -354,27 +384,55 @@ async fn org_creation_returns_slug_and_admin_membership(ctx: &Ctx) -> anyhow::Re
     Ok(())
 }
 
-async fn org_ids_are_slugified_from_names(ctx: &Ctx) -> anyhow::Result<()> {
+async fn org_creation_validates_the_slug(ctx: &Ctx) -> anyhow::Result<()> {
     let token = ctx.token(&ctx.user("Slug Tester"));
-    let long_name = "A very long organization name that keeps going on and on";
-    for (name, base) in [
-        ("Café Ñandú", "cafe-nandu"),
-        ("  Hello,   World!  ", "hello-world"),
-        ("42 Labs", "labs"),
-        ("!!!", "org"),
-        (long_name, "a-very-long-organizatio"),
+    let name = "Badly Slugged Org";
+    for (label, body, status) in [
+        ("missing slug", json!({ "name": name }), 422),
+        ("too short", json!({ "name": name, "slug": "ab" }), 400),
+        ("uppercase", json!({ "name": name, "slug": "Acme_corp" }), 400),
+        ("hyphen", json!({ "name": name, "slug": "acme-corp" }), 400),
+        ("leading digit", json!({ "name": name, "slug": "1acme" }), 400),
+        ("trailing underscore", json!({ "name": name, "slug": "acme_" }), 400),
     ] {
-        let org_id = create_org(ctx, &token, name).await?;
-        expect_generated_slug(&org_id, base).with_context(|| format!("name {name:?}"))?;
+        let response = ctx
+            .post("/organizations", Some(&token), &[], body)
+            .await?;
+        expect_status(&response, status).with_context(|| label)?;
     }
+
+    let rows: i64 = sqlx::query_scalar("SELECT count(*) FROM organizations WHERE name = $1")
+        .bind(name)
+        .fetch_one(&ctx.pool)
+        .await?;
+    ensure!(rows == 0, "rejected requests inserted {rows} organization(s)");
     Ok(())
 }
 
-async fn org_same_name_gets_distinct_ids(ctx: &Ctx) -> anyhow::Result<()> {
+async fn org_slugs_are_unique(ctx: &Ctx) -> anyhow::Result<()> {
     let token = ctx.token(&ctx.user("Twin Maker"));
     let first = create_org(ctx, &token, "Twin Org").await?;
-    let second = create_org(ctx, &token, "Twin Org").await?;
-    ensure!(first != second, "both organizations got id {first}");
+
+    let taken = ctx
+        .post(
+            "/organizations",
+            Some(&token),
+            &[],
+            json!({ "name": "Another Twin Org", "slug": first }),
+        )
+        .await?;
+    expect_status(&taken, 409)?;
+
+    // The name is free to repeat; only the slug identifies the org.
+    let same_name = ctx
+        .post(
+            "/organizations",
+            Some(&token),
+            &[],
+            json!({ "name": "Twin Org", "slug": ctx.org_slug("Twin Org Two") }),
+        )
+        .await?;
+    expect_status(&same_name, 201)?;
     Ok(())
 }
 
@@ -385,13 +443,13 @@ async fn org_rejects_client_supplied_id(ctx: &Ctx) -> anyhow::Result<()> {
             "/organizations",
             Some(&token),
             &[],
-            json!({ "name": "Picked Id Org", "id": "my-chosen-org" }),
+            json!({ "name": "Picked Id Org", "slug": ctx.org_slug("Picked Id Org"), "id": "my_chosen_org" }),
         )
         .await?;
     expect_client_error(&response)?;
 
     let rows: i64 = sqlx::query_scalar(
-        "SELECT count(*) FROM organizations WHERE id = 'my-chosen-org' OR name = 'Picked Id Org'",
+        "SELECT count(*) FROM organizations WHERE id = 'my_chosen_org' OR name = 'Picked Id Org'",
     )
     .fetch_one(&ctx.pool)
     .await?;
@@ -447,13 +505,16 @@ async fn workspace_creation_starts_pending(ctx: &Ctx) -> anyhow::Result<()> {
             "/workspaces",
             Some(&token),
             &[("X-Organization-Id", &org_id)],
-            json!({ "name": "Web Shop" }),
+            json!({ "name": "Web Shop", "slug": "web_shop" }),
         )
         .await?;
     expect_status(&response, 201)?;
     let body = response.json()?;
     let workspace_id = str_field(&body, "id")?;
-    expect_generated_slug(workspace_id, "web-shop")?;
+    ensure!(
+        workspace_id == format!("{org_id}-web_shop"),
+        "workspace id is {workspace_id:?}, not \"{org_id}-web_shop\""
+    );
     ensure!(
         body["organization_id"] == org_id.as_str() && body["status"] == "PENDING",
         "unexpected workspace {body}"
@@ -497,7 +558,7 @@ async fn workspace_creation_starts_pending(ctx: &Ctx) -> anyhow::Result<()> {
     // Nothing is provisioned until the admin API is called.
     let topics = ctx
         .kafka
-        .topics_with_prefix(&ctx.topic(&org_id, workspace_id))
+        .topics_with_prefix(&ctx.topic(workspace_id))
         .await?;
     ensure!(topics.is_empty(), "pending workspace has topics {topics:?}");
     expect_no_workspace_database(ctx, workspace_id).await?;
@@ -545,7 +606,7 @@ async fn workspace_provisioning_creates_topic_database_user_and_data_stream(
         "provisioning did not succeed: {outcome}"
     );
 
-    let topic = ctx.topic(&org_id, &workspace_id);
+    let topic = ctx.topic(&workspace_id);
     let topics = ctx.kafka.topics_with_prefix(&topic).await?;
     ensure!(
         topics.contains(&topic),
@@ -587,7 +648,7 @@ async fn workspace_creation_requires_org_admin(ctx: &Ctx) -> anyhow::Result<()> 
             "/workspaces",
             Some(&outsider),
             &[("X-Organization-Id", &org_id)],
-            json!({ "name": "Sneaky Workspace" }),
+            json!({ "name": "Sneaky Workspace", "slug": "sneaky" }),
         )
         .await?;
     expect_status(&response, 403)?;
@@ -596,7 +657,7 @@ async fn workspace_creation_requires_org_admin(ctx: &Ctx) -> anyhow::Result<()> 
 
 async fn workspace_creation_validates_org_header(ctx: &Ctx) -> anyhow::Result<()> {
     let token = ctx.token(&ctx.user("Header Tester"));
-    let body = json!({ "name": "Headerless Workspace" });
+    let body = json!({ "name": "Headerless Workspace", "slug": "headerless" });
 
     for (label, headers, status) in [
         ("missing header", vec![], 400),
@@ -607,12 +668,12 @@ async fn workspace_creation_validates_org_header(ctx: &Ctx) -> anyhow::Result<()
         ),
         (
             "uppercase org id",
-            vec![("X-Organization-Id", "Acme-Corp-x1y2z3")],
+            vec![("X-Organization-Id", "Acme_corp")],
             400,
         ),
         (
             "unknown org",
-            vec![("X-Organization-Id", "no-such-org-zzzzzz")],
+            vec![("X-Organization-Id", "no_such_org")],
             404,
         ),
     ] {
@@ -622,6 +683,57 @@ async fn workspace_creation_validates_org_header(ctx: &Ctx) -> anyhow::Result<()
         expect_status(&response, status).with_context(|| label)?;
     }
     expect_no_workspace(ctx, "Headerless Workspace").await
+}
+
+async fn workspace_creation_validates_the_slug(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Workspace Slug Tester"));
+    let org_id = create_org(ctx, &token, "Workspace Slug Org").await?;
+    let name = "Badly Slugged Workspace";
+    for (label, body, status) in [
+        ("missing slug", json!({ "name": name }), 422),
+        ("too short", json!({ "name": name, "slug": "ws" }), 400),
+        ("hyphen", json!({ "name": name, "slug": "web-shop" }), 400),
+        ("uppercase", json!({ "name": name, "slug": "Web_shop" }), 400),
+        // The org's id is added by the server, not sent.
+        ("full id", json!({ "name": name, "slug": format!("{org_id}-web_shop") }), 400),
+    ] {
+        let response = ctx
+            .post(
+                "/workspaces",
+                Some(&token),
+                &[("X-Organization-Id", &org_id)],
+                body,
+            )
+            .await?;
+        expect_status(&response, status).with_context(|| label)?;
+    }
+    expect_no_workspace(ctx, name).await
+}
+
+async fn workspace_slugs_are_unique_within_an_org(ctx: &Ctx) -> anyhow::Result<()> {
+    let token = ctx.token(&ctx.user("Workspace Twin Maker"));
+    let org_id = create_org(ctx, &token, "First Twin Home").await?;
+    let other_org_id = create_org(ctx, &token, "Second Twin Home").await?;
+    let first = create_pending_workspace(ctx, &token, &org_id, "Twin Shop").await?;
+
+    let taken = ctx
+        .post(
+            "/workspaces",
+            Some(&token),
+            &[("X-Organization-Id", &org_id)],
+            json!({ "name": "Another Twin Shop", "slug": "twin_shop" }),
+        )
+        .await?;
+    expect_status(&taken, 409)?;
+    expect_no_workspace(ctx, "Another Twin Shop").await?;
+
+    // Another org may use the same slug: the ids differ by org.
+    let other = create_pending_workspace(ctx, &token, &other_org_id, "Twin Shop").await?;
+    ensure!(
+        first == format!("{org_id}-twin_shop") && other == format!("{other_org_id}-twin_shop"),
+        "unexpected workspace ids {first:?} and {other:?}"
+    );
+    Ok(())
 }
 
 async fn workspace_provisioning_records_the_failed_step(ctx: &Ctx) -> anyhow::Result<()> {
@@ -658,7 +770,7 @@ async fn workspace_provisioning_records_the_failed_step(ctx: &Ctx) -> anyhow::Re
         !deleted,
         "errored workspace {workspace_id} was soft-deleted"
     );
-    let topic = ctx.topic(&org_id, &workspace_id);
+    let topic = ctx.topic(&workspace_id);
     let topics = ctx.kafka.topics_with_prefix(&topic).await?;
     ensure!(
         topics.contains(&topic),
@@ -713,7 +825,7 @@ async fn workspace_provisioning_requires_admin_token(ctx: &Ctx) -> anyhow::Resul
 /// stale) can be provisioned, and a CREATING workspace cannot be deleted.
 async fn workspace_provisioning_runs_once_at_a_time(ctx: &Ctx) -> anyhow::Result<()> {
     for (label, workspace_id, status) in [
-        ("unknown workspace", "no-such-workspace-zzzzzz", 404),
+        ("unknown workspace", "no_such_org-no_such_workspace", 404),
         ("invalid workspace id", "Not_A_Slug", 400),
     ] {
         let response = provision(&ctx.http, workspace_id).await?;
@@ -872,7 +984,7 @@ async fn workspace_provisioning_refuses_deleted_orgs(ctx: &Ctx) -> anyhow::Resul
     );
     let topics = ctx
         .kafka
-        .topics_with_prefix(&ctx.topic(&org_id, &workspace_id))
+        .topics_with_prefix(&ctx.topic(&workspace_id))
         .await?;
     ensure!(
         topics.is_empty(),
@@ -887,7 +999,7 @@ async fn workspace_deletion_drops_topic_database_user_and_data_stream(
     let token = ctx.token(&ctx.user("Tidy Admin"));
     let org_id = create_org(ctx, &token, "Tidy Org").await?;
     let workspace_id = create_workspace(ctx, &token, &org_id, "Short Lived").await?;
-    let topic = ctx.topic(&org_id, &workspace_id);
+    let topic = ctx.topic(&workspace_id);
     expect_workspace_database(ctx, &workspace_id, &topic)
         .await
         .context("before deletion")?;
@@ -962,7 +1074,7 @@ async fn workspace_queries_target_the_workspace_database(ctx: &Ctx) -> anyhow::R
 
     let shop_event = produce_event(
         ctx,
-        &ctx.topic(&org_id, &shop),
+        &ctx.topic(&shop),
         &org_id,
         &shop,
         "purchase",
@@ -971,7 +1083,7 @@ async fn workspace_queries_target_the_workspace_database(ctx: &Ctx) -> anyhow::R
     .await?;
     let blog_event = produce_event(
         ctx,
-        &ctx.topic(&org_id, &blog),
+        &ctx.topic(&blog),
         &org_id,
         &blog,
         "comment",
@@ -1027,7 +1139,7 @@ async fn workspace_queries_target_the_workspace_database(ctx: &Ctx) -> anyhow::R
                 "/query",
                 Some(&token),
                 &headers,
-                json!({ "query": format!("SELECT count() FROM `{other_workspace}`.events_v2") }),
+                json!({ "query": format!("SELECT count() FROM `{other_workspace}`.events") }),
             )
             .await?;
         expect_status(&response, 200)?;
@@ -1048,7 +1160,7 @@ async fn workspace_queries_target_the_workspace_database(ctx: &Ctx) -> anyhow::R
             "/query",
             Some(&outsider),
             &[("X-Organization-Id", &org_id), ("X-Workspace-Id", &shop)],
-            json!({ "query": "SELECT count() FROM events_v2" }),
+            json!({ "query": "SELECT count() FROM events" }),
         )
         .await?;
     expect_status(&response, 403)
@@ -1075,7 +1187,7 @@ async fn workspace_rejects_client_supplied_id(ctx: &Ctx) -> anyhow::Result<()> {
             "/workspaces",
             Some(&token),
             &[("X-Organization-Id", &org_id)],
-            json!({ "name": "Picked Id Workspace", "id": "my-chosen-workspace" }),
+            json!({ "name": "Picked Id Workspace", "slug": "picked", "id": format!("{org_id}-my_choice") }),
         )
         .await?;
     expect_client_error(&response)?;
@@ -1158,10 +1270,10 @@ async fn expect_events_reach_workspace(
     wait_for_events(ctx, token, org_id, workspace_id, &[&event_id]).await?;
 
     let query = |sql| workspace_query(ctx, token, org_id, workspace_id, sql);
-    let users = query("SELECT count() AS n FROM user_events_v2").await?;
+    let users = query("SELECT count() AS n FROM user_events").await?;
     ensure!(
         users[0]["n"].to_string().trim_matches('"') == "1",
-        "event missing from user_events_v2: {users}"
+        "event missing from user_events: {users}"
     );
     let catalog = query("SELECT property, type FROM event_schema_catalog").await?;
     ensure!(
@@ -1199,7 +1311,7 @@ async fn produce_event(
     Ok(event_id)
 }
 
-/// Waits until the workspace's `events_v2`, read through the server, holds
+/// Waits until the workspace's `events`, read through the server, holds
 /// exactly the events `ids`.
 async fn wait_for_events(
     ctx: &Ctx,
@@ -1216,7 +1328,7 @@ async fn wait_for_events(
             token,
             org_id,
             workspace_id,
-            "SELECT toString(event_id) AS id FROM events_v2 ORDER BY id",
+            "SELECT toString(event_id) AS id FROM events ORDER BY id",
         )
         .await?;
         let mut sorted = expected.clone();
@@ -1226,7 +1338,7 @@ async fn wait_for_events(
         }
         ensure!(
             tokio::time::Instant::now() < deadline,
-            "{workspace_id} events_v2 did not become {ids:?} within {INGEST_TIMEOUT:?}: {rows}"
+            "{workspace_id} events did not become {ids:?} within {INGEST_TIMEOUT:?}: {rows}"
         );
         tokio::time::sleep(Duration::from_millis(500)).await;
     }
@@ -1325,7 +1437,8 @@ async fn expect_no_workspace_database(ctx: &Ctx, workspace_id: &str) -> anyhow::
     Ok(())
 }
 
-/// Creates a workspace, which stays PENDING until it is provisioned.
+/// Creates a workspace with a slug from `name`, which stays PENDING until it
+/// is provisioned.
 async fn create_pending_workspace(
     ctx: &Ctx,
     token: &str,
@@ -1337,7 +1450,7 @@ async fn create_pending_workspace(
             "/workspaces",
             Some(token),
             &[("X-Organization-Id", org_id)],
-            json!({ "name": name }),
+            json!({ "name": name, "slug": slug(name) }),
         )
         .await?;
     expect_status(&response, 201).with_context(|| format!("creating workspace {name:?}"))?;
@@ -1441,9 +1554,15 @@ async fn workspace_status(ctx: &Ctx, workspace_id: &str) -> anyhow::Result<Strin
     )
 }
 
+/// Creates an org with a slug from `name` ([`Ctx::org_slug`]).
 async fn create_org(ctx: &Ctx, token: &str, name: &str) -> anyhow::Result<String> {
     let response = ctx
-        .post("/organizations", Some(token), &[], json!({ "name": name }))
+        .post(
+            "/organizations",
+            Some(token),
+            &[],
+            json!({ "name": name, "slug": ctx.org_slug(name) }),
+        )
         .await?;
     expect_status(&response, 201).with_context(|| format!("creating organization {name:?}"))?;
     Ok(str_field(&response.json()?, "id")?.to_owned())
@@ -1489,21 +1608,13 @@ async fn expect_no_workspace(ctx: &Ctx, name: &str) -> anyhow::Result<()> {
     Ok(())
 }
 
-/// `id` is a valid slug of the form `{base}-{6 random [a-z0-9]}`.
-fn expect_generated_slug(id: &str, base: &str) -> anyhow::Result<()> {
-    ensure!(is_valid_slug(id), "{id:?} is not a valid slug");
-    let suffix = id
-        .strip_prefix(base)
-        .and_then(|rest| rest.strip_prefix('-'))
-        .with_context(|| format!("{id:?} does not start with \"{base}-\""))?;
-    ensure!(
-        suffix.len() == SUFFIX_LEN
-            && suffix
-                .bytes()
-                .all(|b| b.is_ascii_lowercase() || b.is_ascii_digit()),
-        "{id:?} does not end in a {SUFFIX_LEN}-char [a-z0-9] suffix"
-    );
-    Ok(())
+/// `name` as a slug: "Web Shop" → "web_shop". Names here start with a letter.
+fn slug(name: &str) -> String {
+    name.to_lowercase()
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|word| !word.is_empty())
+        .collect::<Vec<_>>()
+        .join("_")
 }
 
 fn expect_status(response: &Response, status: u16) -> anyhow::Result<()> {

@@ -23,6 +23,8 @@ interface OrgMember {
 
 interface CreateOrganizationRequest {
   name: string;
+  /** The organization's id, e.g. north_star (see utils/slug). */
+  slug: string;
 }
 
 interface UpdateOrganizationRequest {
