@@ -1,11 +1,12 @@
 # Builds every deployable image for linux/amd64 and linux/arm64 and pushes it
-# to GHCR as ghcr.io/<owner>/<repo>/<image>:{sha-<short commit>,<branch>}.
+# to GHCR as ghcr.io/<owner>/<repo>/<image>:{sha-<short commit>,<branch>} on
+# every push to main (i.e. each merged PR).
 # Each image has its own workflow (image-*.yml); this one runs them all.
 name: Build images
 
 on:
   push:
-    branches: [sudoquery-monorepo-impl]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
