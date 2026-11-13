@@ -1,0 +1,50 @@
+# Publishes the Android SDK (clients/android) to Maven Central when a tag android-v<version> is pushed.
+# The npm release (release.yml) only triggers on tags starting with "v".
+name: Release Android SDK to Maven Central
+
+on:
+  push:
+    tags:
+      - 'android-v*'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    environment: production
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: clients/android
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Check the tag matches VERSION_NAME
+        run: |
+          version="$(sed -n 's/^VERSION_NAME=//p' gradle.properties)"
+          if [ "$GITHUB_REF_NAME" != "android-v$version" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match VERSION_NAME=$version in clients/android/gradle.properties"
+            exit 1
+          fi
+
+      - name: Test
+        run: ./gradlew check
+
+      # Uploads and validates the deployment; release it with "Publish" on central.sonatype.com.
+      - name: Publish to Maven Central
+        run: ./gradlew :sudoquery:publishToMavenCentral
+        env:
+          ORG_GRADLE_PROJECT_mavenCentralUsername: ${{ secrets.MAVEN_CENTRAL_USERNAME }}
+          ORG_GRADLE_PROJECT_mavenCentralPassword: ${{ secrets.MAVEN_CENTRAL_PASSWORD }}
+          ORG_GRADLE_PROJECT_signingInMemoryKey: ${{ secrets.SIGNING_KEY }}
+          ORG_GRADLE_PROJECT_signingInMemoryKeyPassword: ${{ secrets.SIGNING_KEY_PASSWORD }}
