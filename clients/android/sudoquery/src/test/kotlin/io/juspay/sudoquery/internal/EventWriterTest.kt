@@ -55,7 +55,7 @@ class EventWriterTest {
         assertEquals("1.0", event.text("envelop_version"))
         assertEquals("button_click", event.text("name"))
         assertEquals("acme-k3x9qa", event.text("org_id"))
-        assertEquals("android-demo1", event.text("project_id"))
+        assertEquals("android-demo1", event.text("workspace_id"))
         assertEquals("android", event.text("source"))
         assertEquals("2025-10-09T08:53:20.000Z", event.text("occured_at"))
         assertEquals("""{"page":"/home"}""", event.getValue("properties").toString())

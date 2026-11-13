@@ -5,7 +5,7 @@ plugins {
 // Point the sample at a collector with -Psudoquery.endpoint=... (10.0.2.2 is the host machine from the emulator).
 val endpoint = providers.gradleProperty("sudoquery.endpoint").getOrElse("http://10.0.2.2:3000/v1/events/batch")
 val orgId = providers.gradleProperty("sudoquery.orgId").getOrElse("acme-k3x9qa")
-val projectId = providers.gradleProperty("sudoquery.projectId").getOrElse("android-demo1")
+val workspaceId = providers.gradleProperty("sudoquery.workspaceId").getOrElse("android-demo1")
 
 android {
     namespace = "io.juspay.sudoquery.sample"
@@ -19,7 +19,7 @@ android {
         versionName = "1.0"
         buildConfigField("String", "SUDOQUERY_ENDPOINT", "\"$endpoint\"")
         buildConfigField("String", "SUDOQUERY_ORG_ID", "\"$orgId\"")
-        buildConfigField("String", "SUDOQUERY_PROJECT_ID", "\"$projectId\"")
+        buildConfigField("String", "SUDOQUERY_WORKSPACE_ID", "\"$workspaceId\"")
     }
 
     buildFeatures {

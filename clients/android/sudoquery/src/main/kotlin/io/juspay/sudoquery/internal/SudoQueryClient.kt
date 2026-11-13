@@ -132,7 +132,7 @@ internal class SudoQueryClient private constructor(
                 val store = QueueStore(root, config.batchSize, clock, logger)
                 val headers = requestHeaders(
                     orgId = config.orgId,
-                    projectId = config.projectId,
+                    workspaceId = config.workspaceId,
                     token = config.token,
                     custom = config.headers,
                     userAgent = "sudoquery-android/${BuildConfig.SDK_VERSION} (Android ${Build.VERSION.RELEASE})",
@@ -144,7 +144,7 @@ internal class SudoQueryClient private constructor(
                     buildEvent = { CanonicalEvent(it) },
                     settings = WriterSettings(
                         orgId = config.orgId,
-                        projectId = config.projectId,
+                        workspaceId = config.workspaceId,
                         source = config.source,
                         fixedSessionId = config.sessionId,
                         sessionTimeoutMillis = config.sessionTimeoutMillis,

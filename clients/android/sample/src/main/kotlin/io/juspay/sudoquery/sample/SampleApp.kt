@@ -9,7 +9,7 @@ class SampleApp : Application() {
         super.onCreate()
         val config = SudoQueryConfig.Builder(
             orgId = BuildConfig.SUDOQUERY_ORG_ID,
-            projectId = BuildConfig.SUDOQUERY_PROJECT_ID,
+            workspaceId = BuildConfig.SUDOQUERY_WORKSPACE_ID,
             endpoint = BuildConfig.SUDOQUERY_ENDPOINT,
         )
             .batchSize(20)

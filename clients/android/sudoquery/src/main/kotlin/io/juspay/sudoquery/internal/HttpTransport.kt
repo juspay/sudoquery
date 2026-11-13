@@ -21,12 +21,12 @@ internal fun interface Transport {
 
 /**
  * Request headers, with the TS client's precedence: custom headers can replace `Content-Type` and
- * `User-Agent`, but `x-org-id`, `x-project-id` and the bearer token always win. Names are
+ * `User-Agent`, but `x-org-id`, `x-workspace-id` and the bearer token always win. Names are
  * compared case-insensitively.
  */
 internal fun requestHeaders(
     orgId: String,
-    projectId: String,
+    workspaceId: String,
     token: String?,
     custom: Map<String, String>,
     userAgent: String,
@@ -40,7 +40,7 @@ internal fun requestHeaders(
     put("User-Agent", userAgent)
     for ((name, value) in custom) put(name, value)
     put("x-org-id", orgId)
-    put("x-project-id", projectId)
+    put("x-workspace-id", workspaceId)
     if (!token.isNullOrEmpty()) put("Authorization", "Bearer $token")
     return headers
 }

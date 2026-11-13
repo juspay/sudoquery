@@ -58,7 +58,7 @@ public object SudoQuery {
                     return
                 }
                 warnIfNotSlug("orgId", config.orgId, configLogger)
-                warnIfNotSlug("projectId", config.projectId, configLogger)
+                warnIfNotSlug("workspaceId", config.workspaceId, configLogger)
                 logger = configLogger
                 client = SudoQueryClient.start(app, config, configLogger, clock)
             }

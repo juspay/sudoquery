@@ -39,7 +39,7 @@ class HttpTransportTest {
         assertEquals("""{"events":[]}""", request.body!!.utf8())
         assertEquals("application/json", request.headers["Content-Type"])
         assertEquals("acme-k3x9qa", request.headers["x-org-id"])
-        assertEquals("android-demo1", request.headers["x-project-id"])
+        assertEquals("android-demo1", request.headers["x-workspace-id"])
         assertEquals("Bearer secret", request.headers["Authorization"])
         assertEquals("k", request.headers["X-Api-Key"])
         assertEquals("sudoquery-android/0.1.0", request.headers["User-Agent"])
@@ -80,7 +80,7 @@ class HttpTransportTest {
     fun `custom headers can't replace the ids or the token`() {
         val headers = requestHeaders(
             orgId = "acme-k3x9qa",
-            projectId = "android-demo1",
+            workspaceId = "android-demo1",
             token = "secret",
             custom = mapOf(
                 "content-type" to "application/x-ndjson",
@@ -95,7 +95,7 @@ class HttpTransportTest {
                 "content-type" to "application/x-ndjson",
                 "user-agent" to "custom",
                 "x-org-id" to "acme-k3x9qa",
-                "x-project-id" to "android-demo1",
+                "x-workspace-id" to "android-demo1",
                 "Authorization" to "Bearer secret",
             ),
             headers,
@@ -105,6 +105,6 @@ class HttpTransportTest {
     @Test
     fun `an empty token is not sent`() {
         val headers = requestHeaders("acme-k3x9qa", "android-demo1", "", emptyMap(), "ua")
-        assertEquals(listOf("Content-Type", "User-Agent", "x-org-id", "x-project-id"), headers.keys.toList())
+        assertEquals(listOf("Content-Type", "User-Agent", "x-org-id", "x-workspace-id"), headers.keys.toList())
     }
 }

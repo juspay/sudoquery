@@ -105,7 +105,7 @@ class SudoQueryFacadeTest {
 
         val request = checkNotNull(server.takeRequest(10, TimeUnit.SECONDS)) { "no request reached the server" }
         assertEquals("acme-k3x9qa", request.headers["x-org-id"])
-        assertEquals("android-demo1", request.headers["x-project-id"])
+        assertEquals("android-demo1", request.headers["x-workspace-id"])
         assertTrue(request.headers["User-Agent"]!!.startsWith("sudoquery-android/"))
 
         val body = Json.parseToJsonElement(request.body!!.utf8()).jsonObject

@@ -30,7 +30,7 @@ internal sealed interface Command {
 
 internal class WriterSettings(
     val orgId: String,
-    val projectId: String,
+    val workspaceId: String,
     val source: String?,
     val fixedSessionId: String?,
     val sessionTimeoutMillis: Long,
@@ -103,7 +103,7 @@ internal class EventWriter<E>(
             id = newId(),
             name = command.name,
             orgId = settings.orgId,
-            projectId = settings.projectId,
+            workspaceId = settings.workspaceId,
             sessionId = identity.sessionId,
             anonId = identity.anonId,
             actorId = identity.actorId,

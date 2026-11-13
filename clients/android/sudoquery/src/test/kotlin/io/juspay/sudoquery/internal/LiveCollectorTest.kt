@@ -36,12 +36,12 @@ class LiveCollectorTest {
         val clock = JvmClock
         val logger = RecordingLogger()
         val store = QueueStore(temp.newFolder("queue"), maxEventsPerBatch = 2, clock = clock, logger = logger)
-        val headers = requestHeaders(ORG_ID, PROJECT_ID, token = null, custom = emptyMap(), userAgent = "sudoquery-android/live-test")
+        val headers = requestHeaders(ORG_ID, WORKSPACE_ID, token = null, custom = emptyMap(), userAgent = "sudoquery-android/live-test")
         val uploader = Uploader(store, HttpUrlConnectionTransport(URL(url), headers), clock, logger)
         val writer = EventWriter(
             serializer = serializer<CanonicalEvent>(),
             buildEvent = { CanonicalEvent(it) },
-            settings = WriterSettings(ORG_ID, PROJECT_ID, "android", null, 30 * 60 * 1000L),
+            settings = WriterSettings(ORG_ID, WORKSPACE_ID, "android", null, 30 * 60 * 1000L),
             store = store,
             identityStore = IdentityStore(File(temp.root, "identity.json"), logger),
             uploads = uploader,
@@ -68,6 +68,6 @@ class LiveCollectorTest {
 
     private companion object {
         const val ORG_ID = "acme-k3x9qa"
-        const val PROJECT_ID = "android-demo1"
+        const val WORKSPACE_ID = "android-demo1"
     }
 }

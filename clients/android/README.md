@@ -33,7 +33,7 @@ class App : Application() {
             this,
             SudoQueryConfig.Builder(
                 orgId = "acme-store-k3x9qa",
-                projectId = "acme-store-app-9t2r4m",
+                workspaceId = "acme-store-app-9t2r4m",
                 endpoint = "https://collector.example.com/v1/events/batch",
             ).build(),
         )
@@ -54,22 +54,22 @@ SudoQuery.reset()                         // on logout: new anonymous id and ses
 From Java the same methods are static:
 
 ```java
-SudoQuery.init(this, new SudoQueryConfig.Builder(orgId, projectId, endpoint).build());
+SudoQuery.init(this, new SudoQueryConfig.Builder(orgId, workspaceId, endpoint).build());
 SudoQuery.track("button_click", Collections.singletonMap("button_id", "submit"));
 ```
 
-`orgId` and `projectId` are the server-generated slugs shown in the dashboard's project settings
-(the collector reads them from `x-org-id` / `x-project-id` and from every event).
+`orgId` and `workspaceId` are the server-generated slugs shown in the dashboard under Settings → Workspace
+(the collector reads them from `x-org-id` / `x-workspace-id` and from every event).
 
 ## Configuration
 
-`SudoQueryConfig.Builder(orgId, projectId, endpoint)` takes:
+`SudoQueryConfig.Builder(orgId, workspaceId, endpoint)` takes:
 
 | Option | Default | Description |
 |---|---|---|
 | `endpoint` | required | Full URL of the batch route, e.g. `https://collector.example.com/v1/events/batch`. |
 | `token(String?)` | none | Sent as `Authorization: Bearer <token>`, for a proxy or gateway in front of the collector. |
-| `headers(Map)` | none | Extra headers. They can't replace `x-org-id`, `x-project-id` or the bearer token. |
+| `headers(Map)` | none | Extra headers. They can't replace `x-org-id`, `x-workspace-id` or the bearer token. |
 | `source(String?)` | `"android"` | The `source` of every event. |
 | `sessionId(String?)` | managed | Use a fixed session id instead of SDK-managed sessions. |
 | `batchSize(Int)` | `50` | Events per batch and request (1 to 500). |
@@ -133,7 +133,7 @@ out, nulls included:
 
 ```json
 {"events":[{"envelop_version":"1.0","id":"3b241101-e2bb-4255-8caf-4136c566a962","name":"button_click",
-"org_id":"acme-k3x9qa","project_id":"android-demo1","session_id":"9f1c2d3e-…","anon_id":"6e8bc430-…",
+"org_id":"acme-k3x9qa","workspace_id":"android-demo1","session_id":"9f1c2d3e-…","anon_id":"6e8bc430-…",
 "actor_id":null,"source":"android","occured_at":"2026-10-14T09:30:12.345Z","properties":{"page":"/checkout"},
 "correlation_id":null,"trace_id":null,"system_properties":null}],
 "system_properties":{"geo":null,"timezone":"Asia/Kolkata"}}

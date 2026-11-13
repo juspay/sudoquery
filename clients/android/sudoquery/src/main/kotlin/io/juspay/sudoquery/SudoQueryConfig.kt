@@ -9,14 +9,14 @@ import java.net.URL
  * ```
  * val config = SudoQueryConfig.Builder(
  *     orgId = "acme-store-k3x9qa",
- *     projectId = "acme-store-app-9t2r4m",
+ *     workspaceId = "acme-store-app-9t2r4m",
  *     endpoint = "https://collector.example.com/v1/events/batch",
  * ).build()
  * ```
  */
 public class SudoQueryConfig private constructor(
     internal val orgId: String,
-    internal val projectId: String,
+    internal val workspaceId: String,
     internal val endpoint: String,
     internal val token: String?,
     internal val headers: Map<String, String>,
@@ -31,14 +31,14 @@ public class SudoQueryConfig private constructor(
     /**
      * @param orgId the organization id (a server-generated slug such as `acme-store-k3x9qa`),
      *   sent as `x-org-id` and in every event.
-     * @param projectId the project id (a server-generated slug), sent as `x-project-id` and in
+     * @param workspaceId the workspace id (a server-generated slug), sent as `x-workspace-id` and in
      *   every event.
      * @param endpoint the full URL of the collector's batch route, e.g.
      *   `https://collector.example.com/v1/events/batch`.
      */
     public class Builder(
         private val orgId: String,
-        private val projectId: String,
+        private val workspaceId: String,
         private val endpoint: String,
     ) {
         private var token: String? = null
@@ -55,7 +55,7 @@ public class SudoQueryConfig private constructor(
 
         /**
          * Extra headers for every request. They can replace `Content-Type` and `User-Agent`,
-         * but not `x-org-id`, `x-project-id` or the bearer [token].
+         * but not `x-org-id`, `x-workspace-id` or the bearer [token].
          */
         public fun headers(headers: Map<String, String>): Builder = apply { this.headers = headers.toMap() }
 
@@ -80,7 +80,7 @@ public class SudoQueryConfig private constructor(
         /** @throws IllegalArgumentException if an id is blank, the endpoint isn't an http(s) URL, or a value is out of range. */
         public fun build(): SudoQueryConfig {
             require(orgId.isNotBlank()) { "orgId must not be blank" }
-            require(projectId.isNotBlank()) { "projectId must not be blank" }
+            require(workspaceId.isNotBlank()) { "workspaceId must not be blank" }
             val url = try {
                 URL(endpoint)
             } catch (e: MalformedURLException) {
@@ -94,7 +94,7 @@ public class SudoQueryConfig private constructor(
             require(sessionTimeoutMillis > 0) { "sessionTimeoutMillis must be positive, was $sessionTimeoutMillis" }
             return SudoQueryConfig(
                 orgId = orgId,
-                projectId = projectId,
+                workspaceId = workspaceId,
                 endpoint = endpoint,
                 token = token,
                 headers = headers,
